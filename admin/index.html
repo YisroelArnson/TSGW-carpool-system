@@ -34,53 +34,73 @@
       </section>
 
       <section id="admin-dashboard" class="stack hidden">
-        <div class="inline" style="justify-content: space-between">
-          <h1 style="margin: 0">Admin Dashboard</h1>
-          <button id="admin-logout-btn" class="btn btn-secondary">Logout</button>
-        </div>
-
-        <section class="card stack">
-          <h2>CSV Import</h2>
-          <input id="csv-file" type="file" accept=".csv,text/csv" />
-          <button id="csv-import-btn" class="btn btn-primary">Import CSV</button>
-          <p class="muted">Columns: <code>student_first_name,student_last_name,class_name,carpool_number,parent_names</code></p>
-          <div id="csv-result" class="stack"></div>
-        </section>
-
-        <section class="card stack">
-          <h2>Add Family</h2>
-          <div class="inline">
-            <input id="new-family-number" type="number" placeholder="Carpool #" />
-            <input id="new-family-parents" type="text" placeholder="Parent names" />
-            <input id="new-family-contact" type="text" placeholder="Contact info (optional)" />
-            <button id="add-family-btn" class="btn btn-primary">Add Family</button>
+        <header class="admin-header card stack">
+          <div class="inline admin-header-row">
+            <h1 style="margin: 0">Admin Dashboard</h1>
+            <div class="inline">
+              <button id="open-add-family" class="btn btn-primary">+ Family</button>
+              <button id="open-add-class" class="btn btn-primary">+ Class</button>
+              <button id="open-add-student" class="btn btn-primary">+ Student</button>
+              <button id="open-csv-import" class="btn btn-secondary">Import CSV</button>
+              <button id="admin-logout-btn" class="btn btn-secondary">Logout</button>
+            </div>
           </div>
-          <p id="family-form-msg" class="hidden"></p>
-        </section>
+          <p class="muted" style="margin: 0">Run day-to-day dismissal operations from the Today tab, and manage records in dedicated tabs.</p>
+        </header>
 
         <section class="card stack">
-          <h2>Add Class</h2>
-          <div class="inline">
-            <input id="new-class-name" type="text" placeholder="Class name" />
-            <input id="new-class-order" type="number" placeholder="Display order" />
-            <button id="add-class-btn" class="btn btn-primary">Add Class</button>
+          <div id="admin-tabs" class="tab-list" role="tablist" aria-label="Admin sections">
+            <button class="tab-btn active" data-tab="today" role="tab" aria-selected="true">Today</button>
+            <button class="tab-btn" data-tab="students" role="tab" aria-selected="false">Students</button>
+            <button class="tab-btn" data-tab="families" role="tab" aria-selected="false">Families</button>
+            <button class="tab-btn" data-tab="classes" role="tab" aria-selected="false">Classes</button>
+            <button class="tab-btn" data-tab="views" role="tab" aria-selected="false">Views</button>
+            <button class="tab-btn" data-tab="imports" role="tab" aria-selected="false">Imports & Logs</button>
           </div>
-          <p id="class-form-msg" class="hidden"></p>
         </section>
 
-        <section class="card stack">
-          <h2>Add Student</h2>
-          <div class="inline">
-            <input id="new-student-first" type="text" placeholder="First name" />
-            <input id="new-student-last" type="text" placeholder="Last name" />
-            <select id="new-student-family"></select>
-            <select id="new-student-class"></select>
-            <button id="add-student-btn" class="btn btn-primary">Add Student</button>
-          </div>
-          <p id="student-form-msg" class="hidden"></p>
+        <section id="tab-today" class="stack" data-tab-panel="today">
+          <section class="grid kpi-grid">
+            <article class="card stack">
+              <p class="muted" style="margin: 0">Today's Attempts</p>
+              <p id="today-attempts-count" class="kpi-value">0</p>
+            </article>
+            <article class="card stack">
+              <p class="muted" style="margin: 0">Today's Dismissed</p>
+              <p id="today-dismissed-count" class="kpi-value">0</p>
+            </article>
+            <article class="card stack">
+              <p class="muted" style="margin: 0">Still Waiting</p>
+              <p id="today-waiting-count" class="kpi-value">0</p>
+            </article>
+            <article class="card stack">
+              <p class="muted" style="margin: 0">Parent-Initiated</p>
+              <p id="today-parent-count" class="kpi-value">0</p>
+            </article>
+          </section>
+
+          <section class="card stack">
+            <h2 style="margin-bottom: 0">Recent Attempts</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Student</th>
+                    <th>Class</th>
+                    <th>Family</th>
+                    <th>Carpool #</th>
+                    <th>Status</th>
+                    <th>Source</th>
+                  </tr>
+                </thead>
+                <tbody id="today-attempts-tbody"></tbody>
+              </table>
+            </div>
+          </section>
         </section>
 
-        <section class="card stack">
+        <section id="tab-families" class="card stack hidden" data-tab-panel="families">
           <h2>Families</h2>
           <div class="table-wrap">
             <table>
@@ -98,7 +118,7 @@
           </div>
         </section>
 
-        <section class="card stack">
+        <section id="tab-classes" class="card stack hidden" data-tab-panel="classes">
           <h2>Classes</h2>
           <div class="table-wrap">
             <table>
@@ -115,7 +135,7 @@
           </div>
         </section>
 
-        <section class="card stack">
+        <section id="tab-students" class="card stack hidden" data-tab-panel="students">
           <h2>Students</h2>
           <div class="table-wrap">
             <table>
@@ -133,12 +153,35 @@
           </div>
         </section>
 
-        <section class="card stack">
+        <section id="tab-views" class="card stack hidden" data-tab-panel="views">
           <h2>Visual Overview</h2>
           <div id="overview-grid" class="grid"></div>
         </section>
+
+        <section id="tab-imports" class="card stack hidden" data-tab-panel="imports">
+          <h2>CSV Import</h2>
+          <p class="muted">Columns: <code>student_first_name,student_last_name,class_name,carpool_number,parent_names</code></p>
+          <div id="last-import-summary" class="muted">No import run in this session.</div>
+        </section>
       </section>
     </main>
+
+    <div id="admin-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
+      <div class="modal-card stack">
+        <div class="inline" style="justify-content: space-between">
+          <h2 id="admin-modal-title" style="margin: 0">Modal</h2>
+          <button id="admin-modal-close" class="btn btn-secondary" type="button">Close</button>
+        </div>
+        <form id="admin-modal-form" class="stack">
+          <div id="admin-modal-fields" class="stack"></div>
+          <p id="admin-modal-msg" class="hidden"></p>
+          <div class="inline" style="justify-content: flex-end">
+            <button id="admin-modal-cancel" class="btn btn-secondary" type="button">Cancel</button>
+            <button id="admin-modal-submit" class="btn btn-primary" type="submit">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../assets/js/config.js"></script>

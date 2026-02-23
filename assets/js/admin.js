@@ -1,52 +1,83 @@
 (function adminPage() {
-  const { mustClient, show, requireAuth, csvToRows, escapeHtml } = window.carpoolUtils || {};
+  const { mustClient, show, requireAuth, csvToRows, escapeHtml, schoolTodayISO, fetchSchoolToday } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const state = {
+    today: schoolTodayISO(),
     classes: [],
     families: [],
-    students: []
+    students: [],
+    dailyStatus: [],
+    currentTab: "today",
+    modal: {
+      mode: null,
+      entityId: null
+    }
   };
 
   function el(id) {
     return document.getElementById(id);
   }
 
-  function setMsg(id, text, klass) {
-    const node = el(id);
+  function setNodeMessage(nodeId, text, klass) {
+    const node = el(nodeId);
+    if (!node) return;
     node.className = klass || "";
     node.textContent = text;
-    show(id, Boolean(text));
+    show(nodeId, Boolean(text));
+  }
+
+  function familyLabel(family) {
+    return `#${family.carpool_number} - ${family.parent_names}`;
+  }
+
+  function classLabel(cls) {
+    return `${cls.name} (${cls.display_order})`;
+  }
+
+  function studentLabel(student) {
+    return `${student.last_name}, ${student.first_name}`;
   }
 
   async function fetchAll() {
     const client = mustClient();
-    const [classesRes, familiesRes, studentsRes] = await Promise.all([
+    const [classesRes, familiesRes, studentsRes, dailyStatusRes] = await Promise.all([
       client.from("classes").select("id,name,display_order").order("display_order", { ascending: true }),
       client.from("families").select("id,carpool_number,parent_names,contact_info").order("carpool_number", { ascending: true }),
       client
         .from("students")
         .select("id,first_name,last_name,class_id,family_id,classes(name),families(parent_names,carpool_number)")
-        .order("last_name", { ascending: true })
+        .order("last_name", { ascending: true }),
+      client
+        .from("daily_status")
+        .select("id,student_id,status,called_at,called_by,date")
+        .eq("date", state.today)
+        .order("called_at", { ascending: false })
     ]);
 
     if (classesRes.error) throw classesRes.error;
     if (familiesRes.error) throw familiesRes.error;
     if (studentsRes.error) throw studentsRes.error;
+    if (dailyStatusRes.error) throw dailyStatusRes.error;
 
     state.classes = classesRes.data || [];
     state.families = familiesRes.data || [];
     state.students = studentsRes.data || [];
+    state.dailyStatus = dailyStatusRes.data || [];
   }
 
-  function fillSelects() {
-    el("new-student-family").innerHTML = '<option value="">Select Family</option>' + state.families
-      .map((f) => `<option value="${escapeHtml(f.id)}">#${escapeHtml(String(f.carpool_number))} - ${escapeHtml(f.parent_names)}</option>`)
-      .join("");
+  function setTab(nextTab) {
+    state.currentTab = nextTab;
 
-    el("new-student-class").innerHTML = '<option value="">Select Class</option>' + state.classes
-      .map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`)
-      .join("");
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      const active = btn.dataset.tab === nextTab;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", String(active));
+    });
+
+    document.querySelectorAll("[data-tab-panel]").forEach((panel) => {
+      panel.classList.toggle("hidden", panel.dataset.tabPanel !== nextTab);
+    });
   }
 
   function renderFamilies() {
@@ -74,14 +105,6 @@
       .join("");
 
     el("families-tbody").innerHTML = html || '<tr><td colspan="5" class="muted">No families yet.</td></tr>';
-
-    document.querySelectorAll("[data-edit-family]").forEach((btn) => {
-      btn.addEventListener("click", () => editFamily(btn.dataset.editFamily));
-    });
-
-    document.querySelectorAll("[data-delete-family]").forEach((btn) => {
-      btn.addEventListener("click", () => deleteFamily(btn.dataset.deleteFamily));
-    });
   }
 
   function renderClasses() {
@@ -103,21 +126,13 @@
       .join("");
 
     el("classes-tbody").innerHTML = html || '<tr><td colspan="4" class="muted">No classes yet.</td></tr>';
-
-    document.querySelectorAll("[data-edit-class]").forEach((btn) => {
-      btn.addEventListener("click", () => editClass(btn.dataset.editClass));
-    });
-
-    document.querySelectorAll("[data-delete-class]").forEach((btn) => {
-      btn.addEventListener("click", () => deleteClass(btn.dataset.deleteClass));
-    });
   }
 
   function renderStudents() {
     const html = state.students
       .map((s) => {
         return `<tr>
-          <td>${escapeHtml(`${s.last_name}, ${s.first_name}`)}</td>
+          <td>${escapeHtml(studentLabel(s))}</td>
           <td>${escapeHtml(s.classes ? s.classes.name : "")}</td>
           <td>${escapeHtml(s.families ? s.families.parent_names : "")}</td>
           <td>${escapeHtml(s.families ? String(s.families.carpool_number) : "")}</td>
@@ -130,14 +145,6 @@
       .join("");
 
     el("students-tbody").innerHTML = html || '<tr><td colspan="5" class="muted">No students yet.</td></tr>';
-
-    document.querySelectorAll("[data-edit-student]").forEach((btn) => {
-      btn.addEventListener("click", () => editStudent(btn.dataset.editStudent));
-    });
-
-    document.querySelectorAll("[data-delete-student]").forEach((btn) => {
-      btn.addEventListener("click", () => deleteStudent(btn.dataset.deleteStudent));
-    });
   }
 
   function renderOverview() {
@@ -147,7 +154,7 @@
     state.students.forEach((s) => {
       if (!byClass.has(s.class_id)) return;
       byClass.get(s.class_id).students.push({
-        name: `${s.last_name}, ${s.first_name}`,
+        name: studentLabel(s),
         family: s.families ? s.families.parent_names : "",
         carpool: s.families ? s.families.carpool_number : ""
       });
@@ -167,8 +174,42 @@
     el("overview-grid").innerHTML = html || '<p class="muted">No classes configured.</p>';
   }
 
+  function renderToday() {
+    const calledRows = state.dailyStatus.filter((s) => s.status === "CALLED");
+    const parentRows = state.dailyStatus.filter((s) => (s.called_by || "").toLowerCase() === "parent");
+
+    const calledIds = new Set(calledRows.map((s) => s.student_id));
+    const waiting = state.students.length - calledIds.size;
+
+    el("today-attempts-count").textContent = String(state.dailyStatus.length);
+    el("today-dismissed-count").textContent = String(calledRows.length);
+    el("today-waiting-count").textContent = String(Math.max(waiting, 0));
+    el("today-parent-count").textContent = String(parentRows.length);
+
+    const byId = new Map(state.students.map((s) => [s.id, s]));
+    const rows = state.dailyStatus
+      .map((rec) => {
+        const stu = byId.get(rec.student_id);
+        const time = rec.called_at ? new Date(rec.called_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-";
+        const statusClass = rec.status === "CALLED" ? "status status-called" : "status status-waiting";
+
+        return `<tr>
+          <td>${escapeHtml(time)}</td>
+          <td>${escapeHtml(stu ? studentLabel(stu) : "Unknown student")}</td>
+          <td>${escapeHtml(stu && stu.classes ? stu.classes.name : "")}</td>
+          <td>${escapeHtml(stu && stu.families ? stu.families.parent_names : "")}</td>
+          <td>${escapeHtml(stu && stu.families ? String(stu.families.carpool_number) : "")}</td>
+          <td><span class="${statusClass}">${escapeHtml(rec.status)}</span></td>
+          <td>${escapeHtml(rec.called_by || "-")}</td>
+        </tr>`;
+      })
+      .join("");
+
+    el("today-attempts-tbody").innerHTML = rows || '<tr><td colspan="7" class="muted">No dismissal attempts yet today.</td></tr>';
+  }
+
   function renderAll() {
-    fillSelects();
+    renderToday();
     renderFamilies();
     renderClasses();
     renderStudents();
@@ -180,211 +221,236 @@
     renderAll();
   }
 
-  async function addFamily() {
+  function modalFieldTemplate(kind, data) {
+    if (kind === "family") {
+      return `
+        <div class="form-row">
+          <label for="modal-family-number">Carpool #</label>
+          <input id="modal-family-number" type="number" value="${escapeHtml(String(data?.carpool_number || ""))}" required />
+        </div>
+        <div class="form-row">
+          <label for="modal-family-parents">Parent names</label>
+          <input id="modal-family-parents" type="text" value="${escapeHtml(data?.parent_names || "")}" required />
+        </div>
+        <div class="form-row">
+          <label for="modal-family-contact">Contact info (optional)</label>
+          <input id="modal-family-contact" type="text" value="${escapeHtml(data?.contact_info || "")}" />
+        </div>
+      `;
+    }
+
+    if (kind === "class") {
+      return `
+        <div class="form-row">
+          <label for="modal-class-name">Class name</label>
+          <input id="modal-class-name" type="text" value="${escapeHtml(data?.name || "")}" required />
+        </div>
+        <div class="form-row">
+          <label for="modal-class-order">Display order</label>
+          <input id="modal-class-order" type="number" value="${escapeHtml(String(data?.display_order ?? ""))}" />
+        </div>
+      `;
+    }
+
+    if (kind === "student") {
+      const familyOptions = state.families
+        .map((f) => {
+          const selected = data && data.family_id === f.id ? "selected" : "";
+          return `<option value="${escapeHtml(f.id)}" ${selected}>${escapeHtml(familyLabel(f))}</option>`;
+        })
+        .join("");
+
+      const classOptions = state.classes
+        .map((c) => {
+          const selected = data && data.class_id === c.id ? "selected" : "";
+          return `<option value="${escapeHtml(c.id)}" ${selected}>${escapeHtml(classLabel(c))}</option>`;
+        })
+        .join("");
+
+      return `
+        <div class="form-row">
+          <label for="modal-student-first">First name</label>
+          <input id="modal-student-first" type="text" value="${escapeHtml(data?.first_name || "")}" required />
+        </div>
+        <div class="form-row">
+          <label for="modal-student-last">Last name</label>
+          <input id="modal-student-last" type="text" value="${escapeHtml(data?.last_name || "")}" required />
+        </div>
+        <div class="form-row">
+          <label for="modal-student-family">Family</label>
+          <select id="modal-student-family" required>
+            <option value="">Select family</option>
+            ${familyOptions}
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="modal-student-class">Class</label>
+          <select id="modal-student-class" required>
+            <option value="">Select class</option>
+            ${classOptions}
+          </select>
+        </div>
+      `;
+    }
+
+    if (kind === "import") {
+      return `
+        <div class="form-row">
+          <label for="modal-csv-file">CSV file</label>
+          <input id="modal-csv-file" type="file" accept=".csv,text/csv" required />
+        </div>
+        <p class="muted" style="margin: 0">Columns: <code>student_first_name,student_last_name,class_name,carpool_number,parent_names</code></p>
+      `;
+    }
+
+    return "";
+  }
+
+  function openModal(mode, entityId) {
+    state.modal.mode = mode;
+    state.modal.entityId = entityId || null;
+
+    let title = "";
+    let submitLabel = "Save";
+    let body = "";
+
+    if (mode === "add-family") {
+      title = "Add Family";
+      submitLabel = "Add Family";
+      body = modalFieldTemplate("family");
+    } else if (mode === "edit-family") {
+      const fam = state.families.find((f) => f.id === entityId);
+      if (!fam) return;
+      title = "Edit Family";
+      submitLabel = "Save Changes";
+      body = modalFieldTemplate("family", fam);
+    } else if (mode === "add-class") {
+      title = "Add Class";
+      submitLabel = "Add Class";
+      body = modalFieldTemplate("class", { display_order: state.classes.length + 1 });
+    } else if (mode === "edit-class") {
+      const cls = state.classes.find((c) => c.id === entityId);
+      if (!cls) return;
+      title = "Edit Class";
+      submitLabel = "Save Changes";
+      body = modalFieldTemplate("class", cls);
+    } else if (mode === "add-student") {
+      title = "Add Student";
+      submitLabel = "Add Student";
+      body = modalFieldTemplate("student");
+    } else if (mode === "edit-student") {
+      const student = state.students.find((s) => s.id === entityId);
+      if (!student) return;
+      title = "Edit Student";
+      submitLabel = "Save Changes";
+      body = modalFieldTemplate("student", student);
+    } else if (mode === "import-csv") {
+      title = "Import CSV";
+      submitLabel = "Run Import";
+      body = modalFieldTemplate("import");
+    }
+
+    el("admin-modal-title").textContent = title;
+    el("admin-modal-submit").textContent = submitLabel;
+    el("admin-modal-fields").innerHTML = body;
+    setNodeMessage("admin-modal-msg", "");
+    show("admin-modal", true);
+  }
+
+  function closeModal() {
+    state.modal.mode = null;
+    state.modal.entityId = null;
+    show("admin-modal", false);
+  }
+
+  async function saveFamily(isEdit) {
     const client = mustClient();
-    const carpool = Number(el("new-family-number").value);
-    const parents = el("new-family-parents").value.trim();
-    const contact = el("new-family-contact").value.trim() || null;
+    const carpool = Number(el("modal-family-number").value);
+    const parents = el("modal-family-parents").value.trim();
+    const contact = el("modal-family-contact").value.trim() || null;
 
     if (!carpool || !parents) {
-      setMsg("family-form-msg", "Carpool number and parent names are required.", "error");
+      setNodeMessage("admin-modal-msg", "Carpool number and parent names are required.", "error");
       return;
     }
 
-    const { error } = await client.from("families").insert({ carpool_number: carpool, parent_names: parents, contact_info: contact });
+    const query = isEdit
+      ? client.from("families").update({ carpool_number: carpool, parent_names: parents, contact_info: contact }).eq("id", state.modal.entityId)
+      : client.from("families").insert({ carpool_number: carpool, parent_names: parents, contact_info: contact });
+
+    const { error } = await query;
     if (error) {
-      setMsg("family-form-msg", error.message, "error");
+      setNodeMessage("admin-modal-msg", error.message, "error");
       return;
     }
 
-    el("new-family-number").value = "";
-    el("new-family-parents").value = "";
-    el("new-family-contact").value = "";
-    setMsg("family-form-msg", "Family added.", "success");
     await refreshAndRender();
+    closeModal();
   }
 
-  async function addClass() {
+  async function saveClass(isEdit) {
     const client = mustClient();
-    const name = el("new-class-name").value.trim();
-    const order = Number(el("new-class-order").value || 0);
+    const name = el("modal-class-name").value.trim();
+    const displayOrder = Number(el("modal-class-order").value || 0);
 
     if (!name) {
-      setMsg("class-form-msg", "Class name is required.", "error");
+      setNodeMessage("admin-modal-msg", "Class name is required.", "error");
       return;
     }
 
-    const { error } = await client.from("classes").insert({ name, display_order: order });
+    const query = isEdit
+      ? client.from("classes").update({ name, display_order: displayOrder }).eq("id", state.modal.entityId)
+      : client.from("classes").insert({ name, display_order: displayOrder });
+
+    const { error } = await query;
     if (error) {
-      setMsg("class-form-msg", error.message, "error");
+      setNodeMessage("admin-modal-msg", error.message, "error");
       return;
     }
 
-    el("new-class-name").value = "";
-    el("new-class-order").value = "";
-    setMsg("class-form-msg", "Class added.", "success");
     await refreshAndRender();
+    closeModal();
   }
 
-  async function addStudent() {
+  async function saveStudent(isEdit) {
     const client = mustClient();
-    const first = el("new-student-first").value.trim();
-    const last = el("new-student-last").value.trim();
-    const familyId = el("new-student-family").value;
-    const classId = el("new-student-class").value;
+    const first = el("modal-student-first").value.trim();
+    const last = el("modal-student-last").value.trim();
+    const familyId = el("modal-student-family").value;
+    const classId = el("modal-student-class").value;
 
     if (!first || !last || !familyId || !classId) {
-      setMsg("student-form-msg", "All student fields are required.", "error");
+      setNodeMessage("admin-modal-msg", "All student fields are required.", "error");
       return;
     }
 
-    const { error } = await client.from("students").insert({ first_name: first, last_name: last, family_id: familyId, class_id: classId });
+    const payload = { first_name: first, last_name: last, family_id: familyId, class_id: classId };
+    const query = isEdit
+      ? client.from("students").update(payload).eq("id", state.modal.entityId)
+      : client.from("students").insert(payload);
+
+    const { error } = await query;
     if (error) {
-      setMsg("student-form-msg", error.message, "error");
-      return;
-    }
-
-    el("new-student-first").value = "";
-    el("new-student-last").value = "";
-    el("new-student-family").value = "";
-    el("new-student-class").value = "";
-    setMsg("student-form-msg", "Student added.", "success");
-    await refreshAndRender();
-  }
-
-  async function editFamily(id) {
-    const fam = state.families.find((f) => f.id === id);
-    if (!fam) return;
-
-    const number = prompt("Carpool number", String(fam.carpool_number));
-    if (number === null) return;
-    const parents = prompt("Parent names", fam.parent_names || "");
-    if (parents === null) return;
-    const contact = prompt("Contact info", fam.contact_info || "");
-    if (contact === null) return;
-
-    const client = mustClient();
-    const { error } = await client
-      .from("families")
-      .update({ carpool_number: Number(number), parent_names: parents.trim(), contact_info: contact.trim() || null })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
+      setNodeMessage("admin-modal-msg", error.message, "error");
       return;
     }
 
     await refreshAndRender();
+    closeModal();
   }
 
-  async function deleteFamily(id) {
-    const linked = state.students.some((s) => s.family_id === id);
-    if (linked && !confirm("This family has linked students. Delete anyway?")) return;
-    if (!linked && !confirm("Delete this family?")) return;
-
-    const client = mustClient();
-    const { error } = await client.from("families").delete().eq("id", id);
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await refreshAndRender();
-  }
-
-  async function editClass(id) {
-    const cls = state.classes.find((c) => c.id === id);
-    if (!cls) return;
-
-    const name = prompt("Class name", cls.name);
-    if (name === null) return;
-    const displayOrder = prompt("Display order", String(cls.display_order));
-    if (displayOrder === null) return;
-
-    const client = mustClient();
-    const { error } = await client
-      .from("classes")
-      .update({ name: name.trim(), display_order: Number(displayOrder || 0) })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await refreshAndRender();
-  }
-
-  async function deleteClass(id) {
-    const assigned = state.students.some((s) => s.class_id === id);
-    if (assigned && !confirm("This class has assigned students. Delete anyway?")) return;
-    if (!assigned && !confirm("Delete this class?")) return;
-
-    const client = mustClient();
-    const { error } = await client.from("classes").delete().eq("id", id);
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await refreshAndRender();
-  }
-
-  async function editStudent(id) {
-    const student = state.students.find((s) => s.id === id);
-    if (!student) return;
-
-    const first = prompt("First name", student.first_name);
-    if (first === null) return;
-    const last = prompt("Last name", student.last_name);
-    if (last === null) return;
-
-    const classOptions = state.classes.map((c) => `${c.id}:${c.name}`).join("\n");
-    const classChoice = prompt(`Class ID (choose one):\n${classOptions}`, student.class_id);
-    if (classChoice === null) return;
-
-    const familyOptions = state.families.map((f) => `${f.id}:#${f.carpool_number} ${f.parent_names}`).join("\n");
-    const familyChoice = prompt(`Family ID (choose one):\n${familyOptions}`, student.family_id);
-    if (familyChoice === null) return;
-
-    const client = mustClient();
-    const { error } = await client
-      .from("students")
-      .update({ first_name: first.trim(), last_name: last.trim(), class_id: classChoice.trim(), family_id: familyChoice.trim() })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await refreshAndRender();
-  }
-
-  async function deleteStudent(id) {
-    if (!confirm("Delete this student?")) return;
-    const client = mustClient();
-    const { error } = await client.from("students").delete().eq("id", id);
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await refreshAndRender();
-  }
-
-  async function importCsv() {
-    const file = el("csv-file").files && el("csv-file").files[0];
+  async function importCsvFromModal() {
+    const fileInput = el("modal-csv-file");
+    const file = fileInput.files && fileInput.files[0];
     if (!file) {
-      el("csv-result").innerHTML = '<p class="error">Choose a CSV file first.</p>';
+      setNodeMessage("admin-modal-msg", "Choose a CSV file first.", "error");
       return;
     }
 
     const text = await file.text();
     const rows = csvToRows(text);
-
     if (!rows.length) {
-      el("csv-result").innerHTML = '<p class="error">CSV is empty.</p>';
+      setNodeMessage("admin-modal-msg", "CSV is empty.", "error");
       return;
     }
 
@@ -442,11 +508,69 @@
     }
 
     await refreshAndRender();
+    closeModal();
 
-    el("csv-result").innerHTML = `
-      <p class="success">Imported ${results.students_created} students, created ${results.families_created} families, created ${results.classes_created} classes.</p>
-      ${results.errors.length ? `<p class="error">${results.errors.length} errors:</p><ul>${results.errors.map((e) => `<li>${escapeHtml(e)}</li>`).join("")}</ul>` : ""}
+    const summary = `Imported ${results.students_created} students, created ${results.families_created} families, created ${results.classes_created} classes.${results.errors.length ? ` ${results.errors.length} row(s) failed.` : ""}`;
+    el("last-import-summary").innerHTML = `
+      <p class="success">${escapeHtml(summary)}</p>
+      ${results.errors.length ? `<ul>${results.errors.map((err) => `<li class="error">${escapeHtml(err)}</li>`).join("")}</ul>` : ""}
     `;
+    setTab("imports");
+  }
+
+  async function handleModalSubmit(event) {
+    event.preventDefault();
+
+    const mode = state.modal.mode;
+    if (mode === "add-family") return saveFamily(false);
+    if (mode === "edit-family") return saveFamily(true);
+    if (mode === "add-class") return saveClass(false);
+    if (mode === "edit-class") return saveClass(true);
+    if (mode === "add-student") return saveStudent(false);
+    if (mode === "edit-student") return saveStudent(true);
+    if (mode === "import-csv") return importCsvFromModal();
+  }
+
+  async function deleteFamily(id) {
+    const linked = state.students.some((s) => s.family_id === id);
+    if (linked && !confirm("This family has linked students. Delete anyway?")) return;
+    if (!linked && !confirm("Delete this family?")) return;
+
+    const client = mustClient();
+    const { error } = await client.from("families").delete().eq("id", id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await refreshAndRender();
+  }
+
+  async function deleteClass(id) {
+    const assigned = state.students.some((s) => s.class_id === id);
+    if (assigned && !confirm("This class has assigned students. Delete anyway?")) return;
+    if (!assigned && !confirm("Delete this class?")) return;
+
+    const client = mustClient();
+    const { error } = await client.from("classes").delete().eq("id", id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await refreshAndRender();
+  }
+
+  async function deleteStudent(id) {
+    if (!confirm("Delete this student?")) return;
+    const client = mustClient();
+    const { error } = await client.from("students").delete().eq("id", id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await refreshAndRender();
   }
 
   function bindUi() {
@@ -473,10 +597,62 @@
       window.location.reload();
     });
 
-    el("add-family-btn").addEventListener("click", addFamily);
-    el("add-class-btn").addEventListener("click", addClass);
-    el("add-student-btn").addEventListener("click", addStudent);
-    el("csv-import-btn").addEventListener("click", importCsv);
+    el("open-add-family").addEventListener("click", () => openModal("add-family"));
+    el("open-add-class").addEventListener("click", () => openModal("add-class"));
+    el("open-add-student").addEventListener("click", () => openModal("add-student"));
+    el("open-csv-import").addEventListener("click", () => openModal("import-csv"));
+
+    el("admin-modal-close").addEventListener("click", closeModal);
+    el("admin-modal-cancel").addEventListener("click", closeModal);
+    el("admin-modal").addEventListener("click", (event) => {
+      if (event.target === el("admin-modal")) closeModal();
+    });
+    el("admin-modal-form").addEventListener("submit", handleModalSubmit);
+
+    el("admin-tabs").addEventListener("click", (event) => {
+      const btn = event.target.closest(".tab-btn");
+      if (!btn) return;
+      setTab(btn.dataset.tab);
+    });
+
+    el("families-tbody").addEventListener("click", (event) => {
+      const editBtn = event.target.closest("[data-edit-family]");
+      if (editBtn) {
+        openModal("edit-family", editBtn.dataset.editFamily);
+        return;
+      }
+
+      const deleteBtn = event.target.closest("[data-delete-family]");
+      if (deleteBtn) {
+        deleteFamily(deleteBtn.dataset.deleteFamily);
+      }
+    });
+
+    el("classes-tbody").addEventListener("click", (event) => {
+      const editBtn = event.target.closest("[data-edit-class]");
+      if (editBtn) {
+        openModal("edit-class", editBtn.dataset.editClass);
+        return;
+      }
+
+      const deleteBtn = event.target.closest("[data-delete-class]");
+      if (deleteBtn) {
+        deleteClass(deleteBtn.dataset.deleteClass);
+      }
+    });
+
+    el("students-tbody").addEventListener("click", (event) => {
+      const editBtn = event.target.closest("[data-edit-student]");
+      if (editBtn) {
+        openModal("edit-student", editBtn.dataset.editStudent);
+        return;
+      }
+
+      const deleteBtn = event.target.closest("[data-delete-student]");
+      if (deleteBtn) {
+        deleteStudent(deleteBtn.dataset.deleteStudent);
+      }
+    });
   }
 
   async function init() {
@@ -498,7 +674,9 @@
       show("admin-login-section", false);
       show("admin-dashboard", true);
 
+      state.today = await fetchSchoolToday();
       await refreshAndRender();
+      setTab("today");
     } catch (error) {
       show("admin-login-section", true);
       el("admin-login-error").textContent = error.message || "Unable to load admin dashboard.";
