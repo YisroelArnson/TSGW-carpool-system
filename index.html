@@ -7,47 +7,437 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700;800&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="assets/css/styles.css" />
+    <style>
+      /* ─── Parent page overrides & enhancements ─────────────────── */
+
+      body {
+        background-color: var(--surface-ivory);
+        background-image: radial-gradient(circle, #ddd9d2 1px, transparent 1px);
+        background-size: 22px 22px;
+        min-height: 100vh;
+      }
+
+      /* ─ Enhanced brand bar ─ */
+      .brand-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        height: 54px;
+        background: var(--brand-maroon);
+      }
+
+      .brand-bar-inner {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .brand-name {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: #fff;
+        line-height: 1;
+      }
+
+      .brand-sub {
+        font-size: 0.6rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.5);
+        font-family: "Open Sans", sans-serif;
+        line-height: 1;
+      }
+
+.gold-rule {
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          var(--brand-maroon) 0%,
+          var(--brand-gold) 30%,
+          var(--brand-gold) 70%,
+          var(--brand-maroon) 100%
+        );
+      }
+
+      /* ─ Page layout ─ */
+      .parent-layout {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 16px 64px;
+        min-height: calc(100vh - 56px);
+      }
+
+      /* ─ Card shell ─ */
+      .parent-card {
+        width: 100%;
+        max-width: 390px;
+        background: var(--surface-white);
+        border-radius: 20px;
+        box-shadow:
+          0 1px 2px rgba(107, 45, 91, 0.06),
+          0 4px 18px rgba(107, 45, 91, 0.1),
+          0 16px 48px rgba(0, 0, 0, 0.07);
+        overflow: hidden;
+        animation: fadeUp 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      /* Inner padding block */
+      .c-body {
+        padding: 28px 24px;
+      }
+
+      .c-divider {
+        height: 1px;
+        background: var(--border-light);
+      }
+
+      /* ─ Cached welcome ─ */
+      .cached-hero {
+        padding: 32px 24px 24px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .cached-eyebrow {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+      }
+
+      .cached-number {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 5.5rem;
+        font-weight: 800;
+        line-height: 1;
+        color: var(--brand-maroon);
+        letter-spacing: -0.03em;
+      }
+
+      .cached-question {
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        margin-top: 2px;
+        font-family: "Open Sans", sans-serif;
+      }
+
+      /* JS sets this element's text; kept hidden as data source */
+      #cached-label {
+        display: none;
+      }
+
+      /* ─ Shared button styles ─ */
+      .btn-row {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .btn-w {
+        width: 100%;
+        padding: 15px 20px;
+        font-size: 1rem;
+        font-weight: 600;
+        border-radius: 12px;
+        border: none;
+        cursor: pointer;
+        font-family: "Open Sans", sans-serif;
+        letter-spacing: 0.01em;
+        transition: transform 0.1s ease, box-shadow 0.18s ease, background 0.15s;
+        display: block;
+        text-align: center;
+      }
+
+      .btn-w:active {
+        transform: scale(0.975);
+      }
+
+      .btn-w.btn-maroon {
+        background: var(--brand-maroon);
+        color: #fff;
+        box-shadow: 0 2px 10px rgba(107, 45, 91, 0.3), 0 1px 3px rgba(107, 45, 91, 0.18);
+      }
+
+      .btn-w.btn-maroon:hover {
+        background: #7a3469;
+        box-shadow: 0 4px 16px rgba(107, 45, 91, 0.38);
+      }
+
+      .btn-w.btn-ghost {
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 0.88rem;
+        font-weight: 400;
+        padding: 10px;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        box-shadow: none;
+      }
+
+      .btn-w.btn-ghost:hover {
+        color: var(--text-dark);
+      }
+
+      /* ─ Number entry ─ */
+      .input-eyebrow {
+        display: block;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.17em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+        margin-bottom: 10px;
+      }
+
+      #carpool-number {
+        width: 100%;
+        border: 2px solid var(--border-light);
+        border-radius: 14px;
+        padding: 14px 16px;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 2.75rem;
+        font-weight: 800;
+        text-align: center;
+        color: var(--text-dark);
+        background: var(--surface-ivory);
+        margin-bottom: 14px;
+        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        letter-spacing: 0.04em;
+        -moz-appearance: textfield;
+        display: block;
+      }
+
+      #carpool-number::-webkit-outer-spin-button,
+      #carpool-number::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+
+      #carpool-number:focus {
+        outline: none;
+        border-color: var(--brand-maroon);
+        box-shadow: 0 0 0 4px rgba(107, 45, 91, 0.1);
+        background: #fff;
+      }
+
+      #carpool-number::placeholder {
+        font-family: "Open Sans", sans-serif;
+        font-size: 1rem;
+        font-weight: 400;
+        letter-spacing: 0;
+        color: #ccc7be;
+      }
+
+      /* ─ Students ─ */
+      .students-heading {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: var(--text-dark);
+        text-align: center;
+        margin: 0 0 18px;
+      }
+
+      #students-buttons {
+        display: flex !important;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      #students-buttons .btn {
+        width: 100%;
+        padding: 15px 20px;
+        font-size: 1rem;
+        font-weight: 600;
+        border-radius: 12px;
+        border: none;
+        cursor: pointer;
+        font-family: "Open Sans", sans-serif;
+        letter-spacing: 0.01em;
+        transition: transform 0.1s ease, box-shadow 0.18s ease;
+        display: block;
+      }
+
+      #students-buttons .btn:active {
+        transform: scale(0.975);
+      }
+
+      #students-buttons .btn-primary {
+        background: var(--brand-maroon);
+        color: #fff;
+        box-shadow: 0 2px 10px rgba(107, 45, 91, 0.26);
+      }
+
+      #students-buttons .btn-primary:hover {
+        background: #7a3469;
+      }
+
+      #students-buttons .btn-accent {
+        background: var(--brand-gold);
+        color: #2b1a0f;
+        box-shadow: 0 2px 8px rgba(196, 151, 92, 0.22);
+      }
+
+      #students-buttons .btn-accent:hover {
+        background: #d4a66a;
+      }
+
+      /* ─ Done state ─ */
+      .done-inner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        text-align: center;
+      }
+
+      .check-ring {
+        width: 72px;
+        height: 72px;
+        background: #e8f7ea;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 6px;
+        animation: popIn 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+
+      @keyframes popIn {
+        from { transform: scale(0.35); opacity: 0; }
+        60%  { transform: scale(1.1); }
+        to   { transform: scale(1); opacity: 1; }
+      }
+
+      .check-ring svg {
+        width: 32px;
+        height: 32px;
+        stroke: #2a7d31;
+        stroke-width: 2.5;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      #done-message {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #1e6a23;
+        margin: 0;
+        line-height: 1.3;
+      }
+
+      .done-note {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+        margin: 0 0 16px;
+      }
+
+      /* ─ Errors ─ */
+      .field-error {
+        font-size: 0.88rem;
+        color: var(--status-danger);
+        text-align: center;
+        padding-top: 10px;
+        font-weight: 500;
+        font-family: "Open Sans", sans-serif;
+      }
+
+      /* ─ Config warning ─ */
+      #config-warning {
+        max-width: 390px;
+        width: 100%;
+        margin-bottom: 20px;
+      }
+    </style>
   </head>
   <body>
-    <div class="brand-bar">TSGW Carpool</div>
-    <main class="page stack">
-      <h1>Parent Check-In</h1>
+    <header>
+      <div class="brand-bar">
+        <div class="brand-bar-inner">
+          <span class="brand-name">TSGW Carpool</span>
+          <span class="brand-sub">Torah School of Greater Washington</span>
+        </div>
+      </div>
+      <div class="gold-rule"></div>
+    </header>
 
+    <main class="parent-layout">
       <section id="config-warning" class="card hidden">
         <p class="error">Supabase is not configured. Update <code>/assets/js/config.js</code>.</p>
       </section>
 
-      <section id="cached-section" class="card hidden stack">
-        <p id="cached-label"></p>
-        <div class="inline">
-          <button id="cached-yes" class="btn btn-primary">Yes</button>
-          <button id="cached-change" class="btn btn-secondary">Change Number</button>
-        </div>
-      </section>
+      <div class="parent-card">
 
-      <section id="number-section" class="card stack hidden">
-        <label for="carpool-number">Carpool Number</label>
-        <input id="carpool-number" type="number" inputmode="numeric" placeholder="Enter number" />
-        <div class="inline">
-          <button id="find-family" class="btn btn-primary">Continue</button>
-        </div>
-        <p id="number-error" class="error hidden"></p>
-      </section>
+        <!-- ── Cached number ─────────────────────────────────── -->
+        <section id="cached-section" class="hidden">
+          <div class="cached-hero">
+            <div class="cached-eyebrow">Welcome back</div>
+            <div class="cached-number" id="cached-number-display">—</div>
+            <div class="cached-question">Is this your carpool number?</div>
+          </div>
+          <!-- kept for JS: parent.js sets textContent here -->
+          <p id="cached-label" aria-hidden="true"></p>
+          <div class="c-divider"></div>
+          <div class="c-body">
+            <div class="btn-row">
+              <button id="cached-yes" class="btn-w btn-maroon">Yes, check me in</button>
+              <button id="cached-change" class="btn-w btn-ghost">Use a different number</button>
+            </div>
+          </div>
+        </section>
 
-      <section id="students-section" class="card stack hidden">
-        <h2>Who are you picking up?</h2>
-        <div id="students-buttons" class="grid"></div>
-        <p id="students-error" class="error hidden"></p>
-      </section>
+        <!-- ── Number entry ──────────────────────────────────── -->
+        <section id="number-section" class="c-body hidden">
+          <label class="input-eyebrow" for="carpool-number">Your Carpool Number</label>
+          <input id="carpool-number" type="number" inputmode="numeric" placeholder="e.g. 101" />
+          <button id="find-family" class="btn-w btn-maroon">Continue</button>
+          <p id="number-error" class="field-error hidden"></p>
+        </section>
 
-      <section id="done-section" class="card stack hidden">
-        <p id="done-message" class="success"></p>
-        <button id="done-btn" class="btn btn-primary">Done</button>
-      </section>
+        <!-- ── Student selection ─────────────────────────────── -->
+        <section id="students-section" class="c-body hidden">
+          <h2 class="students-heading">Who are you picking up?</h2>
+          <div id="students-buttons"></div>
+          <p id="students-error" class="field-error hidden"></p>
+        </section>
+
+        <!-- ── Done ─────────────────────────────────────────── -->
+        <section id="done-section" class="c-body hidden">
+          <div class="done-inner">
+            <div class="check-ring" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <p id="done-message"></p>
+            <p class="done-note">Your child's teacher has been notified.</p>
+            <button id="done-btn" class="btn-w btn-maroon">Done</button>
+          </div>
+        </section>
+
+      </div>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -55,5 +445,22 @@
     <script src="assets/js/supabase-client.js"></script>
     <script src="assets/js/utils.js"></script>
     <script src="assets/js/parent.js"></script>
+    <script>
+      // Mirror the number from cached-label into the large display element
+      (function () {
+        var labelEl = document.getElementById("cached-label");
+        var displayEl = document.getElementById("cached-number-display");
+        if (!labelEl || !displayEl) return;
+        function sync() {
+          var m = labelEl.textContent.match(/#(\d+)/);
+          displayEl.textContent = m ? "#" + m[1] : "—";
+        }
+        new MutationObserver(sync).observe(labelEl, {
+          childList: true,
+          characterData: true,
+          subtree: true
+        });
+      })();
+    </script>
   </body>
 </html>
