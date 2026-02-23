@@ -251,8 +251,9 @@
       subscribeRealtime();
       el("spotter-carpool-input").focus();
     } catch (error) {
+      console.error("Spotter dashboard init failed", error);
       show("login-section", true);
-      el("spotter-login-error").textContent = error.message || "Unable to load spotter dashboard.";
+      el("spotter-login-error").textContent = "Unable to load spotter dashboard. Please try again.";
       show("spotter-login-error", true);
     }
   }
