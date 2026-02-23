@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TSGW Carpool</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+  </head>
+  <body>
+    <div class="brand-bar">TSGW Carpool</div>
+    <main class="page stack">
+      <h1>Parent Check-In</h1>
+
+      <section id="config-warning" class="card hidden">
+        <p class="error">Supabase is not configured. Update <code>/assets/js/config.js</code>.</p>
+      </section>
+
+      <section id="cached-section" class="card hidden stack">
+        <p id="cached-label"></p>
+        <div class="inline">
+          <button id="cached-yes" class="btn btn-primary">Yes</button>
+          <button id="cached-change" class="btn btn-secondary">Change Number</button>
+        </div>
+      </section>
+
+      <section id="number-section" class="card stack hidden">
+        <label for="carpool-number">Carpool Number</label>
+        <input id="carpool-number" type="number" inputmode="numeric" placeholder="Enter number" />
+        <div class="inline">
+          <button id="find-family" class="btn btn-primary">Continue</button>
+        </div>
+        <p id="number-error" class="error hidden"></p>
+      </section>
+
+      <section id="students-section" class="card stack hidden">
+        <h2>Who are you picking up?</h2>
+        <div id="students-buttons" class="grid"></div>
+        <p id="students-error" class="error hidden"></p>
+      </section>
+
+      <section id="done-section" class="card stack hidden">
+        <p id="done-message" class="success"></p>
+        <button id="done-btn" class="btn btn-primary">Done</button>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/assets/js/config.js"></script>
+    <script src="/assets/js/supabase-client.js"></script>
+    <script src="/assets/js/utils.js"></script>
+    <script src="/assets/js/parent.js"></script>
+  </body>
+</html>

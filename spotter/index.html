@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TSGW Spotter Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+  </head>
+  <body>
+    <div class="brand-bar">TSGW Carpool Spotter</div>
+    <main class="page stack">
+      <section id="config-warning" class="card hidden">
+        <p class="error">Supabase is not configured. Update <code>/assets/js/config.js</code>.</p>
+      </section>
+
+      <section id="login-section" class="card stack hidden">
+        <h1>Spotter Sign In</h1>
+        <div class="form-row">
+          <label for="spotter-email">Email</label>
+          <input id="spotter-email" type="email" autocomplete="email" />
+        </div>
+        <div class="form-row">
+          <label for="spotter-password">Password</label>
+          <input id="spotter-password" type="password" autocomplete="current-password" />
+        </div>
+        <div class="inline">
+          <button id="spotter-login-btn" class="btn btn-primary">Sign In</button>
+        </div>
+        <p class="muted">This device stays signed in for daily spotter use.</p>
+        <p id="spotter-login-error" class="error hidden"></p>
+      </section>
+
+      <section id="spotter-section" class="stack hidden">
+        <div class="inline" style="justify-content: space-between">
+          <h1 style="margin: 0">Spotter Dashboard</h1>
+          <button id="spotter-logout-btn" class="btn btn-secondary">Logout</button>
+        </div>
+
+        <div class="card stack">
+          <label for="spotter-carpool-input">Carpool #</label>
+          <div class="inline">
+            <input id="spotter-carpool-input" type="number" inputmode="numeric" placeholder="Enter number" />
+            <button id="spotter-checkin-btn" class="btn btn-primary">Check In</button>
+          </div>
+          <p id="spotter-checkin-message" class="hidden"></p>
+        </div>
+
+        <div class="card stack">
+          <div class="inline">
+            <input id="spotter-search" type="text" placeholder="Search by student or carpool #" />
+            <select id="spotter-sort">
+              <option value="name">Sort: Name</option>
+              <option value="class">Sort: Class</option>
+              <option value="status">Sort: Status</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Class</th>
+                  <th>Carpool #</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="spotter-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/assets/js/config.js"></script>
+    <script src="/assets/js/supabase-client.js"></script>
+    <script src="/assets/js/utils.js"></script>
+    <script src="/assets/js/spotter.js"></script>
+  </body>
+</html>

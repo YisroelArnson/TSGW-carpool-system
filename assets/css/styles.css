@@ -1,0 +1,265 @@
+:root {
+  --brand-maroon: #6b2d5b;
+  --brand-gold: #c4975c;
+  --brand-dark-slate: #2c3e50;
+  --surface-white: #ffffff;
+  --surface-ivory: #f8f6f3;
+  --surface-sand: #efe9e2;
+  --border-light: #e2ded8;
+  --text-dark: #2b2b2b;
+  --text-muted: #6a6762;
+  --status-called: #4caf50;
+  --status-waiting: #d8d4cd;
+  --status-danger: #b02a37;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Open Sans", "Segoe UI", Tahoma, sans-serif;
+  color: var(--text-dark);
+  background: var(--surface-ivory);
+}
+
+.brand-bar {
+  width: 100%;
+  background: var(--brand-maroon);
+  color: #fff;
+  padding: 10px 16px;
+  font-family: "Playfair Display", Georgia, serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 16px 32px;
+}
+
+.card {
+  background: var(--surface-white);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+h1,
+h2,
+h3 {
+  margin-top: 0;
+  font-family: "Playfair Display", Georgia, serif;
+}
+
+h1 {
+  font-size: 1.8rem;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.btn,
+button {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--brand-maroon);
+  color: #fff;
+}
+
+.btn-secondary {
+  background: #fff;
+  color: var(--text-dark);
+  border-color: var(--border-light);
+}
+
+.btn-accent {
+  background: var(--brand-gold);
+  color: #1f1f1f;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 1rem;
+  background: #fff;
+}
+
+.form-row {
+  display: grid;
+  gap: 10px;
+}
+
+.stack {
+  display: grid;
+  gap: 12px;
+}
+
+.inline {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.status {
+  display: inline-block;
+  font-size: 0.85rem;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+}
+
+.status-called {
+  background: #e8f7ea;
+  color: #246628;
+}
+
+.status-waiting {
+  background: #f3f1ed;
+  color: #5e5a55;
+}
+
+.error {
+  color: var(--status-danger);
+  font-weight: 600;
+}
+
+.success {
+  color: #1e6a23;
+  font-weight: 600;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+}
+
+.grid-classes {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.class-card {
+  text-align: center;
+  padding: 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.class-card.complete {
+  opacity: 0.5;
+}
+
+.student-grid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+
+.student-card {
+  min-height: 88px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-weight: 700;
+  padding: 10px;
+}
+
+.student-card.waiting {
+  background: var(--status-waiting);
+  color: #312f2c;
+}
+
+.student-card.called {
+  background: var(--status-called);
+  color: #fff;
+}
+
+.table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: #fff;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--border-light);
+  padding: 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #f4f1ec;
+}
+
+.projector {
+  min-height: 100vh;
+  background: var(--brand-dark-slate);
+  color: #fff;
+}
+
+.projector .page {
+  max-width: none;
+}
+
+.projector h1 {
+  color: #fff;
+  margin-bottom: 18px;
+}
+
+.projector .student-card.waiting {
+  background: #4b6075;
+  color: #fff;
+}
+
+.projector .student-card.called {
+  background: var(--status-called);
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 16px 12px 24px;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+  }
+
+  .btn,
+  button,
+  input,
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+}

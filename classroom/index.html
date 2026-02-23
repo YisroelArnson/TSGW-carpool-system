@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TSGW Classroom</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+  </head>
+  <body id="classroom-body">
+    <div class="brand-bar" id="brand">TSGW Carpool</div>
+    <main class="page stack">
+      <section id="config-warning" class="card hidden">
+        <p class="error">Supabase is not configured. Update <code>/assets/js/config.js</code>.</p>
+      </section>
+
+      <section id="hub-view" class="stack hidden">
+        <h1>Classroom Hub</h1>
+        <div id="hub-grid" class="grid grid-classes"></div>
+      </section>
+
+      <section id="display-view" class="stack hidden">
+        <h1 id="display-class-name">Class</h1>
+        <div id="display-grid" class="grid student-grid"></div>
+      </section>
+
+      <section id="classroom-error" class="card hidden">
+        <p id="classroom-error-text" class="error"></p>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/assets/js/config.js"></script>
+    <script src="/assets/js/supabase-client.js"></script>
+    <script src="/assets/js/utils.js"></script>
+    <script src="/assets/js/classroom.js"></script>
+  </body>
+</html>

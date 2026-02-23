@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TSGW Admin Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+  </head>
+  <body>
+    <div class="brand-bar">TSGW Carpool Admin</div>
+    <main class="page stack">
+      <section id="config-warning" class="card hidden">
+        <p class="error">Supabase is not configured. Update <code>/assets/js/config.js</code>.</p>
+      </section>
+
+      <section id="admin-login-section" class="card stack hidden">
+        <h1>Admin Sign In</h1>
+        <div class="form-row">
+          <label for="admin-email">Email</label>
+          <input id="admin-email" type="email" autocomplete="email" />
+        </div>
+        <div class="form-row">
+          <label for="admin-password">Password</label>
+          <input id="admin-password" type="password" autocomplete="current-password" />
+        </div>
+        <button id="admin-login-btn" class="btn btn-primary">Sign In</button>
+        <p id="admin-login-error" class="error hidden"></p>
+      </section>
+
+      <section id="admin-dashboard" class="stack hidden">
+        <div class="inline" style="justify-content: space-between">
+          <h1 style="margin: 0">Admin Dashboard</h1>
+          <button id="admin-logout-btn" class="btn btn-secondary">Logout</button>
+        </div>
+
+        <section class="card stack">
+          <h2>CSV Import</h2>
+          <input id="csv-file" type="file" accept=".csv,text/csv" />
+          <button id="csv-import-btn" class="btn btn-primary">Import CSV</button>
+          <p class="muted">Columns: <code>student_first_name,student_last_name,class_name,carpool_number,parent_names</code></p>
+          <div id="csv-result" class="stack"></div>
+        </section>
+
+        <section class="card stack">
+          <h2>Add Family</h2>
+          <div class="inline">
+            <input id="new-family-number" type="number" placeholder="Carpool #" />
+            <input id="new-family-parents" type="text" placeholder="Parent names" />
+            <input id="new-family-contact" type="text" placeholder="Contact info (optional)" />
+            <button id="add-family-btn" class="btn btn-primary">Add Family</button>
+          </div>
+          <p id="family-form-msg" class="hidden"></p>
+        </section>
+
+        <section class="card stack">
+          <h2>Add Class</h2>
+          <div class="inline">
+            <input id="new-class-name" type="text" placeholder="Class name" />
+            <input id="new-class-order" type="number" placeholder="Display order" />
+            <button id="add-class-btn" class="btn btn-primary">Add Class</button>
+          </div>
+          <p id="class-form-msg" class="hidden"></p>
+        </section>
+
+        <section class="card stack">
+          <h2>Add Student</h2>
+          <div class="inline">
+            <input id="new-student-first" type="text" placeholder="First name" />
+            <input id="new-student-last" type="text" placeholder="Last name" />
+            <select id="new-student-family"></select>
+            <select id="new-student-class"></select>
+            <button id="add-student-btn" class="btn btn-primary">Add Student</button>
+          </div>
+          <p id="student-form-msg" class="hidden"></p>
+        </section>
+
+        <section class="card stack">
+          <h2>Families</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Carpool #</th>
+                  <th>Parents</th>
+                  <th>Contact</th>
+                  <th>Students</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="families-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card stack">
+          <h2>Classes</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Class</th>
+                  <th>Order</th>
+                  <th>Students</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="classes-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card stack">
+          <h2>Students</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Class</th>
+                  <th>Family</th>
+                  <th>Carpool #</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="students-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card stack">
+          <h2>Visual Overview</h2>
+          <div id="overview-grid" class="grid"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/assets/js/config.js"></script>
+    <script src="/assets/js/supabase-client.js"></script>
+    <script src="/assets/js/utils.js"></script>
+    <script src="/assets/js/admin.js"></script>
+  </body>
+</html>
