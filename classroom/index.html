@@ -7,25 +7,306 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700;800&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="../assets/css/styles.css" />
+    <style>
+      /* ─── Classroom page enhancements ─────────────────────── */
+
+      /* ─ Hub: brand bar (matching parent page) ─ */
+      .brand-bar {
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        height: 50px;
+        background: var(--brand-maroon);
+      }
+
+      .brand-bar-inner {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .brand-name {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 0.95rem;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: #fff;
+        line-height: 1;
+      }
+
+      .brand-sub {
+        font-size: 0.58rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.5);
+        font-family: "Open Sans", sans-serif;
+        line-height: 1;
+      }
+
+      .gold-rule {
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          var(--brand-maroon) 0%,
+          var(--brand-gold) 30%,
+          var(--brand-gold) 70%,
+          var(--brand-maroon) 100%
+        );
+      }
+
+      /* ─ Hub header ─ */
+      .hub-header {
+        margin-bottom: 28px;
+      }
+
+      #hub-view > .hub-header > h1 {
+        font-size: 2.2rem;
+        margin: 0 0 6px;
+        color: var(--text-dark);
+      }
+
+      .hub-live-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+      }
+
+      .hub-live-dot {
+        width: 7px;
+        height: 7px;
+        background: var(--status-called);
+        border-radius: 50%;
+        flex-shrink: 0;
+        animation: livePulse 2.2s ease-in-out infinite;
+      }
+
+      @keyframes livePulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%       { opacity: 0.35; transform: scale(0.8); }
+      }
+
+      /* ─ Hub grid & cards ─ */
+      #hub-grid {
+        grid-template-columns: repeat(auto-fill, minmax(clamp(140px, 20vw, 200px), 1fr)) !important;
+        gap: 14px !important;
+      }
+
+      .class-card {
+        padding: 20px 20px 16px;
+        border-radius: 14px;
+        background: var(--surface-white);
+        border: 1px solid var(--border-light);
+        border-left: 4px solid var(--brand-gold);
+        text-align: left;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+      }
+
+      .class-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(107, 45, 91, 0.12);
+      }
+
+      .class-card > div:first-child strong {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: clamp(1rem, 1.5vw, 1.2rem);
+        font-weight: 700;
+        color: var(--text-dark);
+        display: block;
+        margin-bottom: 10px;
+      }
+
+      .class-card > div:last-child {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: clamp(1.4rem, 2.5vw, 1.9rem);
+        font-weight: 800;
+        color: var(--brand-maroon);
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+
+      .class-card.complete {
+        opacity: 0.55;
+        border-left-color: var(--status-called);
+      }
+
+      .class-card.complete > div:last-child {
+        color: #2a7d31;
+      }
+
+      .class-card.complete::after {
+        content: "All out \2713";
+        display: block;
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #2a7d31;
+        font-family: "Open Sans", sans-serif;
+        margin-top: 7px;
+      }
+
+      /* ─────────────────────────────────────────────────────── */
+      /* ─ Projector / Display mode ─ */
+
+      .projector {
+        background: #18232e !important;
+        color: #fff;
+        min-height: 100vh;
+      }
+
+      /* Override the shared .page max-width and padding for full-screen */
+      .projector .page {
+        max-width: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        min-height: 100vh;
+        display: flex !important;
+        flex-direction: column;
+        gap: 0 !important;
+        overflow: visible;
+      }
+
+      /* #display-view fills remaining height */
+      .projector #display-view {
+        display: flex !important;
+        flex-direction: column;
+        gap: 0 !important;
+        flex: 1;
+        overflow: visible;
+      }
+
+      /* Class name header bar */
+      .projector .display-header {
+        display: flex;
+        align-items: baseline;
+        gap: 14px;
+        padding: clamp(10px, 1.5vh, 16px) clamp(16px, 2.5vw, 28px);
+        border-bottom: 1px solid rgba(196, 151, 92, 0.22);
+        flex-shrink: 0;
+      }
+
+      .projector #display-class-name {
+        font-family: "Playfair Display", Georgia, serif;
+        color: var(--brand-gold) !important;
+        font-size: clamp(1.3rem, 3.5vw, 1.75rem);
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        margin: 0 !important;
+        line-height: 1;
+      }
+
+      .projector .display-sub {
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.28);
+        font-family: "Open Sans", sans-serif;
+      }
+
+      /* Student grid fills the remaining space */
+      .projector #display-grid {
+        flex: 1;
+        display: grid !important;
+        grid-template-columns: repeat(auto-fill, minmax(min(230px, calc(50vw - 28px)), 1fr)) !important;
+        gap: clamp(8px, 1.2vw, 14px) !important;
+        padding: clamp(12px, 1.5vw, 20px) clamp(12px, 2vw, 24px);
+        align-content: start;
+        overflow-y: auto;
+      }
+
+      /* Student cards */
+      .projector .student-card {
+        min-height: clamp(60px, 9vh, 100px);
+        border-radius: 10px;
+        font-size: clamp(1rem, 1.8vw, 1.5rem);
+        font-weight: 700;
+        font-family: "Open Sans", sans-serif;
+        border: none;
+        transition: background-color 0.5s ease, color 0.3s ease, box-shadow 0.5s ease;
+      }
+
+      .projector .student-card.waiting {
+        background: rgba(255, 255, 255, 0.07);
+        color: rgba(255, 255, 255, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+      }
+
+      .projector .student-card.called {
+        background: var(--status-called);
+        color: #fff;
+        font-weight: 800;
+        box-shadow: 0 0 22px rgba(76, 175, 80, 0.38);
+      }
+
+      /* ─ Hub responsive breakpoints ─ */
+      @media (max-width: 600px) {
+        #hub-view > .hub-header > h1 {
+          font-size: 1.6rem;
+        }
+
+        .hub-header {
+          margin-bottom: 18px;
+        }
+
+        #hub-grid {
+          grid-template-columns: repeat(2, 1fr) !important;
+          gap: 10px !important;
+        }
+
+        .class-card {
+          padding: 14px 14px 12px;
+        }
+      }
+    </style>
   </head>
   <body id="classroom-body">
-    <div class="brand-bar" id="brand">TSGW Carpool</div>
+    <header>
+      <div class="brand-bar" id="brand">
+        <div class="brand-bar-inner">
+          <span class="brand-name">TSGW Carpool</span>
+          <span class="brand-sub">Torah School of Greater Washington</span>
+        </div>
+      </div>
+      <div class="gold-rule"></div>
+    </header>
+
     <main class="page stack">
       <section id="config-warning" class="card hidden">
         <p class="error">Supabase is not configured. Update <code>/assets/js/config.js</code>.</p>
       </section>
 
+      <!-- ── Hub view ──────────────────────────────────────── -->
       <section id="hub-view" class="stack hidden">
-        <h1>Classroom Hub</h1>
+        <div class="hub-header">
+          <h1>Classroom Hub</h1>
+          <div class="hub-live-badge">
+            <span class="hub-live-dot"></span>
+            Live &middot; Today's Dismissal
+          </div>
+        </div>
         <div id="hub-grid" class="grid grid-classes"></div>
       </section>
 
+      <!-- ── Individual display view ───────────────────────── -->
       <section id="display-view" class="stack hidden">
-        <h1 id="display-class-name">Class</h1>
+        <div class="display-header">
+          <h1 id="display-class-name">Class</h1>
+          <span class="display-sub">Dismissal</span>
+        </div>
         <div id="display-grid" class="grid student-grid"></div>
       </section>
 
