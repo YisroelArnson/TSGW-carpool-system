@@ -162,8 +162,7 @@
       /* ─ Projector / Display mode ─ */
 
       .projector {
-        background: #18232e !important;
-        color: #fff;
+        background: var(--surface-ivory) !important;
         min-height: 100vh;
       }
 
@@ -176,7 +175,12 @@
         display: flex !important;
         flex-direction: column;
         gap: 0 !important;
-        overflow: visible;
+        overflow: hidden;
+      }
+
+      /* Hide the shared brand bar; we show our own display header */
+      .projector header {
+        display: none;
       }
 
       /* #display-view fills remaining height */
@@ -185,71 +189,91 @@
         flex-direction: column;
         gap: 0 !important;
         flex: 1;
-        overflow: visible;
+        min-height: 100vh;
+        overflow: hidden;
       }
 
       /* Class name header bar */
       .projector .display-header {
         display: flex;
-        align-items: baseline;
-        gap: 14px;
-        padding: clamp(10px, 1.5vh, 16px) clamp(16px, 2.5vw, 28px);
-        border-bottom: 1px solid rgba(196, 151, 92, 0.22);
+        align-items: center;
+        gap: 16px;
+        padding: clamp(16px, 2.5vh, 28px) clamp(24px, 3vw, 40px);
+        background: var(--brand-maroon);
         flex-shrink: 0;
       }
 
       .projector #display-class-name {
         font-family: "Playfair Display", Georgia, serif;
-        color: var(--brand-gold) !important;
-        font-size: clamp(1.3rem, 3.5vw, 1.75rem);
+        color: #fff !important;
+        font-size: clamp(2rem, 5vw, 3.2rem);
         font-weight: 800;
-        letter-spacing: 0.03em;
+        letter-spacing: 0.02em;
         margin: 0 !important;
         line-height: 1;
       }
 
       .projector .display-sub {
-        font-size: 0.65rem;
+        font-size: 0.7rem;
         font-weight: 700;
-        letter-spacing: 0.18em;
+        letter-spacing: 0.22em;
         text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.28);
+        color: var(--brand-gold);
         font-family: "Open Sans", sans-serif;
+        margin-top: 5px;
+      }
+
+      /* Gold rule under header */
+      .projector .display-header::after {
+        content: none;
+      }
+
+      .projector-gold-rule {
+        height: 3px;
+        background: linear-gradient(90deg, var(--brand-maroon) 0%, var(--brand-gold) 30%, var(--brand-gold) 70%, var(--brand-maroon) 100%);
+        flex-shrink: 0;
       }
 
       /* Student grid fills the remaining space */
       .projector #display-grid {
         flex: 1;
         display: grid !important;
-        grid-template-columns: repeat(auto-fill, minmax(min(230px, calc(50vw - 28px)), 1fr)) !important;
-        gap: clamp(8px, 1.2vw, 14px) !important;
-        padding: clamp(12px, 1.5vw, 20px) clamp(12px, 2vw, 24px);
+        grid-template-columns: repeat(auto-fill, minmax(min(220px, calc(50vw - 28px)), 1fr)) !important;
+        gap: clamp(10px, 1.4vw, 18px) !important;
+        padding: clamp(16px, 2vw, 28px);
         align-content: start;
         overflow-y: auto;
       }
 
       /* Student cards */
       .projector .student-card {
-        min-height: clamp(60px, 9vh, 100px);
-        border-radius: 10px;
-        font-size: clamp(1rem, 1.8vw, 1.5rem);
+        border-radius: 12px;
+        height: clamp(80px, 11vh, 120px);
+        font-size: clamp(1.05rem, 2vw, 1.55rem);
         font-weight: 700;
         font-family: "Open Sans", sans-serif;
         border: none;
-        transition: background-color 0.5s ease, color 0.3s ease, box-shadow 0.5s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 16px;
+        transition: background-color 0.45s ease, color 0.3s ease, box-shadow 0.45s ease;
       }
 
       .projector .student-card.waiting {
-        background: rgba(255, 255, 255, 0.07);
-        color: rgba(255, 255, 255, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.09);
+        background: var(--surface-white);
+        color: var(--text-dark);
+        border: 1.5px solid var(--border-light);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
       }
 
       .projector .student-card.called {
-        background: var(--status-called);
+        background: #2a7d31;
         color: #fff;
         font-weight: 800;
-        box-shadow: 0 0 22px rgba(76, 175, 80, 0.38);
+        border: none;
+        box-shadow: 0 4px 20px rgba(42, 125, 49, 0.35);
       }
 
       /* ─ Hub responsive breakpoints ─ */
@@ -301,12 +325,15 @@
         <div id="hub-grid" class="grid grid-classes"></div>
       </section>
 
-      <!-- ── Individual display view ───────────────────────── -->
+      <!-- ── Individual display view ───────────────────────────── -->
       <section id="display-view" class="stack hidden">
         <div class="display-header">
-          <h1 id="display-class-name">Class</h1>
-          <span class="display-sub">Dismissal</span>
+          <div>
+            <h1 id="display-class-name">Class</h1>
+            <span class="display-sub">Dismissal</span>
+          </div>
         </div>
+        <div class="projector-gold-rule"></div>
         <div id="display-grid" class="grid student-grid"></div>
       </section>
 
