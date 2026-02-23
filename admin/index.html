@@ -7,144 +7,565 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700;800&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="../assets/css/styles.css" />
+    <style>
+      /* ─── Admin page enhancements ──────────────────────────── */
+
+      body {
+        background-color: var(--surface-ivory);
+        background-image: radial-gradient(circle, #ddd9d2 1px, transparent 1px);
+        background-size: 22px 22px;
+        min-height: 100vh;
+      }
+
+      /* ─ Brand bar ─ */
+      .brand-bar {
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        height: 50px;
+        background: var(--brand-maroon);
+      }
+      .brand-bar-inner {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .brand-name {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 0.95rem;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: #fff;
+        line-height: 1;
+      }
+      .brand-sub {
+        font-size: 0.58rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.5);
+        font-family: "Open Sans", sans-serif;
+        line-height: 1;
+      }
+      .gold-rule {
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          var(--brand-maroon) 0%,
+          var(--brand-gold) 30%,
+          var(--brand-gold) 70%,
+          var(--brand-maroon) 100%
+        );
+      }
+
+      /* ─ Admin layout ─ */
+      .admin-layout {
+        padding: 28px 28px 48px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      /* ─ Top bar ─ */
+      .admin-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .admin-topbar h1 {
+        margin: 0;
+        font-size: 1.8rem;
+        color: var(--text-dark);
+      }
+      .admin-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      /* Action buttons */
+      .btn-action {
+        padding: 9px 16px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        border-radius: 10px;
+        border: none;
+        cursor: pointer;
+        font-family: "Open Sans", sans-serif;
+        letter-spacing: 0.02em;
+        transition: transform 0.1s, box-shadow 0.15s, background 0.15s;
+      }
+      .btn-action:active { transform: scale(0.96); }
+      .btn-action.maroon {
+        background: var(--brand-maroon);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(107, 45, 91, 0.25);
+      }
+      .btn-action.maroon:hover { background: #7a3469; }
+      .btn-action.gold {
+        background: var(--brand-gold);
+        color: #2b1a0f;
+        box-shadow: 0 2px 6px rgba(196, 151, 92, 0.3);
+      }
+      .btn-action.gold:hover { background: #d4a66a; }
+      .btn-action.ghost {
+        background: var(--surface-white);
+        color: var(--text-muted);
+        border: 1px solid var(--border-light);
+      }
+      .btn-action.ghost:hover { background: var(--surface-sand); color: var(--text-dark); }
+
+      /* ─ Tab bar ─ */
+      .tab-bar {
+        background: var(--surface-white);
+        border-radius: 14px;
+        border: 1px solid var(--border-light);
+        padding: 5px;
+        display: flex;
+        gap: 3px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+        overflow-x: auto;
+      }
+      .tab-btn {
+        flex-shrink: 0;
+        padding: 9px 18px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border-radius: 9px;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-family: "Open Sans", sans-serif;
+        transition: background 0.15s, color 0.15s;
+        white-space: nowrap;
+      }
+      .tab-btn:hover { background: var(--surface-ivory); color: var(--text-dark); }
+      .tab-btn.active {
+        background: var(--brand-maroon);
+        color: #fff;
+        font-weight: 700;
+      }
+
+      /* ─ KPI grid ─ */
+      .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 14px;
+        margin-bottom: 18px;
+      }
+      .kpi-card {
+        background: var(--surface-white);
+        border-radius: 14px;
+        padding: 20px 22px 18px;
+        border: 1px solid var(--border-light);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+      }
+      .kpi-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+        margin: 0 0 8px;
+        display: block;
+      }
+      .kpi-value {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 2.8rem;
+        font-weight: 800;
+        color: var(--brand-maroon);
+        line-height: 1;
+        margin: 0;
+        letter-spacing: -0.02em;
+      }
+
+      /* ─ Content cards ─ */
+      .content-card {
+        background: var(--surface-white);
+        border-radius: 14px;
+        border: 1px solid var(--border-light);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+        overflow: hidden;
+      }
+      .content-card-header {
+        padding: 16px 22px;
+        border-bottom: 1px solid var(--border-light);
+      }
+      .content-card-header h2 {
+        margin: 0;
+        font-size: 1.05rem;
+        color: var(--text-dark);
+      }
+      .content-card-body {
+        padding: 18px 22px;
+      }
+
+      /* ─ Table overrides ─ */
+      .admin-layout .table-wrap {
+        border-radius: 0;
+        border: none;
+        box-shadow: none;
+      }
+      .admin-layout th {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        background: var(--surface-ivory);
+        padding: 11px 18px;
+        font-family: "Open Sans", sans-serif;
+      }
+      .admin-layout td {
+        padding: 11px 18px;
+        font-size: 0.92rem;
+        vertical-align: middle;
+        color: var(--text-dark);
+        font-family: "Open Sans", sans-serif;
+      }
+
+      /* ─ Login card ─ */
+      #admin-login-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 16px 60px;
+      }
+      .login-card {
+        width: 100%;
+        max-width: 390px;
+        background: var(--surface-white);
+        border-radius: 20px;
+        padding: 32px 28px;
+        box-shadow:
+          0 1px 2px rgba(107, 45, 91, 0.06),
+          0 4px 18px rgba(107, 45, 91, 0.1),
+          0 16px 48px rgba(0, 0, 0, 0.07);
+        animation: fadeUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .login-card h1 {
+        font-size: 1.6rem;
+        margin: 0 0 24px;
+        color: var(--text-dark);
+      }
+      .login-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 14px;
+      }
+      .login-field label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+      }
+      .login-field input {
+        border: 1.5px solid var(--border-light);
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 1rem;
+        font-family: "Open Sans", sans-serif;
+        background: var(--surface-ivory);
+        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        width: 100%;
+      }
+      .login-field input:focus {
+        outline: none;
+        border-color: var(--brand-maroon);
+        box-shadow: 0 0 0 3px rgba(107, 45, 91, 0.1);
+        background: #fff;
+      }
+      #admin-login-btn {
+        width: 100%;
+        margin-top: 8px;
+        padding: 14px;
+        font-size: 1rem;
+        font-weight: 700;
+        border-radius: 12px;
+        border: none;
+        background: var(--brand-maroon);
+        color: #fff;
+        cursor: pointer;
+        font-family: "Open Sans", sans-serif;
+        box-shadow: 0 2px 10px rgba(107, 45, 91, 0.28);
+        transition: transform 0.1s, background 0.15s;
+      }
+      #admin-login-btn:hover { background: #7a3469; }
+      #admin-login-btn:active { transform: scale(0.98); }
+
+      /* ─ Modal ─ */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        padding: 20px;
+        backdrop-filter: blur(2px);
+      }
+      .modal-overlay.hidden { display: none !important; }
+      .modal-card {
+        background: var(--surface-white);
+        border-radius: 18px;
+        padding: 28px;
+        width: min(600px, 100%);
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+        animation: modalIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      @keyframes modalIn {
+        from { opacity: 0; transform: scale(0.95) translateY(8px); }
+        to   { opacity: 1; transform: scale(1) translateY(0); }
+      }
+      .modal-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+      }
+      .modal-title-row h2 {
+        margin: 0;
+        font-size: 1.3rem;
+        color: var(--text-dark);
+      }
+      /* Style form-rows injected by JS into modal */
+      .modal-card .form-row {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 14px;
+      }
+      .modal-card .form-row label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+      }
+      .modal-card .form-row input,
+      .modal-card .form-row select {
+        border: 1.5px solid var(--border-light);
+        border-radius: 10px;
+        padding: 11px 14px;
+        font-size: 0.95rem;
+        font-family: "Open Sans", sans-serif;
+        background: var(--surface-ivory);
+        width: 100%;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      .modal-card .form-row input:focus,
+      .modal-card .form-row select:focus {
+        outline: none;
+        border-color: var(--brand-maroon);
+        box-shadow: 0 0 0 3px rgba(107, 45, 91, 0.1);
+        background: #fff;
+      }
+      .modal-footer {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 6px;
+      }
+
+      /* ─ Sortable headers ─ */
+      th[data-sort] {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+      }
+      th[data-sort]:hover { background: var(--surface-sand); }
+      th[data-sort]::after {
+        content: ' ↕';
+        opacity: 0.25;
+        font-size: 0.8em;
+      }
+      th.sort-asc::after  { content: ' ↑'; opacity: 1; }
+      th.sort-desc::after { content: ' ↓'; opacity: 1; }
+
+      /* ─ Chevron expand ─ */
+      .chevron-cell {
+        width: 36px;
+        padding: 11px 4px 11px 18px !important;
+      }
+      .chevron-btn {
+        background: none;
+        border: none;
+        font-size: 1.1rem;
+        cursor: pointer;
+        color: var(--text-muted);
+        padding: 2px 5px;
+        line-height: 1;
+        border-radius: 6px;
+        transition: transform 0.18s ease, color 0.15s;
+        display: inline-block;
+      }
+      .chevron-btn:hover { color: var(--brand-maroon); }
+      .chevron-btn.open  { transform: rotate(90deg); }
+
+      .class-detail-row { background: var(--surface-ivory); }
+      .class-detail-row > td {
+        padding: 0 !important;
+        border-bottom: 2px solid var(--border-light);
+      }
+      .detail-table { width: 100%; border-collapse: collapse; }
+      .detail-table th {
+        font-size: 0.62rem;
+        padding: 8px 16px;
+        background: var(--surface-sand);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+        font-weight: 700;
+      }
+      .detail-table td {
+        padding: 8px 16px;
+        font-size: 0.85rem;
+        border-bottom: 1px solid var(--border-light);
+      }
+      .student-subrow:last-child td { border-bottom: none; }
+
+      /* ─ Responsive ─ */
+      @media (max-width: 700px) {
+        .admin-topbar { flex-direction: column; align-items: flex-start; }
+        .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+        .admin-layout { padding: 20px 16px 40px; }
+      }
+    </style>
   </head>
   <body>
-    <div class="brand-bar">TSGW Carpool Admin</div>
-    <main class="page stack">
-      <section id="config-warning" class="card hidden">
-        <p class="error">Supabase is not configured. Update <code>/assets/js/config.js</code>.</p>
-      </section>
-
-      <section id="admin-login-section" class="card stack hidden">
-        <h1>Admin Sign In</h1>
-        <div class="form-row">
-          <label for="admin-email">Email</label>
-          <input id="admin-email" type="email" autocomplete="email" />
+    <header>
+      <div class="brand-bar">
+        <div class="brand-bar-inner">
+          <span class="brand-name">TSGW Carpool</span>
+          <span class="brand-sub">Torah School of Greater Washington</span>
         </div>
-        <div class="form-row">
+      </div>
+      <div class="gold-rule"></div>
+    </header>
+
+    <section id="config-warning" class="card hidden" style="max-width:600px;margin:20px auto;">
+      <p class="error">Supabase is not configured. Update <code>/assets/js/config.js</code>.</p>
+    </section>
+
+    <!-- ── Login ─────────────────────────────────────────────── -->
+    <section id="admin-login-section" class="hidden">
+      <div class="login-card">
+        <h1>Admin Sign In</h1>
+        <div class="login-field">
+          <label for="admin-email">Email</label>
+          <input id="admin-email" type="email" autocomplete="email" placeholder="admin@tsgw.org" />
+        </div>
+        <div class="login-field">
           <label for="admin-password">Password</label>
           <input id="admin-password" type="password" autocomplete="current-password" />
         </div>
-        <button id="admin-login-btn" class="btn btn-primary">Sign In</button>
-        <p id="admin-login-error" class="error hidden"></p>
-      </section>
+        <button id="admin-login-btn">Sign In</button>
+        <p id="admin-login-error" class="error hidden" style="margin-top:12px;font-size:0.88rem;text-align:center;"></p>
+      </div>
+    </section>
 
-      <section id="admin-dashboard" class="stack hidden">
-        <header class="admin-header card stack">
-          <div class="inline admin-header-row">
-            <h1 style="margin: 0">Admin Dashboard</h1>
-            <div class="inline">
-              <button id="open-add-family" class="btn btn-primary">+ Family</button>
-              <button id="open-add-class" class="btn btn-primary">+ Class</button>
-              <button id="open-add-student" class="btn btn-primary">+ Student</button>
-              <button id="open-csv-import" class="btn btn-secondary">Import CSV</button>
-              <button id="admin-logout-btn" class="btn btn-secondary">Logout</button>
+    <!-- ── Dashboard ─────────────────────────────────────────── -->
+    <section id="admin-dashboard" class="hidden">
+      <div class="admin-layout">
+
+        <!-- Top bar -->
+        <div class="admin-topbar">
+          <h1>Admin Dashboard</h1>
+          <div class="admin-actions">
+            <button id="open-add-family" class="btn-action maroon">+ Family</button>
+            <button id="open-add-class" class="btn-action maroon">+ Class</button>
+            <button id="open-add-student" class="btn-action maroon">+ Student</button>
+            <button id="open-csv-import" class="btn-action gold">Import CSV</button>
+            <button id="admin-logout-btn" class="btn-action ghost">Logout</button>
+          </div>
+        </div>
+
+        <!-- Tab bar -->
+        <div id="admin-tabs" class="tab-bar" role="tablist" aria-label="Admin sections">
+          <button class="tab-btn active" data-tab="today" role="tab" aria-selected="true">Today</button>
+          <button class="tab-btn" data-tab="students" role="tab" aria-selected="false">Students</button>
+          <button class="tab-btn" data-tab="families" role="tab" aria-selected="false">Families</button>
+          <button class="tab-btn" data-tab="classes" role="tab" aria-selected="false">Classes</button>
+          <button class="tab-btn" data-tab="imports" role="tab" aria-selected="false">Imports &amp; Logs</button>
+        </div>
+
+        <!-- ── Today tab ──────────────────────────────────────── -->
+        <section id="tab-today" data-tab-panel="today">
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <span class="kpi-label">Today's Attempts</span>
+              <p id="today-attempts-count" class="kpi-value">0</p>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Dismissed</span>
+              <p id="today-dismissed-count" class="kpi-value">0</p>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Still Waiting</span>
+              <p id="today-waiting-count" class="kpi-value">0</p>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Parent-Initiated</span>
+              <p id="today-parent-count" class="kpi-value">0</p>
             </div>
           </div>
-          <p class="muted" style="margin: 0">Run day-to-day dismissal operations from the Today tab, and manage records in dedicated tabs.</p>
-        </header>
-
-        <section class="card stack">
-          <div id="admin-tabs" class="tab-list" role="tablist" aria-label="Admin sections">
-            <button class="tab-btn active" data-tab="today" role="tab" aria-selected="true">Today</button>
-            <button class="tab-btn" data-tab="students" role="tab" aria-selected="false">Students</button>
-            <button class="tab-btn" data-tab="families" role="tab" aria-selected="false">Families</button>
-            <button class="tab-btn" data-tab="classes" role="tab" aria-selected="false">Classes</button>
-            <button class="tab-btn" data-tab="views" role="tab" aria-selected="false">Views</button>
-            <button class="tab-btn" data-tab="imports" role="tab" aria-selected="false">Imports & Logs</button>
-          </div>
-        </section>
-
-        <section id="tab-today" class="stack" data-tab-panel="today">
-          <section class="grid kpi-grid">
-            <article class="card stack">
-              <p class="muted" style="margin: 0">Today's Attempts</p>
-              <p id="today-attempts-count" class="kpi-value">0</p>
-            </article>
-            <article class="card stack">
-              <p class="muted" style="margin: 0">Today's Dismissed</p>
-              <p id="today-dismissed-count" class="kpi-value">0</p>
-            </article>
-            <article class="card stack">
-              <p class="muted" style="margin: 0">Still Waiting</p>
-              <p id="today-waiting-count" class="kpi-value">0</p>
-            </article>
-            <article class="card stack">
-              <p class="muted" style="margin: 0">Parent-Initiated</p>
-              <p id="today-parent-count" class="kpi-value">0</p>
-            </article>
-          </section>
-
-          <section class="card stack">
-            <h2 style="margin-bottom: 0">Recent Attempts</h2>
+          <div class="content-card">
+            <div class="content-card-header">
+              <h2>Recent Attempts</h2>
+            </div>
             <div class="table-wrap">
-              <table>
+              <table id="today-table">
                 <thead>
                   <tr>
-                    <th>Time</th>
-                    <th>Student</th>
-                    <th>Class</th>
-                    <th>Family</th>
-                    <th>Carpool #</th>
-                    <th>Status</th>
-                    <th>Source</th>
+                    <th data-sort="time">Time</th>
+                    <th data-sort="student">Student</th>
+                    <th data-sort="class">Class</th>
+                    <th data-sort="family">Family</th>
+                    <th data-sort="carpool">Carpool #</th>
+                    <th data-sort="status">Status</th>
+                    <th data-sort="source">Source</th>
                   </tr>
                 </thead>
                 <tbody id="today-attempts-tbody"></tbody>
               </table>
             </div>
-          </section>
-        </section>
-
-        <section id="tab-families" class="card stack hidden" data-tab-panel="families">
-          <h2>Families</h2>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Carpool #</th>
-                  <th>Parents</th>
-                  <th>Contact</th>
-                  <th>Students</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="families-tbody"></tbody>
-            </table>
           </div>
         </section>
 
-        <section id="tab-classes" class="card stack hidden" data-tab-panel="classes">
-          <h2>Classes</h2>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Class</th>
-                  <th>Order</th>
-                  <th>Students</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="classes-tbody"></tbody>
-            </table>
+        <!-- ── Students tab ───────────────────────────────────── -->
+        <section id="tab-students" class="content-card hidden" data-tab-panel="students">
+          <div class="content-card-header">
+            <h2>Students</h2>
           </div>
-        </section>
-
-        <section id="tab-students" class="card stack hidden" data-tab-panel="students">
-          <h2>Students</h2>
           <div class="table-wrap">
-            <table>
+            <table id="students-table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Class</th>
-                  <th>Family</th>
-                  <th>Carpool #</th>
+                  <th data-sort="name">Name</th>
+                  <th data-sort="class">Class</th>
+                  <th data-sort="family">Family</th>
+                  <th data-sort="carpool">Carpool #</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -153,31 +574,77 @@
           </div>
         </section>
 
-        <section id="tab-views" class="card stack hidden" data-tab-panel="views">
-          <h2>Visual Overview</h2>
-          <div id="overview-grid" class="grid"></div>
+        <!-- ── Families tab ───────────────────────────────────── -->
+        <section id="tab-families" class="content-card hidden" data-tab-panel="families">
+          <div class="content-card-header">
+            <h2>Families</h2>
+          </div>
+          <div class="table-wrap">
+            <table id="families-table">
+              <thead>
+                <tr>
+                  <th data-sort="carpool">Carpool #</th>
+                  <th data-sort="parents">Parents</th>
+                  <th data-sort="contact">Contact</th>
+                  <th data-sort="students">Students</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="families-tbody"></tbody>
+            </table>
+          </div>
         </section>
 
-        <section id="tab-imports" class="card stack hidden" data-tab-panel="imports">
-          <h2>CSV Import</h2>
-          <p class="muted">Columns: <code>student_first_name,student_last_name,class_name,carpool_number,parent_names</code></p>
-          <div id="last-import-summary" class="muted">No import run in this session.</div>
+        <!-- ── Classes tab ────────────────────────────────────── -->
+        <section id="tab-classes" class="content-card hidden" data-tab-panel="classes">
+          <div class="content-card-header">
+            <h2>Classes</h2>
+          </div>
+          <div class="table-wrap">
+            <table id="classes-table">
+              <thead>
+                <tr>
+                  <th class="chevron-cell"></th>
+                  <th data-sort="name">Class</th>
+                  <th data-sort="order">Order</th>
+                  <th data-sort="count">Students</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="classes-tbody"></tbody>
+            </table>
+          </div>
         </section>
-      </section>
-    </main>
 
+        <!-- ── Imports tab ────────────────────────────────────── -->
+        <section id="tab-imports" class="content-card hidden" data-tab-panel="imports">
+          <div class="content-card-header">
+            <h2>Imports &amp; Logs</h2>
+          </div>
+          <div class="content-card-body">
+            <p class="muted" style="margin: 0 0 12px;">
+              Columns: <code>student_first_name, student_last_name, class_name, carpool_number, parent_names</code>
+            </p>
+            <div id="last-import-summary" class="muted">No import run in this session.</div>
+          </div>
+        </section>
+
+      </div>
+    </section>
+
+    <!-- ── Modal ─────────────────────────────────────────────── -->
     <div id="admin-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
-      <div class="modal-card stack">
-        <div class="inline" style="justify-content: space-between">
-          <h2 id="admin-modal-title" style="margin: 0">Modal</h2>
-          <button id="admin-modal-close" class="btn btn-secondary" type="button">Close</button>
+      <div class="modal-card">
+        <div class="modal-title-row">
+          <h2 id="admin-modal-title">Modal</h2>
+          <button id="admin-modal-close" class="btn-action ghost" type="button">✕</button>
         </div>
-        <form id="admin-modal-form" class="stack">
-          <div id="admin-modal-fields" class="stack"></div>
+        <form id="admin-modal-form">
+          <div id="admin-modal-fields"></div>
           <p id="admin-modal-msg" class="hidden"></p>
-          <div class="inline" style="justify-content: flex-end">
-            <button id="admin-modal-cancel" class="btn btn-secondary" type="button">Cancel</button>
-            <button id="admin-modal-submit" class="btn btn-primary" type="submit">Save</button>
+          <div class="modal-footer">
+            <button id="admin-modal-cancel" class="btn-action ghost" type="button">Cancel</button>
+            <button id="admin-modal-submit" class="btn-action maroon" type="submit">Save</button>
           </div>
         </form>
       </div>

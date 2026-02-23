@@ -15,6 +15,13 @@
     }
   };
 
+  const sortState = {
+    today:    { col: null, dir: "asc" },
+    students: { col: null, dir: "asc" },
+    families: { col: null, dir: "asc" },
+    classes:  { col: null, dir: "asc" }
+  };
+
   function el(id) {
     return document.getElementById(id);
   }
@@ -32,11 +39,37 @@
   }
 
   function classLabel(cls) {
-    return `${cls.name} (${cls.display_order})`;
+    return cls.name;
   }
 
   function studentLabel(student) {
     return `${student.last_name}, ${student.first_name}`;
+  }
+
+  function sortedBy(arr, col, dir, valFn) {
+    if (!col) return arr;
+    return [...arr].sort((a, b) => {
+      const va = valFn(a);
+      const vb = valFn(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      const cmp = typeof va === "number" && typeof vb === "number"
+        ? va - vb
+        : String(va).localeCompare(String(vb), undefined, { numeric: true });
+      return dir === "asc" ? cmp : -cmp;
+    });
+  }
+
+  function applySortHeaders(tableId, col, dir) {
+    const table = el(tableId);
+    if (!table) return;
+    table.querySelectorAll("th[data-sort]").forEach(th => {
+      th.classList.remove("sort-asc", "sort-desc");
+      if (th.dataset.sort === col) {
+        th.classList.add(dir === "asc" ? "sort-asc" : "sort-desc");
+      }
+    });
   }
 
   async function fetchAll() {
@@ -88,7 +121,17 @@
       byFamily.set(s.family_id, arr);
     });
 
-    const html = state.families
+    const { col, dir } = sortState.families;
+    const valFn = (f) => {
+      if (col === "carpool") return f.carpool_number;
+      if (col === "parents") return f.parent_names || "";
+      if (col === "contact") return f.contact_info || "";
+      if (col === "students") return (byFamily.get(f.id) || []).length;
+      return 0;
+    };
+    const sorted = sortedBy(state.families, col, dir, valFn);
+
+    const html = sorted
       .map((f) => {
         const students = byFamily.get(f.id) || [];
         return `<tr>
@@ -105,31 +148,93 @@
       .join("");
 
     el("families-tbody").innerHTML = html || '<tr><td colspan="5" class="muted">No families yet.</td></tr>';
+    applySortHeaders("families-table", col, dir);
   }
 
   function renderClasses() {
     const counts = new Map();
-    state.students.forEach((s) => counts.set(s.class_id, (counts.get(s.class_id) || 0) + 1));
+    const studentsByClass = new Map();
+    state.students.forEach((s) => {
+      counts.set(s.class_id, (counts.get(s.class_id) || 0) + 1);
+      const arr = studentsByClass.get(s.class_id) || [];
+      arr.push(s);
+      studentsByClass.set(s.class_id, arr);
+    });
 
-    const html = state.classes
+    const { col, dir } = sortState.classes;
+    const valFn = (c) => {
+      if (col === "name") return c.name;
+      if (col === "order") return c.display_order;
+      if (col === "count") return counts.get(c.id) || 0;
+      return 0;
+    };
+    const sorted = sortedBy(state.classes, col, dir, valFn);
+
+    const html = sorted
       .map((c) => {
-        return `<tr>
+        const count = counts.get(c.id) || 0;
+        const classStudents = (studentsByClass.get(c.id) || [])
+          .sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name));
+        const studentRows = classStudents
+          .map(s => `<tr class="student-subrow">
+            <td>${escapeHtml(studentLabel(s))}</td>
+            <td>${escapeHtml(s.families ? String(s.families.carpool_number) : "")}</td>
+          </tr>`)
+          .join("");
+
+        return `<tr class="class-row" data-class-id="${escapeHtml(c.id)}">
+          <td class="chevron-cell">
+            <button class="chevron-btn" aria-label="Expand students" aria-expanded="false">&#8250;</button>
+          </td>
           <td>${escapeHtml(c.name)}</td>
           <td>${escapeHtml(String(c.display_order))}</td>
-          <td>${escapeHtml(String(counts.get(c.id) || 0))}</td>
+          <td>${escapeHtml(String(count))}</td>
           <td class="inline">
             <button class="btn btn-secondary" data-edit-class="${escapeHtml(c.id)}">Edit</button>
             <button class="btn btn-secondary" data-delete-class="${escapeHtml(c.id)}">Delete</button>
+          </td>
+        </tr>
+        <tr class="class-detail-row hidden" data-detail-for="${escapeHtml(c.id)}">
+          <td></td>
+          <td colspan="4">
+            <table class="detail-table">
+              <thead><tr><th>Student</th><th>Carpool #</th></tr></thead>
+              <tbody>${studentRows || '<tr><td colspan="2" class="muted">No students in this class.</td></tr>'}</tbody>
+            </table>
           </td>
         </tr>`;
       })
       .join("");
 
-    el("classes-tbody").innerHTML = html || '<tr><td colspan="4" class="muted">No classes yet.</td></tr>';
+    el("classes-tbody").innerHTML = html || '<tr><td colspan="5" class="muted">No classes yet.</td></tr>';
+    applySortHeaders("classes-table", col, dir);
+
+    el("classes-tbody").querySelectorAll(".chevron-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const row = btn.closest("tr");
+        const classId = row.dataset.classId;
+        const detailRow = el("classes-tbody").querySelector(`[data-detail-for="${classId}"]`);
+        if (!detailRow) return;
+        const expanded = !detailRow.classList.contains("hidden");
+        detailRow.classList.toggle("hidden", expanded);
+        btn.setAttribute("aria-expanded", String(!expanded));
+        btn.classList.toggle("open", !expanded);
+      });
+    });
   }
 
   function renderStudents() {
-    const html = state.students
+    const { col, dir } = sortState.students;
+    const valFn = (s) => {
+      if (col === "name") return `${s.last_name} ${s.first_name}`;
+      if (col === "class") return s.classes ? s.classes.name : "";
+      if (col === "family") return s.families ? s.families.parent_names : "";
+      if (col === "carpool") return s.families ? s.families.carpool_number : 0;
+      return "";
+    };
+    const sorted = sortedBy(state.students, col, dir, valFn);
+
+    const html = sorted
       .map((s) => {
         return `<tr>
           <td>${escapeHtml(studentLabel(s))}</td>
@@ -145,39 +250,12 @@
       .join("");
 
     el("students-tbody").innerHTML = html || '<tr><td colspan="5" class="muted">No students yet.</td></tr>';
-  }
-
-  function renderOverview() {
-    const byClass = new Map();
-    state.classes.forEach((cls) => byClass.set(cls.id, { name: cls.name, students: [] }));
-
-    state.students.forEach((s) => {
-      if (!byClass.has(s.class_id)) return;
-      byClass.get(s.class_id).students.push({
-        name: studentLabel(s),
-        family: s.families ? s.families.parent_names : "",
-        carpool: s.families ? s.families.carpool_number : ""
-      });
-    });
-
-    const html = state.classes
-      .map((cls) => {
-        const group = byClass.get(cls.id);
-        const items = (group.students || [])
-          .map((x) => `<li>${escapeHtml(x.name)} - ${escapeHtml(x.family)} (#${escapeHtml(String(x.carpool))})</li>`)
-          .join("");
-
-        return `<div class="card"><h3>${escapeHtml(cls.name)}</h3><ul>${items || '<li class="muted">No students</li>'}</ul></div>`;
-      })
-      .join("");
-
-    el("overview-grid").innerHTML = html || '<p class="muted">No classes configured.</p>';
+    applySortHeaders("students-table", col, dir);
   }
 
   function renderToday() {
     const calledRows = state.dailyStatus.filter((s) => s.status === "CALLED");
     const parentRows = state.dailyStatus.filter((s) => (s.called_by || "").toLowerCase() === "parent");
-
     const calledIds = new Set(calledRows.map((s) => s.student_id));
     const waiting = state.students.length - calledIds.size;
 
@@ -187,12 +265,25 @@
     el("today-parent-count").textContent = String(parentRows.length);
 
     const byId = new Map(state.students.map((s) => [s.id, s]));
-    const rows = state.dailyStatus
-      .map((rec) => {
-        const stu = byId.get(rec.student_id);
+    const enriched = state.dailyStatus.map((rec) => ({ rec, stu: byId.get(rec.student_id) }));
+
+    const { col, dir } = sortState.today;
+    const valFn = ({ rec, stu }) => {
+      if (col === "time") return rec.called_at || "";
+      if (col === "student") return stu ? `${stu.last_name} ${stu.first_name}` : "";
+      if (col === "class") return stu && stu.classes ? stu.classes.name : "";
+      if (col === "family") return stu && stu.families ? stu.families.parent_names : "";
+      if (col === "carpool") return stu && stu.families ? stu.families.carpool_number : 0;
+      if (col === "status") return rec.status || "";
+      if (col === "source") return rec.called_by || "";
+      return "";
+    };
+    const sorted = sortedBy(enriched, col, dir, valFn);
+
+    const rows = sorted
+      .map(({ rec, stu }) => {
         const time = rec.called_at ? new Date(rec.called_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-";
         const statusClass = rec.status === "CALLED" ? "status status-called" : "status status-waiting";
-
         return `<tr>
           <td>${escapeHtml(time)}</td>
           <td>${escapeHtml(stu ? studentLabel(stu) : "Unknown student")}</td>
@@ -206,6 +297,7 @@
       .join("");
 
     el("today-attempts-tbody").innerHTML = rows || '<tr><td colspan="7" class="muted">No dismissal attempts yet today.</td></tr>';
+    applySortHeaders("today-table", col, dir);
   }
 
   function renderAll() {
@@ -213,7 +305,6 @@
     renderFamilies();
     renderClasses();
     renderStudents();
-    renderOverview();
   }
 
   async function refreshAndRender() {
@@ -260,7 +351,8 @@
         })
         .join("");
 
-      const classOptions = state.classes
+      const classOptions = [...state.classes]
+        .sort((a, b) => a.name.localeCompare(b.name))
         .map((c) => {
           const selected = data && data.class_id === c.id ? "selected" : "";
           return `<option value="${escapeHtml(c.id)}" ${selected}>${escapeHtml(classLabel(c))}</option>`;
@@ -573,6 +665,32 @@
     await refreshAndRender();
   }
 
+  function bindSortHandlers() {
+    const tableRenderMap = {
+      today: renderToday,
+      students: renderStudents,
+      families: renderFamilies,
+      classes: renderClasses
+    };
+
+    ["today", "students", "families", "classes"].forEach(key => {
+      const table = el(`${key}-table`);
+      if (!table) return;
+      table.querySelectorAll("th[data-sort]").forEach(th => {
+        th.addEventListener("click", () => {
+          const clickedCol = th.dataset.sort;
+          if (sortState[key].col === clickedCol) {
+            sortState[key].dir = sortState[key].dir === "asc" ? "desc" : "asc";
+          } else {
+            sortState[key].col = clickedCol;
+            sortState[key].dir = "asc";
+          }
+          tableRenderMap[key]();
+        });
+      });
+    });
+  }
+
   function bindUi() {
     el("admin-login-btn").addEventListener("click", async () => {
       show("admin-login-error", false);
@@ -653,6 +771,8 @@
         deleteStudent(deleteBtn.dataset.deleteStudent);
       }
     });
+
+    bindSortHandlers();
   }
 
   async function init() {
