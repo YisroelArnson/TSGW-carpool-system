@@ -28,9 +28,10 @@
 
   function deriveRoute() {
     const parts = window.location.pathname.split("/").filter(Boolean);
-    if (parts[0] !== "classroom") return;
+    const classroomIdx = parts.indexOf("classroom");
+    if (classroomIdx === -1) return;
 
-    const classIdFromPath = parts[1] || null;
+    const classIdFromPath = parts[classroomIdx + 1] || null;
     const classIdFromQuery = new URLSearchParams(window.location.search).get("classId");
     const classId = classIdFromPath || classIdFromQuery;
 
