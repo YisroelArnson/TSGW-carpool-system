@@ -106,7 +106,7 @@
     grid.querySelectorAll("[data-class-id]").forEach((node) => {
       node.addEventListener("click", () => {
         const classId = node.dataset.classId;
-        window.location.href = `/classroom/?classId=${classId}`;
+        window.location.href = `?classId=${classId}`;
       });
     });
   }
