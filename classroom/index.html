@@ -242,16 +242,24 @@
       }
 
       .hub-student-card {
-        min-height: 96px;
+        min-height: 82px;
         border-radius: 14px;
-        padding: 14px 12px;
+        padding: 12px 10px;
         background: var(--surface-white);
         border: 1px solid var(--border-light);
         display: flex;
         flex-direction: column;
         justify-content: center;
-        gap: 8px;
+        gap: 6px;
         text-align: center;
+      }
+
+      .hub-student-name-line {
+        display: flex;
+        justify-content: center;
+        align-items: baseline;
+        gap: 6px;
+        flex-wrap: wrap;
       }
 
       .hub-student-card .student-name {
@@ -260,7 +268,7 @@
       }
 
       .hub-student-card .student-class {
-        font-size: 0.76rem;
+        font-size: 0.74rem;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--text-muted);
@@ -342,45 +350,60 @@
         content: none;
       }
 
-      .display-callout {
-        display: none;
-        min-width: min(420px, 45vw);
-        max-width: 48vw;
-        background: rgba(255, 255, 255, 0.14);
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        border-radius: 18px;
-        padding: 14px 18px;
+      .display-alert-overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(22, 17, 12, 0.45);
+        z-index: 30;
+        pointer-events: none;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.45s ease, visibility 0.45s ease;
+      }
+
+      .display-alert-overlay.visible {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      .display-alert-modal {
+        width: min(900px, calc(100vw - 48px));
+        border-radius: 28px;
+        padding: clamp(28px, 3vw, 42px);
+        background:
+          radial-gradient(circle at top, rgba(255, 255, 255, 0.14), transparent 55%),
+          linear-gradient(145deg, #6b2d5b, #8b496f 55%, #c4975c 140%);
+        box-shadow: 0 28px 70px rgba(0, 0, 0, 0.35);
+        text-align: center;
         color: #fff;
-        text-align: right;
       }
 
-      .display-callout.visible {
-        display: block;
-        animation: calloutPop 1.4s ease;
-      }
-
-      .display-callout-label {
-        display: block;
-        font-size: 0.7rem;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--brand-gold);
+      .display-alert-eyebrow {
+        font-size: 0.92rem;
         font-weight: 700;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.84);
       }
 
-      .display-callout-name {
-        display: block;
-        margin-top: 4px;
+      .display-alert-title {
+        margin: 12px 0 8px;
         font-family: "Playfair Display", Georgia, serif;
-        font-size: clamp(1.4rem, 2.6vw, 2.2rem);
+        font-size: clamp(2.8rem, 6vw, 5rem);
         font-weight: 800;
+        line-height: 0.95;
       }
 
-      @keyframes calloutPop {
-        0% { opacity: 0; transform: translateY(8px) scale(0.98); }
-        20% { opacity: 1; transform: translateY(0) scale(1); }
-        70% { opacity: 1; transform: translateY(0) scale(1); }
-        100% { opacity: 1; transform: translateY(0) scale(1); }
+      .display-alert-class {
+        font-size: clamp(1rem, 2vw, 1.45rem);
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.88);
       }
 
       .projector-gold-rule {
@@ -393,9 +416,9 @@
       .projector #display-grid {
         flex: 1;
         display: grid !important;
-        grid-template-columns: repeat(auto-fill, minmax(min(280px, calc(50vw - 28px)), 1fr)) !important;
-        gap: clamp(12px, 1.8vw, 22px) !important;
-        padding: clamp(20px, 2.5vw, 36px);
+        grid-template-columns: repeat(auto-fill, minmax(min(230px, calc(33vw - 20px)), 1fr)) !important;
+        gap: clamp(10px, 1.3vw, 16px) !important;
+        padding: clamp(16px, 2vw, 28px);
         align-content: start;
         overflow-y: auto;
       }
@@ -403,8 +426,8 @@
       /* Student cards */
       .projector .student-card {
         border-radius: 14px;
-        height: clamp(110px, 15vh, 160px);
-        font-size: clamp(1.3rem, 2.4vw, 1.9rem);
+        min-height: clamp(76px, 11vh, 112px);
+        font-size: clamp(1rem, 1.8vw, 1.45rem);
         font-weight: 700;
         font-family: "Open Sans", sans-serif;
         border: none;
@@ -412,8 +435,27 @@
         align-items: center;
         justify-content: center;
         text-align: center;
-        padding: 20px;
+        padding: 12px 14px;
         transition: background-color 0.45s ease, color 0.3s ease, box-shadow 0.45s ease;
+      }
+
+      .projector .student-card-label {
+        display: flex;
+        align-items: baseline;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .projector .student-card-name {
+        font-weight: 700;
+      }
+
+      .projector .student-card-class {
+        font-size: 0.72em;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.82;
       }
 
       .projector .student-card.waiting {
@@ -429,16 +471,6 @@
         font-weight: 800;
         border: none;
         box-shadow: 0 4px 20px rgba(42, 125, 49, 0.35);
-      }
-
-      .projector .student-card.called-recent {
-        animation: calledPulse 1.8s ease;
-      }
-
-      @keyframes calledPulse {
-        0% { transform: scale(0.98); box-shadow: 0 0 0 0 rgba(42, 125, 49, 0.55); }
-        35% { transform: scale(1.02); box-shadow: 0 0 0 22px rgba(42, 125, 49, 0); }
-        100% { transform: scale(1); box-shadow: 0 4px 20px rgba(42, 125, 49, 0.35); }
       }
 
       /* ─ Hub responsive breakpoints ─ */
@@ -470,11 +502,9 @@
           align-items: flex-start;
         }
 
-        .display-callout {
-          min-width: 0;
-          max-width: none;
+        .display-alert-modal {
           width: 100%;
-          text-align: left;
+          padding: 28px 22px;
         }
       }
     </style>
@@ -526,13 +556,16 @@
             <h1 id="display-class-name">Class</h1>
             <span class="display-sub">Dismissal</span>
           </div>
-          <div id="display-callout" class="display-callout" aria-live="polite">
-            <span class="display-callout-label">Now Calling</span>
-            <span id="display-callout-name" class="display-callout-name"></span>
-          </div>
         </div>
         <div class="projector-gold-rule"></div>
         <div id="display-grid" class="grid student-grid"></div>
+        <div id="display-alert-overlay" class="display-alert-overlay" aria-live="assertive">
+          <div class="display-alert-modal">
+            <div class="display-alert-eyebrow">Attention</div>
+            <div id="display-alert-title" class="display-alert-title"></div>
+            <div id="display-alert-class" class="display-alert-class"></div>
+          </div>
+        </div>
       </section>
 
       <section id="classroom-error" class="card hidden">

@@ -2,6 +2,9 @@
   const { mustClient, schoolTodayISO, fetchSchoolToday, show, escapeHtml } = window.carpoolUtils || {};
   if (!mustClient) return;
 
+  const ALERT_VISIBLE_MS = 3000;
+  const ALERT_FADE_MS = 450;
+
   const state = {
     mode: "hub",
     classIds: [],
@@ -15,7 +18,7 @@
     selectedHubClassIds: new Set(),
     channel: null,
     syncInterval: null,
-    calloutTimer: null,
+    alertTimer: null,
     audioContext: null,
     alertQueue: [],
     activeAlertStudentId: null
@@ -121,9 +124,7 @@
       .filter(Boolean);
 
     if (!selectedClasses.length) return "Classroom";
-    if (selectedClasses.length === 1) return selectedClasses[0].name;
-    if (selectedClasses.length === 2) return `${selectedClasses[0].name} + ${selectedClasses[1].name}`;
-    return `${selectedClasses[0].name} + ${selectedClasses.length - 1} more`;
+    return selectedClasses.map((cls) => cls.name).join(" • ");
   }
 
   function getSortedStudents(classIds) {
@@ -166,9 +167,10 @@
   function hubStudentCardHtml(student) {
     const status = state.statusesByStudent.get(student.id) || "WAITING";
     return `<div class="hub-student-card ${status === "CALLED" ? "called" : "waiting"}" data-hub-student-id="${escapeHtml(student.id)}">
-      <div class="student-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</div>
-      <div class="student-class">${escapeHtml(getClassName(student.class_id))}</div>
-      <span class="status ${status === "CALLED" ? "status-called" : "status-waiting"}">${escapeHtml(status)}</span>
+      <div class="hub-student-name-line">
+        <span class="student-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
+        <span class="student-class">${escapeHtml(getClassName(student.class_id))}</span>
+      </div>
     </div>`;
   }
 
@@ -207,8 +209,12 @@
   function displayStudentCardHtml(student) {
     const status = state.statusesByStudent.get(student.id) || "WAITING";
     const klass = status === "CALLED" ? "called" : "waiting";
+    const classLabel = state.classIds.length > 1 ? `<span class="student-card-class">${escapeHtml(getClassName(student.class_id))}</span>` : "";
     return `<div class="student-card ${klass}" data-student-id="${escapeHtml(student.id)}">
-      <div>${escapeHtml(`${student.last_name}, ${student.first_name}`)}</div>
+      <div class="student-card-label">
+        <span class="student-card-name">${escapeHtml(`${student.last_name}, ${student.first_name}`)}</span>
+        ${classLabel}
+      </div>
     </div>`;
   }
 
@@ -224,8 +230,6 @@
 
     state.classIds = selectedClasses;
     el("display-class-name").textContent = getDisplayClassTitle();
-    el("display-callout-name").textContent = "";
-    el("display-callout").classList.remove("visible");
     el("display-grid").innerHTML = getSortedStudents(selectedClasses).map(displayStudentCardHtml).join("");
   }
 
@@ -254,24 +258,15 @@
     node.classList.toggle("called", status === "CALLED");
     node.classList.toggle("waiting", status !== "CALLED");
 
-    const pill = node.querySelector(".status");
-    if (!pill) return;
-    pill.textContent = status;
-    pill.className = `status ${status === "CALLED" ? "status-called" : "status-waiting"}`;
   }
 
-  function updateDisplayStudent(studentId, shouldPulse) {
+  function updateDisplayStudent(studentId) {
     const node = document.querySelector(`[data-student-id="${studentId}"]`);
     if (!node) return;
 
     const status = state.statusesByStudent.get(studentId) || "WAITING";
-    node.classList.remove("waiting", "called", "called-recent");
+    node.classList.remove("waiting", "called");
     node.classList.add(status === "CALLED" ? "called" : "waiting");
-
-    if (shouldPulse && status === "CALLED") {
-      node.classList.add("called-recent");
-      window.setTimeout(() => node.classList.remove("called-recent"), 1800);
-    }
   }
 
   function applyDelta(oldStatus, newStatus, studentId) {
@@ -300,22 +295,18 @@
     }
 
     const start = ctx.currentTime + 0.01;
-    [
-      { freq: 784, duration: 0.14 },
-      { freq: 1047, duration: 0.24, offset: 0.16 }
-    ].forEach((tone) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = tone.freq;
-      gain.gain.setValueAtTime(0.0001, start + (tone.offset || 0));
-      gain.gain.exponentialRampToValueAtTime(0.12, start + (tone.offset || 0) + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + (tone.offset || 0) + tone.duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start + (tone.offset || 0));
-      osc.stop(start + (tone.offset || 0) + tone.duration);
-    });
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = 1046.5;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.22, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.08, start + 0.22);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 1.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + 1.4);
   }
 
   function processAlertQueue() {
@@ -328,31 +319,34 @@
       return;
     }
 
-    const callout = el("display-callout");
-    const calloutName = el("display-callout-name");
-    if (!callout || !calloutName) return;
+    const alertOverlay = el("display-alert-overlay");
+    const alertTitle = el("display-alert-title");
+    const alertClass = el("display-alert-class");
+    if (!alertOverlay || !alertTitle || !alertClass) return;
 
     state.activeAlertStudentId = studentId;
+    const className = getClassName(student.class_id);
 
-    calloutName.textContent =
-      state.classIds.length > 1
-        ? `${student.first_name} ${student.last_name} · ${getClassName(student.class_id)}`
-        : `${student.first_name} ${student.last_name}`;
-    callout.classList.remove("visible");
-    void callout.offsetWidth;
-    callout.classList.add("visible");
+    alertTitle.textContent = `${student.first_name} ${student.last_name}`;
+    alertClass.textContent = className;
+    alertOverlay.classList.remove("visible");
+    void alertOverlay.offsetWidth;
+    alertOverlay.classList.add("visible");
 
-    if (state.calloutTimer) {
-      clearTimeout(state.calloutTimer);
+    if (state.alertTimer) {
+      clearTimeout(state.alertTimer);
     }
 
-    state.calloutTimer = window.setTimeout(() => {
-      callout.classList.remove("visible");
-      state.activeAlertStudentId = null;
-      processAlertQueue();
-    }, 3200);
-
     playChime();
+
+    state.alertTimer = window.setTimeout(() => {
+      alertOverlay.classList.remove("visible");
+
+      state.alertTimer = window.setTimeout(() => {
+        state.activeAlertStudentId = null;
+        processAlertQueue();
+      }, ALERT_FADE_MS);
+    }, ALERT_VISIBLE_MS);
   }
 
   function queueCalledStudent(studentId) {
@@ -378,7 +372,7 @@
 
     if (state.mode === "display" && state.classIds.includes(classId)) {
       const becameCalled = oldStatus !== "CALLED" && newStatus === "CALLED";
-      updateDisplayStudent(studentId, becameCalled);
+      updateDisplayStudent(studentId);
       if (becameCalled) queueCalledStudent(studentId);
     }
   }
@@ -466,7 +460,7 @@
 
   window.addEventListener("beforeunload", () => {
     if (state.syncInterval) clearInterval(state.syncInterval);
-    if (state.calloutTimer) clearTimeout(state.calloutTimer);
+    if (state.alertTimer) clearTimeout(state.alertTimer);
     if (state.channel && window.carpoolClient) {
       window.carpoolClient.removeChannel(state.channel);
     }

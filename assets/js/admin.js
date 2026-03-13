@@ -324,9 +324,10 @@
         const cardClass = status === "CALLED" ? "all-students-card called" : "all-students-card";
         const className = student.classes ? student.classes.name : "";
         return `<div class="${cardClass}">
-          <div class="all-students-name">${escapeHtml(student.first_name)} ${escapeHtml(student.last_name)}</div>
-          <div class="all-students-meta">${escapeHtml(className)}</div>
-          <span class="status ${status === "CALLED" ? "status-called" : "status-waiting"}">${escapeHtml(status)}</span>
+          <div class="all-students-name-line">
+            <span class="all-students-name">${escapeHtml(student.first_name)} ${escapeHtml(student.last_name)}</span>
+            <span class="all-students-meta">${escapeHtml(className)}</span>
+          </div>
         </div>`;
       })
       .join("");

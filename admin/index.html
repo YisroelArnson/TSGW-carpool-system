@@ -218,20 +218,28 @@
       .all-students-card {
         border: 1px solid var(--border-light);
         border-radius: 14px;
-        padding: 14px 12px;
-        background: var(--surface-ivory);
-        min-height: 108px;
+        padding: 12px 10px;
+        background: var(--surface-white);
+        min-height: 82px;
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
         text-align: center;
-        gap: 7px;
+        gap: 6px;
       }
 
       .all-students-card.called {
         background: #e8f7ea;
         border-color: rgba(42, 125, 49, 0.3);
+      }
+
+      .all-students-name-line {
+        display: flex;
+        justify-content: center;
+        align-items: baseline;
+        gap: 6px;
+        flex-wrap: wrap;
       }
 
       .all-students-name {
