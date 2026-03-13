@@ -6,7 +6,9 @@
     today: schoolTodayISO(),
     students: [],
     statuses: new Map(),
-    channel: null
+    channel: null,
+    context: null,
+    selectedByFamily: new Map()
   };
 
   function el(id) {
@@ -97,57 +99,177 @@
     if (error) throw error;
   }
 
-  async function spotterCheckIn() {
+  async function getCheckinContext(number) {
+    const client = mustClient();
+    const { data, error } = await client.rpc("get_parent_checkin_context", {
+      p_carpool_number: Number(number)
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function submitCheckInRequest(number, targets) {
+    const client = mustClient();
+    const { data, error } = await client.rpc("submit_check_in_request", {
+      p_requesting_carpool_number: Number(number),
+      p_targets: targets,
+      p_called_by: "spotter"
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  function contextCards() {
+    if (!state.context) return [];
+    const own = state.context.requesting_family;
+    const cards = [{
+      family_id: own.family_id,
+      carpool_number: own.carpool_number,
+      parent_names: own.parent_names,
+      label: "Entered Carpool",
+      note: "Primary family for this number",
+      students: state.context.own_students || []
+    }];
+
+    (state.context.authorized_pickups || []).forEach((family) => {
+      cards.push({
+        family_id: family.family_id,
+        carpool_number: family.carpool_number,
+        parent_names: family.parent_names,
+        label: "Authorized Pickup",
+        note: `Authorized from ${family.starts_on} to ${family.ends_on}`,
+        students: family.students || []
+      });
+    });
+
+    return cards;
+  }
+
+  function resetTopSelections() {
+    state.selectedByFamily = new Map();
+    contextCards().forEach((card) => state.selectedByFamily.set(card.family_id, new Set()));
+  }
+
+  function selectedCount() {
+    let total = 0;
+    state.selectedByFamily.forEach((set) => {
+      total += set.size;
+    });
+    return total;
+  }
+
+  function cardHtml(card) {
+    const selected = state.selectedByFamily.get(card.family_id) || new Set();
+    return `
+      <article class="spotter-family-card">
+        <div class="spotter-family-head">
+          <div>
+            <p class="spotter-family-label">${escapeHtml(card.label)}</p>
+            <h3>${escapeHtml(card.parent_names)}</h3>
+            <p class="spotter-family-meta">Carpool #${escapeHtml(String(card.carpool_number))}</p>
+          </div>
+          <button type="button" class="btn btn-accent" data-select-family="${escapeHtml(card.family_id)}">All ${card.students.length}</button>
+        </div>
+        <p class="spotter-family-note">${escapeHtml(card.note)}</p>
+        <div class="spotter-student-grid">
+          ${card.students.map((student) => {
+            const studentId = String(student.student_id);
+            const isSelected = selected.has(studentId);
+            return `
+              <button
+                type="button"
+                class="btn btn-primary spotter-student-pick${isSelected ? " selected" : ""}"
+                data-family-id="${escapeHtml(card.family_id)}"
+                data-student-id="${escapeHtml(studentId)}"
+                aria-pressed="${isSelected ? "true" : "false"}"
+              >
+                <span class="spotter-student-copy">
+                  <span class="spotter-student-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
+                  <small>${escapeHtml(student.class_name || "")}</small>
+                </span>
+              </button>
+            `;
+          }).join("")}
+        </div>
+      </article>
+    `;
+  }
+
+  function renderContextPanel() {
+    const panel = el("spotter-context-panel");
+    if (!state.context) {
+      panel.innerHTML = "";
+      show("spotter-context-panel", false);
+      return;
+    }
+
+    const cards = contextCards();
+    panel.innerHTML = `
+      <div class="spotter-context-grid">${cards.map(cardHtml).join("")}</div>
+      <p id="spotter-selection-summary" class="spotter-selection-summary">${
+        selectedCount() ? `${selectedCount()} student${selectedCount() === 1 ? "" : "s"} selected` : "Choose students or tap All."
+      }</p>
+      <button type="button" id="spotter-submit-selection" class="btn btn-primary spotter-submit-selection" ${selectedCount() ? "" : "disabled"}>Check In Selected Students</button>
+    `;
+    show("spotter-context-panel", true);
+  }
+
+  async function lookupCarpool() {
     const number = el("spotter-carpool-input").value.trim();
     if (!number) {
       setMessage("Enter a carpool number.", "error");
       return;
     }
 
-    const client = mustClient();
-    setMessage("");
-
-    const family = await client.from("families").select("id").eq("carpool_number", Number(number)).maybeSingle();
-    if (family.error) {
-      setMessage("Unable to look up family.", "error");
-      return;
+    try {
+      state.context = await getCheckinContext(number);
+      resetTopSelections();
+      renderContextPanel();
+      setMessage("");
+    } catch (error) {
+      state.context = null;
+      renderContextPanel();
+      setMessage(error.message || `Number not found: ${number}`, "error");
     }
-    if (!family.data) {
-      setMessage(`Number not found: ${number}`, "error");
-      return;
-    }
+  }
 
-    const studentsRes = await client
-      .from("students")
-      .select("id,first_name,last_name")
-      .eq("family_id", family.data.id)
-      .order("last_name");
+  function collectTargets() {
+    const targets = [];
+    state.selectedByFamily.forEach((set, familyId) => {
+      if (!set.size) return;
+      targets.push({
+        family_id: familyId,
+        student_ids: Array.from(set)
+      });
+    });
+    return targets;
+  }
 
-    if (studentsRes.error || !studentsRes.data.length) {
-      setMessage("No students found for that family.", "error");
-      return;
-    }
-
-    const payload = studentsRes.data.map((s) => ({
-      student_id: s.id,
-      date: state.today,
-      status: "CALLED",
-      called_at: new Date().toISOString(),
-      called_by: "spotter"
-    }));
-
-    const upsertRes = await client.from("daily_status").upsert(payload, { onConflict: "student_id,date" });
-    if (upsertRes.error) {
-      setMessage("Failed to check in family.", "error");
+  async function submitSelected() {
+    const number = el("spotter-carpool-input").value.trim();
+    const targets = collectTargets();
+    if (!number || !targets.length) {
+      setMessage("Choose at least one student.", "error");
       return;
     }
 
-    studentsRes.data.forEach((s) => state.statuses.set(s.id, "CALLED"));
-    renderTable();
-
-    setMessage(`${studentsRes.data.map((s) => `${s.first_name} ${s.last_name}`).join(", ")} called`, "success");
-    el("spotter-carpool-input").value = "";
-    el("spotter-carpool-input").focus();
+    try {
+      const result = await submitCheckInRequest(number, targets);
+      (result.families || []).forEach((family) => {
+        (family.students || []).forEach((student) => state.statuses.set(student.student_id, "CALLED"));
+      });
+      renderTable();
+      const names = (result.families || []).flatMap((family) =>
+        (family.students || []).map((student) => `${student.first_name} ${student.last_name}`)
+      );
+      setMessage(`${names.join(", ")} called`, "success");
+      state.context = null;
+      renderContextPanel();
+      el("spotter-carpool-input").value = "";
+      el("spotter-carpool-input").focus();
+    } catch (error) {
+      setMessage(error.message || "Unable to check in selection.", "error");
+    }
   }
 
   async function fetchRoster() {
@@ -191,11 +313,38 @@
   }
 
   function bindUI() {
-    el("spotter-checkin-btn").addEventListener("click", spotterCheckIn);
+    el("spotter-checkin-btn").addEventListener("click", lookupCarpool);
     el("spotter-carpool-input").addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
-        spotterCheckIn();
+        lookupCarpool();
+      }
+    });
+
+    el("spotter-context-panel").addEventListener("click", (event) => {
+      const studentBtn = event.target.closest("[data-student-id]");
+      if (studentBtn) {
+        const familyId = studentBtn.dataset.familyId;
+        const studentId = studentBtn.dataset.studentId;
+        const set = state.selectedByFamily.get(familyId) || new Set();
+        if (set.has(studentId)) set.delete(studentId);
+        else set.add(studentId);
+        state.selectedByFamily.set(familyId, set);
+        renderContextPanel();
+        return;
+      }
+
+      const familyBtn = event.target.closest("[data-select-family]");
+      if (familyBtn) {
+        const familyId = familyBtn.dataset.selectFamily;
+        const card = contextCards().find((item) => item.family_id === familyId);
+        state.selectedByFamily.set(familyId, new Set((card?.students || []).map((student) => String(student.student_id))));
+        renderContextPanel();
+        return;
+      }
+
+      if (event.target.closest("#spotter-submit-selection")) {
+        submitSelected();
       }
     });
 

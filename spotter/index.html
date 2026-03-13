@@ -218,6 +218,122 @@
       #spotter-checkin-message.success { color: #1e6a23; }
       #spotter-checkin-message.error   { color: var(--status-danger); }
 
+      #spotter-context-panel {
+        display: grid;
+        gap: 10px;
+      }
+
+      .spotter-context-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .spotter-family-card {
+        border: 1px solid var(--border-light);
+        border-radius: 14px;
+        background: var(--surface-ivory);
+        padding: 12px;
+      }
+
+      .spotter-family-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .spotter-family-label {
+        margin: 0 0 2px;
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+      }
+
+      .spotter-family-card h3 {
+        margin: 0;
+        font-size: 0.96rem;
+        line-height: 1.15;
+      }
+
+      .spotter-family-meta,
+      .spotter-family-note,
+      .spotter-selection-summary {
+        margin: 4px 0 0;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+      }
+
+      .spotter-student-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .spotter-student-pick {
+        min-height: 52px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .spotter-student-copy {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .spotter-student-name {
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .spotter-student-pick small {
+        display: inline;
+        margin-top: 0;
+        font-size: 0.72rem;
+        font-weight: 700;
+        opacity: 0.82;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .spotter-student-pick.selected {
+        background: #2a7d31 !important;
+        color: #fff;
+      }
+
+      .spotter-student-pick.selected small {
+        color: rgba(255, 255, 255, 0.88);
+      }
+
+      .spotter-family-head .btn {
+        padding: 9px 14px;
+        font-size: 0.86rem;
+        border-radius: 10px;
+      }
+
+      .spotter-submit-selection {
+        width: 100%;
+        padding: 12px 16px;
+      }
+
+      @media (max-width: 640px) {
+        .spotter-student-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
       /* ─ Search & sort bar ─ */
       .filter-bar {
         display: flex;
@@ -505,6 +621,7 @@
             <button id="spotter-checkin-btn">Check In</button>
           </div>
           <p id="spotter-checkin-message" class="hidden"></p>
+          <div id="spotter-context-panel" class="hidden"></div>
         </div>
 
         <!-- Filter bar -->

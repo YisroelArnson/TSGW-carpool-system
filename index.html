@@ -79,7 +79,7 @@
       /* ─ Card shell ─ */
       .parent-card {
         width: 100%;
-        max-width: 390px;
+        max-width: 540px;
         background: var(--surface-white);
         border-radius: 20px;
         box-shadow:
@@ -88,6 +88,17 @@
           0 16px 48px rgba(0, 0, 0, 0.07);
         overflow: hidden;
         animation: fadeUp 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+
+      .students-flow {
+        width: 100%;
+        max-width: 540px;
+        display: grid;
+        gap: 24px;
+      }
+
+      .module-card {
+        padding: 32px 28px;
       }
 
       @keyframes fadeUp {
@@ -250,11 +261,11 @@
       /* ─ Students ─ */
       .students-heading {
         font-family: "Playfair Display", Georgia, serif;
-        font-size: 1.2rem;
+        font-size: 1.65rem;
         font-weight: 700;
         color: var(--text-dark);
         text-align: center;
-        margin: 0 0 18px;
+        margin: 0 0 24px;
       }
 
       #students-buttons {
@@ -263,13 +274,214 @@
         gap: 8px;
       }
 
-      .students-toolbar {
+      .checkin-shell,
+      .manage-shell,
+      .family-card,
+      .authorization-card,
+      .authorization-form,
+      .lookup-family-box {
+        border: 1px solid var(--border-light);
+        border-radius: 16px;
+        padding: 18px;
+        background: var(--surface-ivory);
+      }
+
+      .checkin-shell,
+      .manage-shell {
+        border: none;
+        border-radius: 0;
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      .manage-shell {
+        margin-top: 0;
+      }
+
+      .family-card + .family-card,
+      .authorization-card + .authorization-card {
+        margin-top: 12px;
+      }
+
+      .family-card-head,
+      .authorization-card-head {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .family-card-hero {
+        display: grid;
+        gap: 8px;
+        padding-bottom: 4px;
+      }
+
+      .family-card-label,
+      .authorization-status {
+        margin: 0 0 4px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+
+      .family-card h3,
+      .authorization-card h3,
+      .lookup-family-box h3 {
+        margin: 0;
+        font-size: 1.8rem;
+        line-height: 1.15;
+      }
+
+      .family-card-number {
+        margin: 0;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 2.8rem;
+        font-weight: 800;
+        color: var(--brand-maroon);
+        line-height: 1;
+      }
+
+      .family-card-meta,
+      .family-card-note,
+      .authorization-dates,
+      .authorization-students {
+        margin: 6px 0 0;
+        color: var(--text-muted);
+        font-size: 0.86rem;
+      }
+
+      .family-students {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .student-pick {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        min-height: 64px;
+        width: 100%;
+      }
+
+      .student-pick-content {
+        display: inline-flex;
+        align-items: baseline;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding-right: 72px;
+      }
+
+      .student-pick-name {
+        font-weight: 700;
+      }
+
+      .student-pick small,
+      .student-pick-grade {
+        margin: 0;
+        font-size: 0.8rem;
+        font-weight: 600;
+        opacity: 0.84;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .authorization-grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .authorization-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        margin-top: 8px;
+      }
+
+      .authorization-form {
+        margin-top: 18px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .authorization-form .form-row {
+        display: grid;
         gap: 8px;
       }
 
-      #students-buttons .btn {
+      .authorization-form label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+
+      .authorization-form input {
+        width: 100%;
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        padding: 12px 14px;
+        font-size: 0.96rem;
+        background: #fff;
+      }
+
+      .authorization-inline {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+      }
+
+      .authorization-dates-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .authorization-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.92rem;
+        color: var(--text-dark);
+      }
+
+      .authorization-toggle input {
+        width: 18px;
+        height: 18px;
+      }
+
+      .authorization-summary {
+        margin-top: 10px;
+        text-align: center;
+        color: var(--text-muted);
+      }
+
+      .section-divider {
+        margin: 0 0 18px;
+      }
+
+      .section-divider h3 {
+        margin: 0 0 8px;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.35rem;
+        line-height: 1.15;
+      }
+
+      .manage-shell .section-divider {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+      }
+
+      #students-buttons .btn,
+      .authorization-form .btn,
+      #authorization-lookup-result .btn {
         width: 100%;
         padding: 15px 20px;
         font-size: 1rem;
@@ -283,39 +495,45 @@
         display: block;
       }
 
-      #students-buttons .btn:active {
+      #students-buttons .btn:active,
+      .authorization-form .btn:active,
+      #authorization-lookup-result .btn:active {
         transform: scale(0.975);
       }
 
-      #students-buttons .btn-primary {
+      #students-buttons .btn-primary,
+      .authorization-form .btn-primary,
+      #authorization-lookup-result .btn-primary {
         background: var(--brand-maroon);
         color: #fff;
         box-shadow: 0 2px 10px rgba(107, 45, 91, 0.26);
       }
 
-      #students-buttons .btn-primary:hover {
+      #students-buttons .btn-primary:hover,
+      .authorization-form .btn-primary:hover,
+      #authorization-lookup-result .btn-primary:hover {
         background: #7a3469;
       }
 
-      #students-buttons .btn-secondary {
+      #students-buttons .btn-secondary,
+      .authorization-form .btn-secondary,
+      #authorization-lookup-result .btn-secondary {
         background: var(--surface-ivory);
         color: var(--text-dark);
         border: 1px solid var(--border-light);
       }
 
-      #students-buttons .student-pick {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-      }
-
-      #students-buttons .student-pick.selected {
+      #students-buttons .student-pick.selected,
+      .authorization-form .student-pick.selected,
+      #authorization-lookup-result .student-pick.selected {
         background: #2a7d31;
+        color: #fff;
         box-shadow: 0 4px 14px rgba(42, 125, 49, 0.28);
       }
 
-      #students-buttons .student-pick.selected::after {
+      #students-buttons .student-pick.selected::after,
+      .authorization-form .student-pick.selected::after,
+      #authorization-lookup-result .student-pick.selected::after {
         content: "Selected";
         position: absolute;
         right: 14px;
@@ -328,21 +546,43 @@
         color: rgba(255, 255, 255, 0.82);
       }
 
-      #students-buttons .btn-accent {
+      #students-buttons .student-pick.selected .student-pick-grade,
+      .authorization-form .student-pick.selected .student-pick-grade,
+      #authorization-lookup-result .student-pick.selected .student-pick-grade {
+        color: rgba(255, 255, 255, 0.86);
+      }
+
+      #students-buttons .btn-accent,
+      .authorization-form .btn-accent,
+      #authorization-lookup-result .btn-accent {
         background: var(--brand-gold);
         color: #2b1a0f;
         box-shadow: 0 2px 8px rgba(196, 151, 92, 0.22);
       }
 
-      #students-buttons .btn-accent:hover {
+      #students-buttons .btn-accent:hover,
+      .authorization-form .btn-accent:hover,
+      #authorization-lookup-result .btn-accent:hover {
         background: #d4a66a;
       }
 
       .students-selection-summary {
-        margin: 4px 0 0;
+        margin: 6px 0 0;
         font-size: 0.84rem;
         text-align: center;
         color: var(--text-muted);
+      }
+
+      #students-section > .field-error {
+        margin-top: 10px;
+      }
+
+      .family-card-all {
+        margin-top: 4px;
+      }
+
+      .authorization-card .family-card-meta {
+        margin-top: 0;
       }
 
       .students-submit {
@@ -419,6 +659,37 @@
         font-family: "Open Sans", sans-serif;
       }
 
+      @media (max-width: 640px) {
+        .parent-card,
+        .students-flow {
+          max-width: 390px;
+        }
+
+        .module-card {
+          padding: 28px 24px;
+        }
+
+        .students-heading {
+          font-size: 1.35rem;
+          margin-bottom: 20px;
+        }
+
+        .family-card h3,
+        .authorization-card h3,
+        .lookup-family-box h3 {
+          font-size: 1.5rem;
+        }
+
+        .family-card-number {
+          font-size: 2.35rem;
+        }
+
+        .authorization-inline,
+        .authorization-dates-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
       /* ─ Config warning ─ */
       #config-warning {
         max-width: 390px;
@@ -443,7 +714,7 @@
         <p class="error">Supabase is not configured. Update <code>/assets/js/config.js</code>.</p>
       </section>
 
-      <div class="parent-card">
+      <div id="entry-card" class="parent-card">
 
         <!-- ── Cached number ─────────────────────────────────── -->
         <section id="cached-section" class="hidden">
@@ -464,20 +735,73 @@
         </section>
 
         <!-- ── Number entry ──────────────────────────────────── -->
-        <section id="number-section" class="c-body hidden">
+        <section id="number-section" class="c-body">
           <label class="input-eyebrow" for="carpool-number">Your Carpool Number</label>
           <input id="carpool-number" type="number" inputmode="numeric" placeholder="e.g. 101" />
           <button id="find-family" class="btn-w btn-maroon">Continue</button>
           <p id="number-error" class="field-error hidden"></p>
         </section>
 
-        <!-- ── Student selection ─────────────────────────────── -->
-        <section id="students-section" class="c-body hidden">
-          <h2 class="students-heading">Who are you picking up?</h2>
-          <div id="students-buttons"></div>
-          <p id="students-error" class="field-error hidden"></p>
-        </section>
+      </div>
 
+      <!-- ── Student selection ─────────────────────────────── -->
+      <section id="students-section" class="students-flow hidden">
+        <div class="parent-card module-card">
+          <div class="checkin-shell">
+            <h2 class="students-heading">Who Are You Picking Up?</h2>
+            <p id="authorized-pickups-heading" class="students-selection-summary hidden">Authorized pickups are shown below your own family.</p>
+            <div id="students-buttons">
+              <div id="checkin-groups" class="authorization-grid"></div>
+              <p id="checkin-selection-summary" class="students-selection-summary"></p>
+              <button type="button" id="students-submit" class="btn btn-maroon students-submit">Check In Selected Students</button>
+            </div>
+          </div>
+          <p id="students-error" class="field-error hidden"></p>
+        </div>
+
+        <div class="parent-card module-card">
+          <div class="manage-shell">
+            <div class="section-divider">
+              <h3>Manage Pickup Permissions</h3>
+              <p class="muted">Authorize another carpool to pick up selected students from your family for a custom date range or permanently.</p>
+            </div>
+
+            <div id="authorization-list" class="authorization-grid"></div>
+
+            <div class="authorization-form">
+              <div class="form-row">
+                <label for="authorize-carpool-number">Other Carpool Number</label>
+                <div class="authorization-inline">
+                  <input id="authorize-carpool-number" type="number" inputmode="numeric" placeholder="e.g. 204" />
+                  <button type="button" id="lookup-authorization-family" class="btn-w btn-maroon">Find</button>
+                </div>
+              </div>
+              <div id="authorization-lookup-result" class="authorization-grid"></div>
+              <label class="authorization-toggle" for="authorization-permanent">
+                <input id="authorization-permanent" type="checkbox" />
+                <span>Save this permission permanently</span>
+              </label>
+              <div class="authorization-dates-grid">
+                <div class="form-row">
+                  <label for="authorization-start-date">Start Date</label>
+                  <input id="authorization-start-date" type="date" />
+                </div>
+                <div class="form-row">
+                  <label for="authorization-end-date">End Date</label>
+                  <input id="authorization-end-date" type="date" />
+                </div>
+              </div>
+              <div class="btn-row">
+                <button type="button" id="authorization-submit" class="btn-w btn-maroon" disabled>Save Permission</button>
+                <button type="button" id="authorization-reset" class="btn-w btn-ghost">Clear Form</button>
+              </div>
+              <p id="authorization-message" class="authorization-summary hidden"></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="done-card" class="parent-card hidden">
         <!-- ── Done ─────────────────────────────────────────── -->
         <section id="done-section" class="c-body hidden">
           <div class="done-inner">
@@ -491,7 +815,6 @@
             <button id="done-btn" class="btn-w btn-maroon">Done</button>
           </div>
         </section>
-
       </div>
     </main>
 
@@ -514,6 +837,32 @@
           childList: true,
           characterData: true,
           subtree: true
+        });
+      })();
+
+      // Fallback: if no parent state is visible after load, restore the number entry card.
+      (function () {
+        function ensureParentView() {
+          var entryCard = document.getElementById("entry-card");
+          var numberSection = document.getElementById("number-section");
+          var cachedSection = document.getElementById("cached-section");
+          var studentsSection = document.getElementById("students-section");
+          var doneCard = document.getElementById("done-card");
+          if (!entryCard || !numberSection) return;
+
+          var cachedVisible = cachedSection && !cachedSection.classList.contains("hidden");
+          var numberVisible = !numberSection.classList.contains("hidden");
+          var studentsVisible = studentsSection && !studentsSection.classList.contains("hidden");
+          var doneVisible = doneCard && !doneCard.classList.contains("hidden");
+
+          if (!cachedVisible && !numberVisible && !studentsVisible && !doneVisible) {
+            entryCard.classList.remove("hidden");
+            numberSection.classList.remove("hidden");
+          }
+        }
+
+        window.addEventListener("load", function () {
+          window.requestAnimationFrame(ensureParentView);
         });
       })();
     </script>

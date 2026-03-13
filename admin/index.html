@@ -549,6 +549,7 @@
         <!-- Tab bar -->
         <div id="admin-tabs" class="tab-bar" role="tablist" aria-label="Admin sections">
           <button class="tab-btn active" data-tab="today" role="tab" aria-selected="true">Today</button>
+          <button class="tab-btn" data-tab="permissions" role="tab" aria-selected="false">Permissions</button>
           <button class="tab-btn" data-tab="students" role="tab" aria-selected="false">Students</button>
           <button class="tab-btn" data-tab="families" role="tab" aria-selected="false">Families</button>
           <button class="tab-btn" data-tab="classes" role="tab" aria-selected="false">Classes</button>
@@ -603,6 +604,46 @@
             <div class="content-card-body">
               <div id="today-student-grid" class="all-students-grid"></div>
             </div>
+          </div>
+        </section>
+
+        <section id="tab-permissions" class="content-card hidden" data-tab-panel="permissions">
+          <div class="content-card-header">
+            <h2>Pickup Permissions</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Granting Family</th>
+                  <th>Receiving Family</th>
+                  <th>Students</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="permissions-tbody"></tbody>
+            </table>
+          </div>
+          <div class="content-card-header" style="border-top:1px solid var(--border-light);">
+            <h2>Permission Audit Log</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Action</th>
+                  <th>Granting Family</th>
+                  <th>Receiving Family</th>
+                  <th>Students</th>
+                  <th>Date Range</th>
+                  <th>Actor</th>
+                </tr>
+              </thead>
+              <tbody id="permissions-audit-tbody"></tbody>
+            </table>
           </div>
         </section>
 

@@ -8,6 +8,9 @@
     families: [],
     students: [],
     dailyStatus: [],
+    pickupAuthorizations: [],
+    pickupAuthorizationStudents: [],
+    pickupAuthorizationAudit: [],
     currentTab: "today",
     channel: null,
     refreshTimer: null,
@@ -94,15 +97,27 @@
         .order("called_at", { ascending: false })
     ]);
 
+    const [pickupAuthRes, pickupAuthStudentsRes, pickupAuditRes] = await Promise.all([
+      client.from("pickup_authorizations").select("*").order("created_at", { ascending: false }),
+      client.from("pickup_authorization_students").select("*"),
+      client.from("pickup_authorization_audit").select("*").order("created_at", { ascending: false })
+    ]);
+
     if (classesRes.error) throw classesRes.error;
     if (familiesRes.error) throw familiesRes.error;
     if (studentsRes.error) throw studentsRes.error;
     if (dailyStatusRes.error) throw dailyStatusRes.error;
+    if (pickupAuthRes.error) throw pickupAuthRes.error;
+    if (pickupAuthStudentsRes.error) throw pickupAuthStudentsRes.error;
+    if (pickupAuditRes.error) throw pickupAuditRes.error;
 
     state.classes = classesRes.data || [];
     state.families = familiesRes.data || [];
     state.students = studentsRes.data || [];
     state.dailyStatus = dailyStatusRes.data || [];
+    state.pickupAuthorizations = pickupAuthRes.data || [];
+    state.pickupAuthorizationStudents = pickupAuthStudentsRes.data || [];
+    state.pickupAuthorizationAudit = pickupAuditRes.data || [];
   }
 
   function setTab(nextTab) {
@@ -340,6 +355,70 @@
     renderFamilies();
     renderClasses();
     renderStudents();
+    renderPermissions();
+  }
+
+  function renderPermissions() {
+    const familyById = new Map(state.families.map((family) => [family.id, family]));
+    const studentById = new Map(state.students.map((student) => [student.id, student]));
+    const studentsByAuthorization = new Map();
+
+    state.pickupAuthorizationStudents.forEach((row) => {
+      const list = studentsByAuthorization.get(row.authorization_id) || [];
+      const student = studentById.get(row.student_id);
+      if (student) list.push(student);
+      studentsByAuthorization.set(row.authorization_id, list);
+    });
+
+    const authRows = state.pickupAuthorizations
+      .map((auth) => {
+        const granting = familyById.get(auth.granting_family_id);
+        const receiving = familyById.get(auth.receiving_family_id);
+        const students = (studentsByAuthorization.get(auth.id) || [])
+          .sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name))
+          .map((student) => `${student.first_name} ${student.last_name}`)
+          .join(", ");
+        let status = "Active";
+        if (auth.is_revoked) status = "Revoked";
+        else if (state.today < auth.starts_on) status = "Upcoming";
+        else if (state.today > auth.ends_on) status = "Expired";
+
+        return `<tr>
+          <td>${escapeHtml(granting ? `#${granting.carpool_number} - ${granting.parent_names}` : "Unknown")}</td>
+          <td>${escapeHtml(receiving ? `#${receiving.carpool_number} - ${receiving.parent_names}` : "Unknown")}</td>
+          <td>${escapeHtml(students)}</td>
+          <td>${escapeHtml(auth.starts_on || "")}</td>
+          <td>${escapeHtml(auth.ends_on || "")}</td>
+          <td>${escapeHtml(status)}</td>
+        </tr>`;
+      })
+      .join("");
+
+    el("permissions-tbody").innerHTML = authRows || '<tr><td colspan="6" class="muted">No permissions yet.</td></tr>';
+
+    const auditRows = state.pickupAuthorizationAudit
+      .map((audit) => {
+        const granting = familyById.get(audit.granting_family_id);
+        const receiving = familyById.get(audit.receiving_family_id);
+        const names = (audit.student_ids || [])
+          .map((studentId) => studentById.get(studentId))
+          .filter(Boolean)
+          .map((student) => `${student.first_name} ${student.last_name}`)
+          .join(", ");
+        const timestamp = audit.created_at ? new Date(audit.created_at).toLocaleString() : "";
+        return `<tr>
+          <td>${escapeHtml(timestamp)}</td>
+          <td>${escapeHtml(audit.action || "")}</td>
+          <td>${escapeHtml(granting ? `#${granting.carpool_number} - ${granting.parent_names}` : "Unknown")}</td>
+          <td>${escapeHtml(receiving ? `#${receiving.carpool_number} - ${receiving.parent_names}` : "Unknown")}</td>
+          <td>${escapeHtml(names)}</td>
+          <td>${escapeHtml(audit.starts_on || "")} to ${escapeHtml(audit.ends_on || "")}</td>
+          <td>${escapeHtml(audit.actor_type || "")}</td>
+        </tr>`;
+      })
+      .join("");
+
+    el("permissions-audit-tbody").innerHTML = auditRows || '<tr><td colspan="7" class="muted">No audit events yet.</td></tr>';
   }
 
   async function refreshAndRender() {
