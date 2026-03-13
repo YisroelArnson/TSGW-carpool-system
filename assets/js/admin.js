@@ -9,6 +9,8 @@
     students: [],
     dailyStatus: [],
     currentTab: "today",
+    channel: null,
+    refreshTimer: null,
     modal: {
       mode: null,
       entityId: null
@@ -59,6 +61,10 @@
         : String(va).localeCompare(String(vb), undefined, { numeric: true });
       return dir === "asc" ? cmp : -cmp;
     });
+  }
+
+  function dailyStatusMap() {
+    return new Map(state.dailyStatus.map((row) => [row.student_id, row]));
   }
 
   function applySortHeaders(tableId, col, dir) {
@@ -298,6 +304,34 @@
 
     el("today-attempts-tbody").innerHTML = rows || '<tr><td colspan="7" class="muted">No dismissal attempts yet today.</td></tr>';
     applySortHeaders("today-table", col, dir);
+    renderTodayStudentGrid();
+  }
+
+  function renderTodayStudentGrid() {
+    const statusByStudent = dailyStatusMap();
+    const classOrder = new Map(state.classes.map((cls, index) => [cls.id, cls.display_order ?? index]));
+    const students = [...state.students].sort((a, b) => {
+      const classCmp = (classOrder.get(a.class_id) || 0) - (classOrder.get(b.class_id) || 0);
+      if (classCmp !== 0) return classCmp;
+      const lastCmp = a.last_name.localeCompare(b.last_name);
+      return lastCmp !== 0 ? lastCmp : a.first_name.localeCompare(b.first_name);
+    });
+
+    const html = students
+      .map((student) => {
+        const rec = statusByStudent.get(student.id);
+        const status = rec ? rec.status : "WAITING";
+        const cardClass = status === "CALLED" ? "all-students-card called" : "all-students-card";
+        const className = student.classes ? student.classes.name : "";
+        return `<div class="${cardClass}">
+          <div class="all-students-name">${escapeHtml(student.first_name)} ${escapeHtml(student.last_name)}</div>
+          <div class="all-students-meta">${escapeHtml(className)}</div>
+          <span class="status ${status === "CALLED" ? "status-called" : "status-waiting"}">${escapeHtml(status)}</span>
+        </div>`;
+      })
+      .join("");
+
+    el("today-student-grid").innerHTML = html || '<p class="muted">No students yet.</p>';
   }
 
   function renderAll() {
@@ -310,6 +344,25 @@
   async function refreshAndRender() {
     await fetchAll();
     renderAll();
+  }
+
+  function scheduleRefresh() {
+    if (state.refreshTimer) clearTimeout(state.refreshTimer);
+    state.refreshTimer = window.setTimeout(() => {
+      refreshAndRender().catch(() => {});
+    }, 250);
+  }
+
+  function startRealtime() {
+    const client = mustClient();
+    state.channel = client
+      .channel("admin-daily-status")
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_status" }, (payload) => {
+        const record = payload.new || payload.old;
+        if (!record || record.date !== state.today) return;
+        scheduleRefresh();
+      })
+      .subscribe();
   }
 
   function modalFieldTemplate(kind, data) {
@@ -796,6 +849,7 @@
 
       state.today = await fetchSchoolToday();
       await refreshAndRender();
+      startRealtime();
       setTab("today");
     } catch (error) {
       show("admin-login-section", true);
@@ -805,4 +859,11 @@
   }
 
   init();
+
+  window.addEventListener("beforeunload", () => {
+    if (state.refreshTimer) clearTimeout(state.refreshTimer);
+    if (state.channel && window.carpoolClient) {
+      window.carpoolClient.removeChannel(state.channel);
+    }
+  });
 })();

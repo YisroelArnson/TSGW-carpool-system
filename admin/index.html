@@ -209,6 +209,43 @@
         padding: 18px 22px;
       }
 
+      .all-students-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+        gap: 12px;
+      }
+
+      .all-students-card {
+        border: 1px solid var(--border-light);
+        border-radius: 14px;
+        padding: 14px 12px;
+        background: var(--surface-ivory);
+        min-height: 108px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        gap: 7px;
+      }
+
+      .all-students-card.called {
+        background: #e8f7ea;
+        border-color: rgba(42, 125, 49, 0.3);
+      }
+
+      .all-students-name {
+        font-weight: 700;
+        color: var(--text-dark);
+      }
+
+      .all-students-meta {
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+
       /* ─ Table overrides ─ */
       .admin-layout .table-wrap {
         border-radius: 0;
@@ -549,6 +586,14 @@
                 </thead>
                 <tbody id="today-attempts-tbody"></tbody>
               </table>
+            </div>
+          </div>
+          <div class="content-card" style="margin-top: 16px;">
+            <div class="content-card-header">
+              <h2>All Students Live Grid</h2>
+            </div>
+            <div class="content-card-body">
+              <div id="today-student-grid" class="all-students-grid"></div>
             </div>
           </div>
         </section>

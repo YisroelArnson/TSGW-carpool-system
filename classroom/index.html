@@ -64,6 +64,19 @@
         margin-bottom: 28px;
       }
 
+      .hub-actions {
+        margin-top: 16px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .hub-selection-status {
+        font-size: 0.84rem;
+        color: var(--text-muted);
+      }
+
       #hub-view > .hub-header > h1 {
         font-size: 2.2rem;
         margin: 0 0 6px;
@@ -128,7 +141,7 @@
         margin-bottom: 10px;
       }
 
-      .class-card > div:last-child {
+      .class-card > div:nth-child(2) {
         font-family: "Playfair Display", Georgia, serif;
         font-size: clamp(1.4rem, 2.5vw, 1.9rem);
         font-weight: 800;
@@ -142,7 +155,7 @@
         border-left-color: var(--status-called);
       }
 
-      .class-card.complete > div:last-child {
+      .class-card.complete > div:nth-child(2) {
         color: #2a7d31;
       }
 
@@ -156,6 +169,106 @@
         color: #2a7d31;
         font-family: "Open Sans", sans-serif;
         margin-top: 7px;
+      }
+
+      .class-card.selected-for-combo {
+        border-left-color: var(--brand-maroon);
+        box-shadow: 0 0 0 2px rgba(107, 45, 91, 0.18), 0 6px 20px rgba(107, 45, 91, 0.12);
+      }
+
+      .class-card-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .class-card-open {
+        background: var(--brand-maroon);
+        color: #fff;
+        border: none;
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+
+      .class-card-toggle {
+        background: var(--surface-ivory);
+        color: var(--text-dark);
+        border: 1px solid var(--border-light);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+
+      .class-card-toggle.active {
+        background: var(--brand-gold);
+        border-color: var(--brand-gold);
+      }
+
+      .hub-students-card {
+        margin-top: 8px;
+        padding: 20px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(226, 222, 216, 0.9);
+      }
+
+      .hub-students-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .hub-students-head h2 {
+        margin: 0;
+        font-size: 1.2rem;
+      }
+
+      .hub-students-head p {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.84rem;
+      }
+
+      #hub-student-grid {
+        grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important;
+        gap: 10px !important;
+      }
+
+      .hub-student-card {
+        min-height: 96px;
+        border-radius: 14px;
+        padding: 14px 12px;
+        background: var(--surface-white);
+        border: 1px solid var(--border-light);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 8px;
+        text-align: center;
+      }
+
+      .hub-student-card .student-name {
+        font-weight: 700;
+        color: var(--text-dark);
+      }
+
+      .hub-student-card .student-class {
+        font-size: 0.76rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+
+      .hub-student-card.called {
+        background: #e8f7ea;
+        border-color: rgba(42, 125, 49, 0.3);
       }
 
       /* ─────────────────────────────────────────────────────── */
@@ -197,6 +310,7 @@
       .projector .display-header {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: 16px;
         padding: clamp(16px, 2.5vh, 28px) clamp(24px, 3vw, 40px);
         background: var(--brand-maroon);
@@ -226,6 +340,47 @@
       /* Gold rule under header */
       .projector .display-header::after {
         content: none;
+      }
+
+      .display-callout {
+        display: none;
+        min-width: min(420px, 45vw);
+        max-width: 48vw;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 18px;
+        padding: 14px 18px;
+        color: #fff;
+        text-align: right;
+      }
+
+      .display-callout.visible {
+        display: block;
+        animation: calloutPop 1.4s ease;
+      }
+
+      .display-callout-label {
+        display: block;
+        font-size: 0.7rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--brand-gold);
+        font-weight: 700;
+      }
+
+      .display-callout-name {
+        display: block;
+        margin-top: 4px;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: clamp(1.4rem, 2.6vw, 2.2rem);
+        font-weight: 800;
+      }
+
+      @keyframes calloutPop {
+        0% { opacity: 0; transform: translateY(8px) scale(0.98); }
+        20% { opacity: 1; transform: translateY(0) scale(1); }
+        70% { opacity: 1; transform: translateY(0) scale(1); }
+        100% { opacity: 1; transform: translateY(0) scale(1); }
       }
 
       .projector-gold-rule {
@@ -276,6 +431,16 @@
         box-shadow: 0 4px 20px rgba(42, 125, 49, 0.35);
       }
 
+      .projector .student-card.called-recent {
+        animation: calledPulse 1.8s ease;
+      }
+
+      @keyframes calledPulse {
+        0% { transform: scale(0.98); box-shadow: 0 0 0 0 rgba(42, 125, 49, 0.55); }
+        35% { transform: scale(1.02); box-shadow: 0 0 0 22px rgba(42, 125, 49, 0); }
+        100% { transform: scale(1); box-shadow: 0 4px 20px rgba(42, 125, 49, 0.35); }
+      }
+
       /* ─ Hub responsive breakpoints ─ */
       @media (max-width: 600px) {
         #hub-view > .hub-header > h1 {
@@ -286,6 +451,11 @@
           margin-bottom: 18px;
         }
 
+        .hub-actions {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
         #hub-grid {
           grid-template-columns: repeat(2, 1fr) !important;
           gap: 10px !important;
@@ -293,6 +463,18 @@
 
         .class-card {
           padding: 14px 14px 12px;
+        }
+
+        .projector .display-header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .display-callout {
+          min-width: 0;
+          max-width: none;
+          width: 100%;
+          text-align: left;
         }
       }
     </style>
@@ -321,8 +503,20 @@
             <span class="hub-live-dot"></span>
             Live &middot; Today's Dismissal
           </div>
+          <div class="hub-actions">
+            <button id="hub-open-combined" class="btn btn-primary" type="button" disabled>Open Combined View</button>
+            <button id="hub-clear-combined" class="btn btn-secondary" type="button">Clear Selection</button>
+            <span id="hub-selection-status" class="hub-selection-status">Select two or more classes to combine them on one display.</span>
+          </div>
         </div>
         <div id="hub-grid" class="grid grid-classes"></div>
+        <section class="hub-students-card">
+          <div class="hub-students-head">
+            <h2>All Students</h2>
+            <p>Live grid of every student across all classrooms</p>
+          </div>
+          <div id="hub-student-grid" class="grid student-grid"></div>
+        </section>
       </section>
 
       <!-- ── Individual display view ───────────────────────────── -->
@@ -331,6 +525,10 @@
           <div>
             <h1 id="display-class-name">Class</h1>
             <span class="display-sub">Dismissal</span>
+          </div>
+          <div id="display-callout" class="display-callout" aria-live="polite">
+            <span class="display-callout-label">Now Calling</span>
+            <span id="display-callout-name" class="display-callout-name"></span>
           </div>
         </div>
         <div class="projector-gold-rule"></div>

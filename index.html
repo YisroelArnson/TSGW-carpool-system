@@ -263,6 +263,12 @@
         gap: 8px;
       }
 
+      .students-toolbar {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
       #students-buttons .btn {
         width: 100%;
         padding: 15px 20px;
@@ -291,6 +297,37 @@
         background: #7a3469;
       }
 
+      #students-buttons .btn-secondary {
+        background: var(--surface-ivory);
+        color: var(--text-dark);
+        border: 1px solid var(--border-light);
+      }
+
+      #students-buttons .student-pick {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+
+      #students-buttons .student-pick.selected {
+        background: #2a7d31;
+        box-shadow: 0 4px 14px rgba(42, 125, 49, 0.28);
+      }
+
+      #students-buttons .student-pick.selected::after {
+        content: "Selected";
+        position: absolute;
+        right: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.82);
+      }
+
       #students-buttons .btn-accent {
         background: var(--brand-gold);
         color: #2b1a0f;
@@ -299,6 +336,24 @@
 
       #students-buttons .btn-accent:hover {
         background: #d4a66a;
+      }
+
+      .students-selection-summary {
+        margin: 4px 0 0;
+        font-size: 0.84rem;
+        text-align: center;
+        color: var(--text-muted);
+      }
+
+      .students-submit {
+        background: var(--brand-maroon);
+        color: #fff;
+      }
+
+      .students-submit:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        box-shadow: none !important;
       }
 
       /* ─ Done state ─ */

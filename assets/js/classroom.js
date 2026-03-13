@@ -4,7 +4,7 @@
 
   const state = {
     mode: "hub",
-    classId: null,
+    classIds: [],
     today: schoolTodayISO(),
     classes: [],
     students: [],
@@ -12,9 +12,13 @@
     studentToClass: new Map(),
     classTotals: new Map(),
     classCalled: new Map(),
-    displayStudents: [],
+    selectedHubClassIds: new Set(),
     channel: null,
-    syncInterval: null
+    syncInterval: null,
+    calloutTimer: null,
+    audioContext: null,
+    alertQueue: [],
+    activeAlertStudentId: null
   };
 
   function el(id) {
@@ -26,22 +30,43 @@
     show("classroom-error", true);
   }
 
-  function deriveRoute() {
+  function parseClassIds() {
     const parts = window.location.pathname.split("/").filter(Boolean);
     const classroomIdx = parts.indexOf("classroom");
-    if (classroomIdx === -1) return;
+    const pathClassId = classroomIdx === -1 ? null : parts[classroomIdx + 1] || null;
 
-    const classIdFromPath = parts[classroomIdx + 1] || null;
-    const classIdFromQuery = new URLSearchParams(window.location.search).get("classId");
-    const classId = classIdFromPath || classIdFromQuery;
+    const params = new URLSearchParams(window.location.search);
+    const queryIds = params
+      .getAll("classId")
+      .flatMap((value) => String(value).split(","))
+      .map((value) => value.trim())
+      .filter(Boolean);
 
-    if (classId) {
-      state.mode = "display";
-      state.classId = classId;
-      document.body.classList.add("projector");
-      const brand = el("brand");
-      if (brand) brand.classList.add("hidden");
+    return Array.from(new Set([pathClassId, ...queryIds].filter(Boolean)));
+  }
+
+  function deriveRoute() {
+    const classIds = parseClassIds();
+    if (!classIds.length) return;
+
+    state.mode = "display";
+    state.classIds = classIds;
+    document.body.classList.add("projector");
+
+    const brand = el("brand");
+    if (brand) brand.classList.add("hidden");
+  }
+
+  function navigateToCombined(classIds) {
+    const uniqueIds = Array.from(new Set(classIds.filter(Boolean)));
+    if (!uniqueIds.length) {
+      window.location.href = window.location.pathname;
+      return;
     }
+
+    const params = new URLSearchParams();
+    params.set("classId", uniqueIds.join(","));
+    window.location.href = `?${params.toString()}`;
   }
 
   function buildMaps() {
@@ -49,9 +74,9 @@
     state.classTotals.clear();
     state.classCalled.clear();
 
-    state.students.forEach((s) => {
-      state.studentToClass.set(s.id, s.class_id);
-      state.classTotals.set(s.class_id, (state.classTotals.get(s.class_id) || 0) + 1);
+    state.students.forEach((student) => {
+      state.studentToClass.set(student.id, student.class_id);
+      state.classTotals.set(student.class_id, (state.classTotals.get(student.class_id) || 0) + 1);
     });
 
     state.statusesByStudent.forEach((status, studentId) => {
@@ -86,15 +111,84 @@
     buildMaps();
   }
 
+  function getClassName(classId) {
+    return state.classes.find((cls) => cls.id === classId)?.name || "Class";
+  }
+
+  function getDisplayClassTitle() {
+    const selectedClasses = state.classIds
+      .map((classId) => state.classes.find((cls) => cls.id === classId))
+      .filter(Boolean);
+
+    if (!selectedClasses.length) return "Classroom";
+    if (selectedClasses.length === 1) return selectedClasses[0].name;
+    if (selectedClasses.length === 2) return `${selectedClasses[0].name} + ${selectedClasses[1].name}`;
+    return `${selectedClasses[0].name} + ${selectedClasses.length - 1} more`;
+  }
+
+  function getSortedStudents(classIds) {
+    const allowed = classIds ? new Set(classIds) : null;
+    const classOrder = new Map(state.classes.map((cls, index) => [cls.id, cls.display_order ?? index]));
+
+    return [...state.students]
+      .filter((student) => !allowed || allowed.has(student.class_id))
+      .sort((a, b) => {
+        const classCmp = (classOrder.get(a.class_id) || 0) - (classOrder.get(b.class_id) || 0);
+        if (classCmp !== 0) return classCmp;
+        const lastCmp = a.last_name.localeCompare(b.last_name);
+        return lastCmp !== 0 ? lastCmp : a.first_name.localeCompare(b.first_name);
+      });
+  }
+
   function hubCardHtml(cls) {
     const total = state.classTotals.get(cls.id) || 0;
     const called = state.classCalled.get(cls.id) || 0;
     const complete = total > 0 && called === total;
+    const selected = state.selectedHubClassIds.has(cls.id);
 
-    return `<button class="class-card ${complete ? "complete" : ""}" data-class-id="${escapeHtml(cls.id)}">
+    return `<article class="class-card ${complete ? "complete" : ""} ${selected ? "selected-for-combo" : ""}" data-class-id="${escapeHtml(cls.id)}">
       <div><strong>${escapeHtml(cls.name)}</strong></div>
       <div>${called} / ${total}</div>
-    </button>`;
+      <div class="class-card-actions">
+        <button type="button" class="class-card-open" data-open-class="${escapeHtml(cls.id)}">Open</button>
+        <button
+          type="button"
+          class="class-card-toggle ${selected ? "active" : ""}"
+          data-toggle-class="${escapeHtml(cls.id)}"
+          aria-pressed="${selected ? "true" : "false"}"
+        >
+          ${selected ? "Selected" : "Combine"}
+        </button>
+      </div>
+    </article>`;
+  }
+
+  function hubStudentCardHtml(student) {
+    const status = state.statusesByStudent.get(student.id) || "WAITING";
+    return `<div class="hub-student-card ${status === "CALLED" ? "called" : "waiting"}" data-hub-student-id="${escapeHtml(student.id)}">
+      <div class="student-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</div>
+      <div class="student-class">${escapeHtml(getClassName(student.class_id))}</div>
+      <span class="status ${status === "CALLED" ? "status-called" : "status-waiting"}">${escapeHtml(status)}</span>
+    </div>`;
+  }
+
+  function updateHubSelectionUi() {
+    const count = state.selectedHubClassIds.size;
+    const openCombined = el("hub-open-combined");
+    const clearCombined = el("hub-clear-combined");
+    const status = el("hub-selection-status");
+
+    if (openCombined) openCombined.disabled = count < 2;
+    if (clearCombined) clearCombined.disabled = count === 0;
+
+    if (status) {
+      status.textContent =
+        count >= 2
+          ? `${count} classes selected for a combined display.`
+          : count === 1
+            ? "Select one more class to open a combined display."
+            : "Select two or more classes to combine them on one display.";
+    }
   }
 
   function renderHub() {
@@ -104,50 +198,39 @@
     const grid = el("hub-grid");
     grid.innerHTML = state.classes.map(hubCardHtml).join("");
 
-    grid.querySelectorAll("[data-class-id]").forEach((node) => {
-      node.addEventListener("click", () => {
-        const classId = node.dataset.classId;
-        window.location.href = `?classId=${classId}`;
-      });
-    });
+    const hubStudents = el("hub-student-grid");
+    hubStudents.innerHTML = getSortedStudents().map(hubStudentCardHtml).join("");
+
+    updateHubSelectionUi();
+  }
+
+  function displayStudentCardHtml(student) {
+    const status = state.statusesByStudent.get(student.id) || "WAITING";
+    const klass = status === "CALLED" ? "called" : "waiting";
+    return `<div class="student-card ${klass}" data-student-id="${escapeHtml(student.id)}">
+      <div>${escapeHtml(`${student.last_name}, ${student.first_name}`)}</div>
+    </div>`;
   }
 
   function renderDisplay() {
     show("hub-view", false);
     show("display-view", true);
 
-    const classInfo = state.classes.find((c) => c.id === state.classId);
-    if (!classInfo) {
+    const selectedClasses = state.classIds.filter((classId) => state.classes.some((cls) => cls.id === classId));
+    if (!selectedClasses.length) {
       showError("Classroom not found.");
       return;
     }
 
-    el("display-class-name").textContent = classInfo.name;
-
-    const students = state.students
-      .filter((s) => s.class_id === state.classId)
-      .sort((a, b) => {
-        const ln = a.last_name.localeCompare(b.last_name);
-        return ln !== 0 ? ln : a.first_name.localeCompare(b.first_name);
-      });
-
-    state.displayStudents = students;
-
-    const html = students
-      .map((s) => {
-        const status = state.statusesByStudent.get(s.id) || "WAITING";
-        const klass = status === "CALLED" ? "called" : "waiting";
-        return `<div class="student-card ${klass}" data-student-id="${escapeHtml(s.id)}">${escapeHtml(
-          `${s.last_name}, ${s.first_name}`
-        )}</div>`;
-      })
-      .join("");
-
-    el("display-grid").innerHTML = html;
+    state.classIds = selectedClasses;
+    el("display-class-name").textContent = getDisplayClassTitle();
+    el("display-callout-name").textContent = "";
+    el("display-callout").classList.remove("visible");
+    el("display-grid").innerHTML = getSortedStudents(selectedClasses).map(displayStudentCardHtml).join("");
   }
 
   function updateHubCard(classId) {
-    const cls = state.classes.find((c) => c.id === classId);
+    const cls = state.classes.find((entry) => entry.id === classId);
     if (!cls) return;
 
     const card = document.querySelector(`[data-class-id="${classId}"]`);
@@ -156,17 +239,39 @@
     const total = state.classTotals.get(classId) || 0;
     const called = state.classCalled.get(classId) || 0;
     const complete = total > 0 && called === total;
+    const selected = state.selectedHubClassIds.has(classId);
 
-    card.className = `class-card${complete ? " complete" : ""}`;
-    card.querySelector("div:last-child").textContent = `${called} / ${total}`;
+    card.className = `class-card${complete ? " complete" : ""}${selected ? " selected-for-combo" : ""}`;
+    const metric = card.querySelector("div:nth-child(2)");
+    if (metric) metric.textContent = `${called} / ${total}`;
   }
 
-  function updateDisplayStudent(studentId) {
+  function updateHubStudentCard(studentId) {
+    const node = document.querySelector(`[data-hub-student-id="${studentId}"]`);
+    if (!node) return;
+
+    const status = state.statusesByStudent.get(studentId) || "WAITING";
+    node.classList.toggle("called", status === "CALLED");
+    node.classList.toggle("waiting", status !== "CALLED");
+
+    const pill = node.querySelector(".status");
+    if (!pill) return;
+    pill.textContent = status;
+    pill.className = `status ${status === "CALLED" ? "status-called" : "status-waiting"}`;
+  }
+
+  function updateDisplayStudent(studentId, shouldPulse) {
     const node = document.querySelector(`[data-student-id="${studentId}"]`);
     if (!node) return;
+
     const status = state.statusesByStudent.get(studentId) || "WAITING";
-    node.classList.remove("waiting", "called");
+    node.classList.remove("waiting", "called", "called-recent");
     node.classList.add(status === "CALLED" ? "called" : "waiting");
+
+    if (shouldPulse && status === "CALLED") {
+      node.classList.add("called-recent");
+      window.setTimeout(() => node.classList.remove("called-recent"), 1800);
+    }
   }
 
   function applyDelta(oldStatus, newStatus, studentId) {
@@ -179,7 +284,81 @@
     if (!classId) return;
 
     state.classCalled.set(classId, (state.classCalled.get(classId) || 0) + delta);
-    if (state.mode === "hub") updateHubCard(classId);
+  }
+
+  function playChime() {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+
+    if (!state.audioContext) {
+      state.audioContext = new AudioCtx();
+    }
+
+    const ctx = state.audioContext;
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+
+    const start = ctx.currentTime + 0.01;
+    [
+      { freq: 784, duration: 0.14 },
+      { freq: 1047, duration: 0.24, offset: 0.16 }
+    ].forEach((tone) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = tone.freq;
+      gain.gain.setValueAtTime(0.0001, start + (tone.offset || 0));
+      gain.gain.exponentialRampToValueAtTime(0.12, start + (tone.offset || 0) + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + (tone.offset || 0) + tone.duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start + (tone.offset || 0));
+      osc.stop(start + (tone.offset || 0) + tone.duration);
+    });
+  }
+
+  function processAlertQueue() {
+    if (state.activeAlertStudentId || !state.alertQueue.length) return;
+
+    const studentId = state.alertQueue.shift();
+    const student = state.students.find((entry) => entry.id === studentId);
+    if (!student) {
+      processAlertQueue();
+      return;
+    }
+
+    const callout = el("display-callout");
+    const calloutName = el("display-callout-name");
+    if (!callout || !calloutName) return;
+
+    state.activeAlertStudentId = studentId;
+
+    calloutName.textContent =
+      state.classIds.length > 1
+        ? `${student.first_name} ${student.last_name} · ${getClassName(student.class_id)}`
+        : `${student.first_name} ${student.last_name}`;
+    callout.classList.remove("visible");
+    void callout.offsetWidth;
+    callout.classList.add("visible");
+
+    if (state.calloutTimer) {
+      clearTimeout(state.calloutTimer);
+    }
+
+    state.calloutTimer = window.setTimeout(() => {
+      callout.classList.remove("visible");
+      state.activeAlertStudentId = null;
+      processAlertQueue();
+    }, 3200);
+
+    playChime();
+  }
+
+  function queueCalledStudent(studentId) {
+    if (state.activeAlertStudentId === studentId || state.alertQueue.includes(studentId)) return;
+    state.alertQueue.push(studentId);
+    processAlertQueue();
   }
 
   function onRealtime(payload) {
@@ -193,8 +372,14 @@
     applyDelta(oldStatus, newStatus, studentId);
     state.statusesByStudent.set(studentId, newStatus);
 
-    if (state.mode === "display") {
-      updateDisplayStudent(studentId);
+    const classId = state.studentToClass.get(studentId);
+    if (classId) updateHubCard(classId);
+    updateHubStudentCard(studentId);
+
+    if (state.mode === "display" && state.classIds.includes(classId)) {
+      const becameCalled = oldStatus !== "CALLED" && newStatus === "CALLED";
+      updateDisplayStudent(studentId, becameCalled);
+      if (becameCalled) queueCalledStudent(studentId);
     }
   }
 
@@ -226,6 +411,37 @@
     });
   }
 
+  function bindUi() {
+    el("hub-grid")?.addEventListener("click", (event) => {
+      const openBtn = event.target.closest("[data-open-class]");
+      if (openBtn) {
+        navigateToCombined([openBtn.dataset.openClass]);
+        return;
+      }
+
+      const toggleBtn = event.target.closest("[data-toggle-class]");
+      if (!toggleBtn) return;
+
+      const classId = toggleBtn.dataset.toggleClass;
+      if (state.selectedHubClassIds.has(classId)) {
+        state.selectedHubClassIds.delete(classId);
+      } else {
+        state.selectedHubClassIds.add(classId);
+      }
+
+      renderHub();
+    });
+
+    el("hub-open-combined")?.addEventListener("click", () => {
+      navigateToCombined(Array.from(state.selectedHubClassIds));
+    });
+
+    el("hub-clear-combined")?.addEventListener("click", () => {
+      state.selectedHubClassIds.clear();
+      renderHub();
+    });
+  }
+
   async function init() {
     if (!window.carpoolClient) {
       show("config-warning", true);
@@ -233,12 +449,15 @@
     }
 
     deriveRoute();
+    bindUi();
 
     try {
       state.today = await fetchSchoolToday();
       await fetchBase();
+
       if (state.mode === "hub") renderHub();
       else renderDisplay();
+
       startRealtime();
     } catch (error) {
       showError(error.message || "Unable to load classroom view.");
@@ -247,6 +466,7 @@
 
   window.addEventListener("beforeunload", () => {
     if (state.syncInterval) clearInterval(state.syncInterval);
+    if (state.calloutTimer) clearTimeout(state.calloutTimer);
     if (state.channel && window.carpoolClient) {
       window.carpoolClient.removeChannel(state.channel);
     }

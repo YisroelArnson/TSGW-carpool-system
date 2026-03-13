@@ -5,7 +5,8 @@
   const STORAGE_KEY = "tsgw_carpool_number";
   const state = {
     number: null,
-    students: []
+    students: [],
+    selectedStudentIds: new Set()
   };
 
   function el(id) {
@@ -16,6 +17,25 @@
     ["cached-section", "number-section", "students-section", "done-section"].forEach((id) => show(id, false));
   }
 
+  function syncNumberUi() {
+    const numberText = state.number ? String(state.number) : "";
+    const cachedLabel = el("cached-label");
+    const cachedDisplay = el("cached-number-display");
+    const numberInput = el("carpool-number");
+
+    if (cachedLabel) {
+      cachedLabel.textContent = numberText ? `Welcome back! Use carpool #${numberText}?` : "";
+    }
+
+    if (cachedDisplay) {
+      cachedDisplay.textContent = numberText ? `#${numberText}` : "—";
+    }
+
+    if (numberInput) {
+      numberInput.value = numberText;
+    }
+  }
+
   function showNumberStep(clearError) {
     hideAllSections();
     show("number-section", true);
@@ -24,6 +44,7 @@
       show("number-error", false);
       el("number-error").textContent = "";
     }
+    syncNumberUi();
     el("carpool-number").focus();
   }
 
@@ -52,44 +73,113 @@
     if (error) throw error;
   }
 
+  function updateStudentSelectionUi() {
+    const selectedCount = state.selectedStudentIds.size;
+    const submitBtn = el("students-submit");
+    const summary = el("students-selection-summary");
+
+    if (summary) {
+      summary.textContent =
+        selectedCount === 0
+          ? "Tap one or more students, then submit."
+          : selectedCount === 1
+            ? "1 student selected"
+            : `${selectedCount} students selected`;
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = selectedCount === 0;
+    }
+  }
+
   function renderStudentButtons() {
     const container = el("students-buttons");
     const students = state.students;
-    const fullNames = students.map((s) => `${s.first_name} ${s.last_name}`);
-
     let html = "";
+
     if (students.length > 1) {
-      html += `<button class="btn btn-accent" data-student="all">All</button>`;
+      html += `
+        <div class="students-toolbar">
+          <button type="button" class="btn btn-accent" data-select="all">Select all</button>
+          <button type="button" class="btn btn-secondary" data-select="clear">Clear</button>
+        </div>
+      `;
     }
 
     students.forEach((s) => {
-      html += `<button class="btn btn-primary" data-student="${escapeHtml(s.student_id)}">${escapeHtml(
-        `${s.first_name} ${s.last_name}`
-      )}</button>`;
+      const studentId = String(s.student_id);
+      const selected = state.selectedStudentIds.has(studentId);
+      html += `
+        <button
+          type="button"
+          class="btn btn-primary student-pick${selected ? " selected" : ""}"
+          data-student="${escapeHtml(studentId)}"
+          aria-pressed="${selected ? "true" : "false"}"
+        >
+          <span>${escapeHtml(`${s.first_name} ${s.last_name}`)}</span>
+        </button>
+      `;
     });
+
+    html += `
+      <p id="students-selection-summary" class="students-selection-summary"></p>
+      <button type="button" id="students-submit" class="btn btn-maroon students-submit">Check In Selected Students</button>
+    `;
 
     container.innerHTML = html;
 
-    container.querySelectorAll("button").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        show("students-error", false);
-        btn.disabled = true;
-        try {
-          const target = btn.dataset.student;
-          const ids = target === "all" ? students.map((s) => s.student_id) : [target];
-          await submitCheckIn(ids);
-
-          const picked = target === "all" ? fullNames : [fullNames[students.findIndex((s) => s.student_id === target)]];
-          el("done-message").textContent = `Done! ${picked.join(", ")} called.`;
-          hideAllSections();
-          show("done-section", true);
-        } catch (error) {
-          showError("students-error", "Unable to check in right now. Please try again.");
-        } finally {
-          btn.disabled = false;
+    container.querySelectorAll("[data-student]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const studentId = String(btn.dataset.student);
+        if (state.selectedStudentIds.has(studentId)) {
+          state.selectedStudentIds.delete(studentId);
+        } else {
+          state.selectedStudentIds.add(studentId);
         }
+
+        renderStudentButtons();
       });
     });
+
+    container.querySelector('[data-select="all"]')?.addEventListener("click", () => {
+      state.selectedStudentIds = new Set(students.map((s) => String(s.student_id)));
+      renderStudentButtons();
+    });
+
+    container.querySelector('[data-select="clear"]')?.addEventListener("click", () => {
+      state.selectedStudentIds.clear();
+      renderStudentButtons();
+    });
+
+    el("students-submit").addEventListener("click", async () => {
+      const selectedIds = Array.from(state.selectedStudentIds);
+      if (!selectedIds.length) {
+        showError("students-error", "Choose at least one student.");
+        return;
+      }
+
+      show("students-error", false);
+      el("students-submit").disabled = true;
+
+      try {
+        await submitCheckIn(selectedIds);
+
+        const picked = students
+          .filter((student) => state.selectedStudentIds.has(String(student.student_id)))
+          .map((student) => `${student.first_name} ${student.last_name}`);
+
+        el("done-message").textContent = `Done! ${picked.join(", ")} called.`;
+        state.selectedStudentIds.clear();
+        hideAllSections();
+        show("done-section", true);
+      } catch (error) {
+        showError("students-error", "Unable to check in right now. Please try again.");
+      } finally {
+        updateStudentSelectionUi();
+      }
+    });
+
+    updateStudentSelectionUi();
   }
 
   async function continueWithNumber(number) {
@@ -102,6 +192,7 @@
     }
 
     state.number = Number(number);
+    syncNumberUi();
 
     try {
       const students = await loadStudents(state.number);
@@ -112,6 +203,7 @@
 
       localStorage.setItem(STORAGE_KEY, String(state.number));
       state.students = students;
+      state.selectedStudentIds = new Set();
 
       hideAllSections();
       show("students-section", true);
@@ -136,6 +228,7 @@
     el("cached-change").addEventListener("click", () => {
       localStorage.removeItem(STORAGE_KEY);
       state.number = null;
+      syncNumberUi();
       showNumberStep(true);
     });
 
@@ -143,7 +236,7 @@
       const cached = localStorage.getItem(STORAGE_KEY);
       if (cached) {
         state.number = Number(cached);
-        el("cached-label").textContent = `Welcome back! Use carpool #${cached}?`;
+        syncNumberUi();
         hideAllSections();
         show("cached-section", true);
       } else {
@@ -163,10 +256,11 @@
     const cached = localStorage.getItem(STORAGE_KEY);
     if (cached) {
       state.number = Number(cached);
-      el("cached-label").textContent = `Welcome back! Use carpool #${cached}?`;
+      syncNumberUi();
       hideAllSections();
       show("cached-section", true);
     } else {
+      syncNumberUi();
       showNumberStep(true);
     }
   }
