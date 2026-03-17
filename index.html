@@ -11,6 +11,17 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="assets/css/styles.css" />
+    <script>
+      (function () {
+        try {
+          if (window.localStorage && window.localStorage.getItem("tsgw_carpool_number")) {
+            document.documentElement.classList.add("parent-boot-pending");
+          }
+        } catch (error) {
+          // Ignore storage access errors and fall back to the default entry view.
+        }
+      })();
+    </script>
     <style>
       /* ─── Parent page overrides & enhancements ─────────────────── */
 
@@ -19,6 +30,49 @@
         background-image: radial-gradient(circle, #ddd9d2 1px, transparent 1px);
         background-size: 22px 22px;
         min-height: 100vh;
+      }
+
+      html.parent-boot-pending .parent-layout {
+        visibility: hidden;
+      }
+
+      .parent-boot-loading {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 16px;
+        background:
+          radial-gradient(circle at top, rgba(196, 151, 92, 0.18), transparent 42%),
+          var(--surface-ivory);
+      }
+
+      html.parent-boot-pending .parent-boot-loading {
+        display: flex;
+      }
+
+      .parent-boot-spinner {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        border: 3px solid rgba(107, 45, 91, 0.14);
+        border-top-color: var(--brand-maroon);
+        animation: parentBootSpin 0.75s linear infinite;
+      }
+
+      .parent-boot-loading p {
+        margin: 0;
+        font-size: 0.92rem;
+        color: var(--text-muted);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      @keyframes parentBootSpin {
+        to { transform: rotate(360deg); }
       }
 
       /* ─ Enhanced brand bar ─ */
@@ -35,6 +89,27 @@
         display: flex;
         flex-direction: column;
         gap: 3px;
+      }
+
+      .brand-bar-actions {
+        display: flex;
+        align-items: center;
+      }
+
+      .brand-bar-action {
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        background: transparent;
+        color: #fff;
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .brand-bar-action:hover {
+        background: rgba(255, 255, 255, 0.12);
       }
 
       .brand-name {
@@ -217,6 +292,28 @@
         color: var(--text-muted);
         font-family: "Open Sans", sans-serif;
         margin-bottom: 10px;
+      }
+
+      .number-intro {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 18px;
+        text-align: center;
+      }
+
+      .number-intro h1 {
+        margin: 0;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.9rem;
+        line-height: 1.1;
+        color: var(--text-dark);
+      }
+
+      .number-intro p {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.96rem;
+        line-height: 1.55;
       }
 
       #carpool-number {
@@ -596,6 +693,43 @@
         box-shadow: none !important;
       }
 
+      .modal-overlay.hidden {
+        display: none !important;
+      }
+
+      .confirm-modal-card {
+        width: min(420px, 100%);
+        padding: 24px;
+        border-radius: 18px;
+        box-shadow:
+          0 1px 2px rgba(0, 0, 0, 0.06),
+          0 12px 36px rgba(0, 0, 0, 0.16);
+      }
+
+      .confirm-modal-card h2 {
+        margin: 0 0 10px;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.5rem;
+        line-height: 1.15;
+        color: var(--text-dark);
+      }
+
+      .confirm-modal-card p {
+        margin: 0;
+        color: var(--text-muted);
+        line-height: 1.55;
+      }
+
+      .confirm-modal-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 22px;
+      }
+
+      .confirm-modal-actions .btn {
+        flex: 1;
+      }
+
       /* ─ Done state ─ */
       .done-inner {
         display: flex;
@@ -665,8 +799,21 @@
           max-width: 390px;
         }
 
+        .brand-bar {
+          padding: 0 14px;
+        }
+
+        .brand-bar-action {
+          padding: 7px 12px;
+          font-size: 0.74rem;
+        }
+
         .module-card {
           padding: 28px 24px;
+        }
+
+        .number-intro h1 {
+          font-size: 1.6rem;
         }
 
         .students-heading {
@@ -699,11 +846,19 @@
     </style>
   </head>
   <body>
+    <div class="parent-boot-loading" aria-live="polite" aria-label="Loading your family pickup page">
+      <div class="parent-boot-spinner" aria-hidden="true"></div>
+      <p>Loading your family page</p>
+    </div>
+
     <header>
       <div class="brand-bar">
         <div class="brand-bar-inner">
           <span class="brand-name">TSGW Carpool</span>
           <span class="brand-sub">Torah School of Greater Washington</span>
+        </div>
+        <div class="brand-bar-actions">
+          <button id="parent-logout-btn" type="button" class="brand-bar-action hidden">Log out</button>
         </div>
       </div>
       <div class="gold-rule"></div>
@@ -716,29 +871,16 @@
 
       <div id="entry-card" class="parent-card">
 
-        <!-- ── Cached number ─────────────────────────────────── -->
-        <section id="cached-section" class="hidden">
-          <div class="cached-hero">
-            <div class="cached-eyebrow">Welcome back</div>
-            <div class="cached-number" id="cached-number-display">—</div>
-            <div class="cached-question">Is this your carpool number?</div>
-          </div>
-          <!-- kept for JS: parent.js sets textContent here -->
-          <p id="cached-label" aria-hidden="true"></p>
-          <div class="c-divider"></div>
-          <div class="c-body">
-            <div class="btn-row">
-              <button id="cached-yes" class="btn-w btn-maroon">Yes, check me in</button>
-              <button id="cached-change" class="btn-w btn-ghost">Use a different number</button>
-            </div>
-          </div>
-        </section>
-
         <!-- ── Number entry ──────────────────────────────────── -->
         <section id="number-section" class="c-body">
+          <div class="number-intro">
+            <span class="input-eyebrow">Parent Check-In</span>
+            <h1>Check in for pickup</h1>
+            <p>Enter your carpool number to open your family pickup page, see approved pickup permissions, and check in the students you are picking up today.</p>
+          </div>
           <label class="input-eyebrow" for="carpool-number">Your Carpool Number</label>
           <input id="carpool-number" type="number" inputmode="numeric" placeholder="e.g. 101" />
-          <button id="find-family" class="btn-w btn-maroon">Continue</button>
+          <button id="find-family" class="btn-w btn-maroon">Check In</button>
           <p id="number-error" class="field-error hidden"></p>
         </section>
 
@@ -818,44 +960,37 @@
       </div>
     </main>
 
+    <div id="remove-authorization-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="remove-authorization-title">
+      <div class="modal-card confirm-modal-card">
+        <h2 id="remove-authorization-title">Remove pickup permission?</h2>
+        <p id="remove-authorization-text">This family will no longer be able to check in these students from your page.</p>
+        <div class="confirm-modal-actions">
+          <button id="cancel-remove-authorization" type="button" class="btn btn-secondary">Cancel</button>
+          <button id="confirm-remove-authorization" type="button" class="btn btn-primary">Remove</button>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="assets/js/config.js"></script>
     <script src="assets/js/supabase-client.js"></script>
     <script src="assets/js/utils.js"></script>
     <script src="assets/js/parent.js"></script>
     <script>
-      // Mirror the number from cached-label into the large display element
-      (function () {
-        var labelEl = document.getElementById("cached-label");
-        var displayEl = document.getElementById("cached-number-display");
-        if (!labelEl || !displayEl) return;
-        function sync() {
-          var m = labelEl.textContent.match(/#(\d+)/);
-          displayEl.textContent = m ? "#" + m[1] : "—";
-        }
-        new MutationObserver(sync).observe(labelEl, {
-          childList: true,
-          characterData: true,
-          subtree: true
-        });
-      })();
-
       // Fallback: if no parent state is visible after load, restore the number entry card.
       (function () {
         function ensureParentView() {
           var entryCard = document.getElementById("entry-card");
           var numberSection = document.getElementById("number-section");
-          var cachedSection = document.getElementById("cached-section");
           var studentsSection = document.getElementById("students-section");
           var doneCard = document.getElementById("done-card");
           if (!entryCard || !numberSection) return;
 
-          var cachedVisible = cachedSection && !cachedSection.classList.contains("hidden");
           var numberVisible = !numberSection.classList.contains("hidden");
           var studentsVisible = studentsSection && !studentsSection.classList.contains("hidden");
           var doneVisible = doneCard && !doneCard.classList.contains("hidden");
 
-          if (!cachedVisible && !numberVisible && !studentsVisible && !doneVisible) {
+          if (!numberVisible && !studentsVisible && !doneVisible) {
             entryCard.classList.remove("hidden");
             numberSection.classList.remove("hidden");
           }

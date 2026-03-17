@@ -10,7 +10,8 @@
     authorizations: [],
     lookupFamily: null,
     manageSelection: new Set(),
-    editingAuthorizationId: null
+    editingAuthorizationId: null,
+    pendingRemovalAuthId: null
   };
 
   const PERMANENT_END_DATE = "9999-12-31";
@@ -19,8 +20,12 @@
     return document.getElementById(id);
   }
 
+  function setBootPending(isPending) {
+    document.documentElement.classList.toggle("parent-boot-pending", Boolean(isPending));
+  }
+
   function hideAllSections() {
-    ["cached-section", "number-section", "students-section", "done-section"].forEach((id) => show(id, false));
+    ["number-section", "students-section", "done-section"].forEach((id) => show(id, false));
     show("entry-card", true);
     show("students-section", false);
     show("done-card", false);
@@ -28,9 +33,8 @@
 
   function syncNumberUi() {
     const numberText = state.number ? String(state.number) : "";
-    if (el("cached-label")) el("cached-label").textContent = numberText ? `Welcome back! Use carpool #${numberText}?` : "";
-    if (el("cached-number-display")) el("cached-number-display").textContent = numberText ? `#${numberText}` : "—";
     if (el("carpool-number")) el("carpool-number").value = numberText;
+    show("parent-logout-btn", Boolean(numberText));
   }
 
   function todayIso() {
@@ -79,6 +83,10 @@
     });
     if (error) throw error;
     return data || [];
+  }
+
+  function visibleAuthorizations(authorizations) {
+    return (authorizations || []).filter((auth) => !auth.is_revoked);
   }
 
   async function submitCheckInRequest(targets) {
@@ -230,7 +238,7 @@
         <p class="authorization-students">${escapeHtml(students || "No students")}</p>
         <div class="authorization-actions">
           ${auth.is_revoked ? "" : `<button type="button" class="btn btn-secondary" data-edit-auth="${escapeHtml(auth.authorization_id)}">Edit</button>`}
-          ${auth.is_revoked ? "" : `<button type="button" class="btn btn-secondary" data-revoke-auth="${escapeHtml(auth.authorization_id)}">Revoke</button>`}
+          ${auth.is_revoked ? "" : `<button type="button" class="btn btn-secondary" data-remove-auth="${escapeHtml(auth.authorization_id)}">Remove</button>`}
         </div>
       </article>
     `;
@@ -316,11 +324,21 @@
 
   async function loadFamily(number) {
     state.context = await getCheckinContext(number);
-    state.authorizations = await getFamilyAuthorizations(number);
+    state.authorizations = visibleAuthorizations(await getFamilyAuthorizations(number));
     resetSelections();
     renderCheckinArea();
     renderAuthorizationList();
     resetManageForm();
+  }
+
+  async function finishLogin(nextNumber) {
+    await loadFamily(nextNumber);
+    state.number = nextNumber;
+    syncNumberUi();
+    localStorage.setItem(STORAGE_KEY, String(state.number));
+    hideAllSections();
+    show("entry-card", false);
+    show("students-section", true);
   }
 
   async function continueWithNumber(number) {
@@ -332,17 +350,29 @@
       return;
     }
 
-    state.number = Number(number);
-    syncNumberUi();
+    const nextNumber = Number(number);
 
     try {
-      await loadFamily(state.number);
-      localStorage.setItem(STORAGE_KEY, String(state.number));
-      hideAllSections();
-      show("entry-card", false);
-      show("students-section", true);
+      await finishLogin(nextNumber);
     } catch (error) {
       showError("number-error", error.message || "Unable to connect. Please try again.");
+    }
+  }
+
+  async function restoreSavedSession(number) {
+    hideAllSections();
+    show("entry-card", false);
+
+    try {
+      await finishLogin(Number(number));
+    } catch (error) {
+      localStorage.removeItem(STORAGE_KEY);
+      state.number = null;
+      state.context = null;
+      state.authorizations = [];
+      syncNumberUi();
+      showNumberStep(true);
+      showError("number-error", "Please enter your carpool number to check in.");
     }
   }
 
@@ -461,7 +491,7 @@
         });
       }
 
-      state.authorizations = await getFamilyAuthorizations(state.number);
+      state.authorizations = visibleAuthorizations(await getFamilyAuthorizations(state.number));
       renderAuthorizationList();
       resetManageForm();
       setMessage("authorization-message", "Permission saved.", "success");
@@ -470,13 +500,55 @@
     }
   }
 
-  async function handleRevoke(authId) {
+  function openRemoveModal(auth) {
+    if (!auth) return;
+    state.pendingRemovalAuthId = auth.authorization_id;
+    const receiving = auth.receiving_family || {};
+    const familyLabel = receiving.parent_names
+      ? `${receiving.parent_names} (#${receiving.carpool_number || "?"})`
+      : `carpool #${receiving.carpool_number || "?"}`;
+    const studentNames = (auth.students || [])
+      .map((student) => `${student.first_name} ${student.last_name}`)
+      .join(", ");
+    const studentLabel = studentNames || "the selected students";
+    el("remove-authorization-text").textContent =
+      `Remove pickup permission for ${familyLabel}? These parents will no longer be able to check in ${studentLabel}.`;
+    el("confirm-remove-authorization").disabled = false;
+    show("remove-authorization-modal", true);
+  }
+
+  function closeRemoveModal() {
+    state.pendingRemovalAuthId = null;
+    el("confirm-remove-authorization").disabled = false;
+    show("remove-authorization-modal", false);
+  }
+
+  function clearParentSession() {
+    localStorage.removeItem(STORAGE_KEY);
+    state.number = null;
+    state.context = null;
+    state.authorizations = [];
+    state.lookupFamily = null;
+    state.manageSelection = new Set();
+    state.editingAuthorizationId = null;
+    state.pendingRemovalAuthId = null;
+    resetSelections();
+    syncNumberUi();
+    resetManageForm();
+    closeRemoveModal();
+    setBootPending(false);
+    showNumberStep(true);
+  }
+
+  async function handleRemove(authId) {
     try {
       await revokeAuthorization(authId);
-      state.authorizations = await getFamilyAuthorizations(state.number);
+      state.authorizations = visibleAuthorizations(await getFamilyAuthorizations(state.number));
       renderAuthorizationList();
+      if (state.editingAuthorizationId === authId) resetManageForm();
+      setMessage("authorization-message", "Permission removed.", "success");
     } catch (error) {
-      setMessage("authorization-message", error.message || "Unable to revoke permission.", "error");
+      setMessage("authorization-message", error.message || "Unable to remove permission.", "error");
     }
   }
 
@@ -489,20 +561,12 @@
       }
     });
 
-    el("cached-yes").addEventListener("click", () => continueWithNumber(state.number));
-    el("cached-change").addEventListener("click", () => {
-      localStorage.removeItem(STORAGE_KEY);
-      state.number = null;
-      syncNumberUi();
-      showNumberStep(true);
-    });
+    el("parent-logout-btn").addEventListener("click", clearParentSession);
     el("done-btn").addEventListener("click", () => {
-      const cached = localStorage.getItem(STORAGE_KEY);
-      if (cached) {
-        state.number = Number(cached);
-        syncNumberUi();
+      if (state.number) {
         hideAllSections();
-        show("cached-section", true);
+        show("entry-card", false);
+        show("students-section", true);
       } else {
         showNumberStep(true);
       }
@@ -569,15 +633,34 @@
         return;
       }
 
-      const revokeBtn = event.target.closest("[data-revoke-auth]");
-      if (revokeBtn) {
-        handleRevoke(revokeBtn.dataset.revokeAuth);
+      const removeBtn = event.target.closest("[data-remove-auth]");
+      if (removeBtn) {
+        const auth = state.authorizations.find((item) => item.authorization_id === removeBtn.dataset.removeAuth);
+        openRemoveModal(auth);
+      }
+    });
+
+    el("cancel-remove-authorization").addEventListener("click", closeRemoveModal);
+    el("remove-authorization-modal").addEventListener("click", (event) => {
+      if (event.target === el("remove-authorization-modal")) closeRemoveModal();
+    });
+    el("confirm-remove-authorization").addEventListener("click", async () => {
+      if (!state.pendingRemovalAuthId) return;
+      const authId = state.pendingRemovalAuthId;
+      el("confirm-remove-authorization").disabled = true;
+      await handleRemove(authId);
+      closeRemoveModal();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && state.pendingRemovalAuthId) {
+        closeRemoveModal();
       }
     });
   }
 
   function init() {
     if (!window.carpoolClient) {
+      setBootPending(false);
       show("config-warning", true);
       return;
     }
@@ -586,11 +669,12 @@
 
     const cached = localStorage.getItem(STORAGE_KEY);
     if (cached) {
-      state.number = Number(cached);
-      syncNumberUi();
-      hideAllSections();
-      show("cached-section", true);
+      setBootPending(true);
+      restoreSavedSession(cached).finally(() => {
+        setBootPending(false);
+      });
     } else {
+      setBootPending(false);
       syncNumberUi();
       showNumberStep(true);
     }
