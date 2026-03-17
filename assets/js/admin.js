@@ -11,6 +11,8 @@
     pickupAuthorizations: [],
     pickupAuthorizationStudents: [],
     pickupAuthorizationAudit: [],
+    carpoolPresets: [],
+    carpoolPresetStudents: [],
     currentTab: "today",
     channel: null,
     refreshTimer: null,
@@ -49,6 +51,60 @@
 
   function studentLabel(student) {
     return `${student.last_name}, ${student.first_name}`;
+  }
+
+  function authorizationStudentIds(authId) {
+    return state.pickupAuthorizationStudents
+      .filter((row) => row.authorization_id === authId)
+      .map((row) => row.student_id);
+  }
+
+  function presetStudentIds(presetId) {
+    return state.carpoolPresetStudents
+      .filter((row) => row.preset_id === presetId)
+      .map((row) => row.student_id);
+  }
+
+  function studentsForFamily(familyId) {
+    return state.students
+      .filter((student) => student.family_id === familyId)
+      .sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name));
+  }
+
+  function authorizationIsActive(auth) {
+    return !auth.is_revoked && state.today >= auth.starts_on && state.today <= auth.ends_on;
+  }
+
+  function eligiblePresetStudents(ownerFamilyId) {
+    const studentById = new Map(state.students.map((student) => [student.id, student]));
+    const familyById = new Map(state.families.map((family) => [family.id, family]));
+    const eligible = new Map();
+
+    studentsForFamily(ownerFamilyId).forEach((student) => {
+      eligible.set(student.id, {
+        student,
+        sourceFamily: familyById.get(ownerFamilyId),
+        sourceLabel: "Own Student"
+      });
+    });
+
+    state.pickupAuthorizations
+      .filter((auth) => auth.receiving_family_id === ownerFamilyId && authorizationIsActive(auth))
+      .forEach((auth) => {
+        authorizationStudentIds(auth.id).forEach((studentId) => {
+          const student = studentById.get(studentId);
+          if (!student) return;
+          eligible.set(student.id, {
+            student,
+            sourceFamily: familyById.get(student.family_id),
+            sourceLabel: "Authorized Pickup"
+          });
+        });
+      });
+
+    return Array.from(eligible.values()).sort((a, b) =>
+      a.student.last_name.localeCompare(b.student.last_name) || a.student.first_name.localeCompare(b.student.first_name)
+    );
   }
 
   function sortedBy(arr, col, dir, valFn) {
@@ -97,10 +153,12 @@
         .order("called_at", { ascending: false })
     ]);
 
-    const [pickupAuthRes, pickupAuthStudentsRes, pickupAuditRes] = await Promise.all([
+    const [pickupAuthRes, pickupAuthStudentsRes, pickupAuditRes, presetsRes, presetStudentsRes] = await Promise.all([
       client.from("pickup_authorizations").select("*").order("created_at", { ascending: false }),
       client.from("pickup_authorization_students").select("*"),
-      client.from("pickup_authorization_audit").select("*").order("created_at", { ascending: false })
+      client.from("pickup_authorization_audit").select("*").order("created_at", { ascending: false }),
+      client.from("carpool_presets").select("*").order("created_at", { ascending: false }),
+      client.from("carpool_preset_students").select("*")
     ]);
 
     if (classesRes.error) throw classesRes.error;
@@ -110,6 +168,8 @@
     if (pickupAuthRes.error) throw pickupAuthRes.error;
     if (pickupAuthStudentsRes.error) throw pickupAuthStudentsRes.error;
     if (pickupAuditRes.error) throw pickupAuditRes.error;
+    if (presetsRes.error) throw presetsRes.error;
+    if (presetStudentsRes.error) throw presetStudentsRes.error;
 
     state.classes = classesRes.data || [];
     state.families = familiesRes.data || [];
@@ -118,6 +178,8 @@
     state.pickupAuthorizations = pickupAuthRes.data || [];
     state.pickupAuthorizationStudents = pickupAuthStudentsRes.data || [];
     state.pickupAuthorizationAudit = pickupAuditRes.data || [];
+    state.carpoolPresets = presetsRes.data || [];
+    state.carpoolPresetStudents = presetStudentsRes.data || [];
   }
 
   function setTab(nextTab) {
@@ -362,12 +424,20 @@
     const familyById = new Map(state.families.map((family) => [family.id, family]));
     const studentById = new Map(state.students.map((student) => [student.id, student]));
     const studentsByAuthorization = new Map();
+    const studentsByPreset = new Map();
 
     state.pickupAuthorizationStudents.forEach((row) => {
       const list = studentsByAuthorization.get(row.authorization_id) || [];
       const student = studentById.get(row.student_id);
       if (student) list.push(student);
       studentsByAuthorization.set(row.authorization_id, list);
+    });
+
+    state.carpoolPresetStudents.forEach((row) => {
+      const list = studentsByPreset.get(row.preset_id) || [];
+      const student = studentById.get(row.student_id);
+      if (student) list.push(student);
+      studentsByPreset.set(row.preset_id, list);
     });
 
     const authRows = state.pickupAuthorizations
@@ -390,11 +460,37 @@
           <td>${escapeHtml(auth.starts_on || "")}</td>
           <td>${escapeHtml(auth.ends_on || "")}</td>
           <td>${escapeHtml(status)}</td>
+          <td class="inline">
+            ${auth.is_revoked ? "" : `<button class="btn btn-secondary" data-edit-auth="${escapeHtml(auth.id)}">Edit</button>`}
+            ${auth.is_revoked ? "" : `<button class="btn btn-secondary" data-revoke-auth="${escapeHtml(auth.id)}">Revoke</button>`}
+          </td>
         </tr>`;
       })
       .join("");
 
-    el("permissions-tbody").innerHTML = authRows || '<tr><td colspan="6" class="muted">No permissions yet.</td></tr>';
+    el("permissions-tbody").innerHTML = authRows || '<tr><td colspan="7" class="muted">No permissions yet.</td></tr>';
+
+    const presetRows = state.carpoolPresets
+      .map((preset) => {
+        const owner = familyById.get(preset.owner_family_id);
+        const students = (studentsByPreset.get(preset.id) || [])
+          .sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name))
+          .map((student) => `${student.first_name} ${student.last_name}`)
+          .join(", ");
+
+        return `<tr>
+          <td>${escapeHtml(owner ? `#${owner.carpool_number} - ${owner.parent_names}` : "Unknown")}</td>
+          <td>${escapeHtml(preset.name || "")}</td>
+          <td>${escapeHtml(students || "No students")}</td>
+          <td class="inline">
+            <button class="btn btn-secondary" data-edit-preset="${escapeHtml(preset.id)}">Edit</button>
+            <button class="btn btn-secondary" data-delete-preset="${escapeHtml(preset.id)}">Delete</button>
+          </td>
+        </tr>`;
+      })
+      .join("");
+
+    el("presets-tbody").innerHTML = presetRows || '<tr><td colspan="4" class="muted">No saved carpools yet.</td></tr>';
 
     const auditRows = state.pickupAuthorizationAudit
       .map((audit) => {
@@ -419,6 +515,61 @@
       .join("");
 
     el("permissions-audit-tbody").innerHTML = auditRows || '<tr><td colspan="7" class="muted">No audit events yet.</td></tr>';
+  }
+
+  function permissionStudentPickerHtml(grantingFamilyId, selectedIds) {
+    if (!grantingFamilyId) {
+      return '<p class="muted">Choose a granting family first.</p>';
+    }
+
+    const students = studentsForFamily(grantingFamilyId);
+    if (!students.length) {
+      return '<p class="muted">This family has no students.</p>';
+    }
+
+    return students.map((student) => {
+      const checked = selectedIds.includes(student.id) ? "checked" : "";
+      return `<label class="checkbox-option">
+        <input type="checkbox" data-permission-student value="${escapeHtml(student.id)}" ${checked} />
+        <span>${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
+      </label>`;
+    }).join("");
+  }
+
+  function presetStudentPickerHtml(ownerFamilyId, selectedIds) {
+    if (!ownerFamilyId) {
+      return '<p class="muted">Choose an owner family first.</p>';
+    }
+
+    const options = eligiblePresetStudents(ownerFamilyId);
+    if (!options.length) {
+      return '<p class="muted">No currently eligible students are available for this family.</p>';
+    }
+
+    return options.map(({ student, sourceFamily, sourceLabel }) => {
+      const checked = selectedIds.includes(student.id) ? "checked" : "";
+      const familyText = sourceFamily ? `#${sourceFamily.carpool_number} - ${sourceFamily.parent_names}` : "Unknown family";
+      const className = student.classes ? student.classes.name : "";
+      return `<label class="checkbox-option">
+        <input type="checkbox" data-preset-student value="${escapeHtml(student.id)}" ${checked} />
+        <span>${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
+        <small>${escapeHtml(`${className} | ${sourceLabel} | ${familyText}`)}</small>
+      </label>`;
+    }).join("");
+  }
+
+  function refreshPermissionModalStudents(selectedIds) {
+    const container = el("modal-permission-students");
+    const grantingFamilyId = el("modal-permission-granting") ? el("modal-permission-granting").value : "";
+    if (!container) return;
+    container.innerHTML = permissionStudentPickerHtml(grantingFamilyId, selectedIds || []);
+  }
+
+  function refreshPresetModalStudents(selectedIds) {
+    const container = el("modal-preset-students");
+    const ownerFamilyId = el("modal-preset-owner") ? el("modal-preset-owner").value : "";
+    if (!container) return;
+    container.innerHTML = presetStudentPickerHtml(ownerFamilyId, selectedIds || []);
   }
 
   async function refreshAndRender() {
@@ -518,6 +669,79 @@
       `;
     }
 
+    if (kind === "permission") {
+      const grantingOptions = state.families
+        .map((f) => {
+          const selected = data && data.granting_family_id === f.id ? "selected" : "";
+          return `<option value="${escapeHtml(f.id)}" ${selected}>${escapeHtml(familyLabel(f))}</option>`;
+        })
+        .join("");
+
+      const receivingOptions = state.families
+        .map((f) => {
+          const selected = data && data.receiving_family_id === f.id ? "selected" : "";
+          const disabled = data && data.granting_family_id === f.id ? "disabled" : "";
+          return `<option value="${escapeHtml(f.id)}" ${selected} ${disabled}>${escapeHtml(familyLabel(f))}</option>`;
+        })
+        .join("");
+
+      return `
+        <div class="form-row">
+          <label for="modal-permission-granting">Granting Family</label>
+          <select id="modal-permission-granting" ${data && data.authorization_id ? "disabled" : ""} required>
+            <option value="">Select family</option>
+            ${grantingOptions}
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="modal-permission-receiving">Receiving Family</label>
+          <select id="modal-permission-receiving" ${data && data.authorization_id ? "disabled" : ""} required>
+            <option value="">Select family</option>
+            ${receivingOptions}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Students</label>
+          <div id="modal-permission-students" class="checkbox-list">${permissionStudentPickerHtml(data?.granting_family_id || "", data?.student_ids || [])}</div>
+        </div>
+        <div class="form-row">
+          <label for="modal-permission-start">Start Date</label>
+          <input id="modal-permission-start" type="date" value="${escapeHtml(data?.starts_on || state.today)}" required />
+        </div>
+        <div class="form-row">
+          <label for="modal-permission-end">End Date</label>
+          <input id="modal-permission-end" type="date" value="${escapeHtml(data?.ends_on || state.today)}" required />
+        </div>
+      `;
+    }
+
+    if (kind === "preset") {
+      const ownerOptions = state.families
+        .map((f) => {
+          const selected = data && data.owner_family_id === f.id ? "selected" : "";
+          return `<option value="${escapeHtml(f.id)}" ${selected}>${escapeHtml(familyLabel(f))}</option>`;
+        })
+        .join("");
+
+      return `
+        <div class="form-row">
+          <label for="modal-preset-owner">Owner Family</label>
+          <select id="modal-preset-owner" ${data && data.preset_id ? "disabled" : ""} required>
+            <option value="">Select family</option>
+            ${ownerOptions}
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="modal-preset-name">Saved Carpool Name</label>
+          <input id="modal-preset-name" type="text" value="${escapeHtml(data?.name || "")}" required />
+        </div>
+        <div class="form-row">
+          <label>Students</label>
+          <div id="modal-preset-students" class="checkbox-list">${presetStudentPickerHtml(data?.owner_family_id || "", data?.student_ids || [])}</div>
+        </div>
+      `;
+    }
+
     if (kind === "import") {
       return `
         <div class="form-row">
@@ -531,6 +755,39 @@
     return "";
   }
 
+  function bindModalSpecificUi(mode, data) {
+    if (mode === "add-permission" || mode === "edit-permission") {
+      const selectedIds = data?.student_ids || [];
+      const grantingSelect = el("modal-permission-granting");
+      const receivingSelect = el("modal-permission-receiving");
+      if (grantingSelect && !grantingSelect.disabled) {
+        grantingSelect.addEventListener("change", () => {
+          const currentReceiving = receivingSelect ? receivingSelect.value : "";
+          refreshPermissionModalStudents([]);
+          if (receivingSelect) {
+            Array.from(receivingSelect.options).forEach((option) => {
+              if (!option.value) return;
+              option.disabled = option.value === grantingSelect.value;
+            });
+            if (currentReceiving === grantingSelect.value) receivingSelect.value = "";
+          }
+        });
+      }
+      refreshPermissionModalStudents(selectedIds);
+    }
+
+    if (mode === "add-preset" || mode === "edit-preset") {
+      const selectedIds = data?.student_ids || [];
+      const ownerSelect = el("modal-preset-owner");
+      if (ownerSelect && !ownerSelect.disabled) {
+        ownerSelect.addEventListener("change", () => {
+          refreshPresetModalStudents([]);
+        });
+      }
+      refreshPresetModalStudents(selectedIds);
+    }
+  }
+
   function openModal(mode, entityId) {
     state.modal.mode = mode;
     state.modal.entityId = entityId || null;
@@ -538,6 +795,7 @@
     let title = "";
     let submitLabel = "Save";
     let body = "";
+    let modalData = null;
 
     if (mode === "add-family") {
       title = "Add Family";
@@ -573,6 +831,42 @@
       title = "Import CSV";
       submitLabel = "Run Import";
       body = modalFieldTemplate("import");
+    } else if (mode === "add-permission") {
+      title = "Add Pickup Permission";
+      submitLabel = "Save Permission";
+      modalData = { starts_on: state.today, ends_on: state.today, student_ids: [] };
+      body = modalFieldTemplate("permission", modalData);
+    } else if (mode === "edit-permission") {
+      const auth = state.pickupAuthorizations.find((item) => item.id === entityId);
+      if (!auth) return;
+      title = "Edit Pickup Permission";
+      submitLabel = "Save Changes";
+      modalData = {
+        authorization_id: auth.id,
+        granting_family_id: auth.granting_family_id,
+        receiving_family_id: auth.receiving_family_id,
+        starts_on: auth.starts_on,
+        ends_on: auth.ends_on,
+        student_ids: authorizationStudentIds(auth.id)
+      };
+      body = modalFieldTemplate("permission", modalData);
+    } else if (mode === "add-preset") {
+      title = "Add Saved Carpool";
+      submitLabel = "Save Saved Carpool";
+      modalData = { student_ids: [] };
+      body = modalFieldTemplate("preset", modalData);
+    } else if (mode === "edit-preset") {
+      const preset = state.carpoolPresets.find((item) => item.id === entityId);
+      if (!preset) return;
+      title = "Edit Saved Carpool";
+      submitLabel = "Save Changes";
+      modalData = {
+        preset_id: preset.id,
+        owner_family_id: preset.owner_family_id,
+        name: preset.name,
+        student_ids: presetStudentIds(preset.id)
+      };
+      body = modalFieldTemplate("preset", modalData);
     }
 
     el("admin-modal-title").textContent = title;
@@ -580,6 +874,7 @@
     el("admin-modal-fields").innerHTML = body;
     setNodeMessage("admin-modal-msg", "");
     show("admin-modal", true);
+    bindModalSpecificUi(mode, modalData);
   }
 
   function closeModal() {
@@ -655,6 +950,81 @@
       : client.from("students").insert(payload);
 
     const { error } = await query;
+    if (error) {
+      setNodeMessage("admin-modal-msg", error.message, "error");
+      return;
+    }
+
+    await refreshAndRender();
+    closeModal();
+  }
+
+  async function savePermission(isEdit) {
+    const client = mustClient();
+    const grantingFamilyId = el("modal-permission-granting").value;
+    const receivingFamilyId = el("modal-permission-receiving").value;
+    const startsOn = el("modal-permission-start").value;
+    const endsOn = el("modal-permission-end").value;
+    const studentIds = Array.from(document.querySelectorAll("[data-permission-student]:checked")).map((input) => input.value);
+
+    if (!grantingFamilyId || !receivingFamilyId || !startsOn || !endsOn || !studentIds.length) {
+      setNodeMessage("admin-modal-msg", "Choose both families, a date range, and at least one student.", "error");
+      return;
+    }
+
+    const rpcName = isEdit ? "admin_update_pickup_authorization" : "admin_create_pickup_authorization";
+    const params = isEdit
+      ? {
+          p_authorization_id: state.modal.entityId,
+          p_granting_family_id: grantingFamilyId,
+          p_student_ids: studentIds,
+          p_starts_on: startsOn,
+          p_ends_on: endsOn
+        }
+      : {
+          p_granting_family_id: grantingFamilyId,
+          p_receiving_family_id: receivingFamilyId,
+          p_student_ids: studentIds,
+          p_starts_on: startsOn,
+          p_ends_on: endsOn
+        };
+
+    const { error } = await client.rpc(rpcName, params);
+    if (error) {
+      setNodeMessage("admin-modal-msg", error.message, "error");
+      return;
+    }
+
+    await refreshAndRender();
+    closeModal();
+  }
+
+  async function savePreset(isEdit) {
+    const client = mustClient();
+    const ownerFamilyId = el("modal-preset-owner").value;
+    const name = el("modal-preset-name").value.trim();
+    const studentIds = Array.from(document.querySelectorAll("[data-preset-student]:checked")).map((input) => input.value);
+
+    if (!ownerFamilyId || !name || !studentIds.length) {
+      setNodeMessage("admin-modal-msg", "Choose an owner family, a name, and at least one student.", "error");
+      return;
+    }
+
+    const rpcName = isEdit ? "admin_update_carpool_preset" : "admin_create_carpool_preset";
+    const params = isEdit
+      ? {
+          p_preset_id: state.modal.entityId,
+          p_owner_family_id: ownerFamilyId,
+          p_name: name,
+          p_student_ids: studentIds
+        }
+      : {
+          p_owner_family_id: ownerFamilyId,
+          p_name: name,
+          p_student_ids: studentIds
+        };
+
+    const { error } = await client.rpc(rpcName, params);
     if (error) {
       setNodeMessage("admin-modal-msg", error.message, "error");
       return;
@@ -753,6 +1123,10 @@
     if (mode === "edit-class") return saveClass(true);
     if (mode === "add-student") return saveStudent(false);
     if (mode === "edit-student") return saveStudent(true);
+    if (mode === "add-permission") return savePermission(false);
+    if (mode === "edit-permission") return savePermission(true);
+    if (mode === "add-preset") return savePreset(false);
+    if (mode === "edit-preset") return savePreset(true);
     if (mode === "import-csv") return importCsvFromModal();
   }
 
@@ -790,6 +1164,34 @@
     if (!confirm("Delete this student?")) return;
     const client = mustClient();
     const { error } = await client.from("students").delete().eq("id", id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await refreshAndRender();
+  }
+
+  async function revokePermission(id) {
+    if (!confirm("Revoke this pickup permission?")) return;
+    const client = mustClient();
+    const { error } = await client.rpc("admin_revoke_pickup_authorization", {
+      p_authorization_id: id
+    });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await refreshAndRender();
+  }
+
+  async function removePreset(id) {
+    if (!confirm("Delete this saved carpool?")) return;
+    const client = mustClient();
+    const { error } = await client.rpc("admin_delete_carpool_preset", {
+      p_preset_id: id
+    });
     if (error) {
       alert(error.message);
       return;
@@ -851,6 +1253,8 @@
     el("open-add-family").addEventListener("click", () => openModal("add-family"));
     el("open-add-class").addEventListener("click", () => openModal("add-class"));
     el("open-add-student").addEventListener("click", () => openModal("add-student"));
+    el("open-add-permission").addEventListener("click", () => openModal("add-permission"));
+    el("open-add-preset").addEventListener("click", () => openModal("add-preset"));
     el("open-csv-import").addEventListener("click", () => openModal("import-csv"));
 
     el("admin-modal-close").addEventListener("click", closeModal);
@@ -902,6 +1306,32 @@
       const deleteBtn = event.target.closest("[data-delete-student]");
       if (deleteBtn) {
         deleteStudent(deleteBtn.dataset.deleteStudent);
+      }
+    });
+
+    el("permissions-tbody").addEventListener("click", (event) => {
+      const editBtn = event.target.closest("[data-edit-auth]");
+      if (editBtn) {
+        openModal("edit-permission", editBtn.dataset.editAuth);
+        return;
+      }
+
+      const revokeBtn = event.target.closest("[data-revoke-auth]");
+      if (revokeBtn) {
+        revokePermission(revokeBtn.dataset.revokeAuth);
+      }
+    });
+
+    el("presets-tbody").addEventListener("click", (event) => {
+      const editBtn = event.target.closest("[data-edit-preset]");
+      if (editBtn) {
+        openModal("edit-preset", editBtn.dataset.editPreset);
+        return;
+      }
+
+      const deleteBtn = event.target.closest("[data-delete-preset]");
+      if (deleteBtn) {
+        removePreset(deleteBtn.dataset.deletePreset);
       }
     });
 

@@ -109,6 +109,20 @@ create table if not exists public.pickup_authorization_audit (
   details jsonb not null default '{}'::jsonb
 );
 
+create table if not exists public.carpool_presets (
+  id uuid primary key default gen_random_uuid(),
+  owner_family_id uuid not null references public.families(id) on delete cascade,
+  name text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.carpool_preset_students (
+  preset_id uuid not null references public.carpool_presets(id) on delete cascade,
+  student_id uuid not null references public.students(id) on delete cascade,
+  primary key (preset_id, student_id)
+);
+
 create index if not exists idx_students_class_id on public.students(class_id);
 create index if not exists idx_students_family_id on public.students(family_id);
 create index if not exists idx_daily_status_date on public.daily_status(date);
@@ -126,6 +140,12 @@ create index if not exists idx_pickup_authorization_audit_granting_created
   on public.pickup_authorization_audit(granting_family_id, created_at desc);
 create index if not exists idx_pickup_authorization_audit_receiving_created
   on public.pickup_authorization_audit(receiving_family_id, created_at desc);
+create index if not exists idx_carpool_presets_owner_created
+  on public.carpool_presets(owner_family_id, created_at desc);
+create unique index if not exists idx_carpool_presets_owner_name_ci
+  on public.carpool_presets(owner_family_id, lower(name));
+create index if not exists idx_carpool_preset_students_student_id
+  on public.carpool_preset_students(student_id);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -150,6 +170,11 @@ for each row execute function public.set_updated_at();
 drop trigger if exists trg_pickup_authorizations_updated_at on public.pickup_authorizations;
 create trigger trg_pickup_authorizations_updated_at
 before update on public.pickup_authorizations
+for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_carpool_presets_updated_at on public.carpool_presets;
+create trigger trg_carpool_presets_updated_at
+before update on public.carpool_presets
 for each row execute function public.set_updated_at();
 
 create or replace function public.school_today()
@@ -201,6 +226,31 @@ as $$
   from public.families f
   where f.carpool_number = p_carpool_number
   limit 1;
+$$;
+
+create or replace function public.allowed_students_for_family(
+  p_owner_family_id uuid,
+  p_on_date date
+)
+returns table(
+  family_id uuid,
+  student_id uuid
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select s.family_id, s.id
+  from public.students s
+  where s.family_id = p_owner_family_id
+  union
+  select pa.granting_family_id, pas.student_id
+  from public.pickup_authorizations pa
+  join public.pickup_authorization_students pas on pas.authorization_id = pa.id
+  where pa.receiving_family_id = p_owner_family_id
+    and pa.is_revoked = false
+    and p_on_date between pa.starts_on and pa.ends_on;
 $$;
 
 create or replace function public.active_authorized_students_for_receiver(
@@ -289,6 +339,28 @@ begin
 end;
 $$;
 
+create or replace function public.prune_invalid_carpool_preset_students(
+  p_owner_family_id uuid,
+  p_on_date date
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.carpool_preset_students cps
+  using public.carpool_presets cp
+  where cp.id = cps.preset_id
+    and cp.owner_family_id = p_owner_family_id
+    and not exists (
+      select 1
+      from public.allowed_students_for_family(p_owner_family_id, p_on_date) allowed
+      where allowed.student_id = cps.student_id
+    );
+end;
+$$;
+
 create or replace function public.get_parent_checkin_context(p_carpool_number integer)
 returns jsonb
 language plpgsql
@@ -300,6 +372,7 @@ declare
   v_family record;
   v_own_students jsonb := '[]'::jsonb;
   v_authorized_pickups jsonb := '[]'::jsonb;
+  v_saved_carpools jsonb := '[]'::jsonb;
 begin
   select f.id, f.carpool_number, f.parent_names
   into v_family
@@ -377,6 +450,65 @@ begin
   into v_authorized_pickups
   from family_groups fg;
 
+  perform public.prune_invalid_carpool_preset_students(v_family.id, v_today);
+
+  with preset_rows as (
+    select
+      cp.id as preset_id,
+      cp.name,
+      s.family_id,
+      f.carpool_number,
+      f.parent_names,
+      s.id as student_id,
+      s.first_name,
+      s.last_name,
+      c.name as class_name
+    from public.carpool_presets cp
+    left join public.carpool_preset_students cps on cps.preset_id = cp.id
+    left join public.students s on s.id = cps.student_id
+    left join public.families f on f.id = s.family_id
+    left join public.classes c on c.id = s.class_id
+    where cp.owner_family_id = v_family.id
+  ),
+  grouped as (
+    select
+      pr.preset_id,
+      pr.name,
+      coalesce(
+        jsonb_agg(
+          jsonb_build_object(
+            'student_id', pr.student_id,
+            'family_id', pr.family_id,
+            'carpool_number', pr.carpool_number,
+            'parent_names', pr.parent_names,
+            'first_name', pr.first_name,
+            'last_name', pr.last_name,
+            'class_name', pr.class_name
+          )
+          order by pr.last_name, pr.first_name
+        ) filter (where pr.student_id is not null),
+        '[]'::jsonb
+      ) as students,
+      count(pr.student_id) as student_count
+    from preset_rows pr
+    group by pr.preset_id, pr.name
+    order by lower(pr.name), pr.preset_id
+  )
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'preset_id', g.preset_id,
+        'name', g.name,
+        'students', g.students,
+        'student_count', g.student_count
+      )
+      order by lower(g.name), g.preset_id
+    ),
+    '[]'::jsonb
+  )
+  into v_saved_carpools
+  from grouped g;
+
   return jsonb_build_object(
     'requesting_family', jsonb_build_object(
       'family_id', v_family.id,
@@ -384,7 +516,8 @@ begin
       'parent_names', v_family.parent_names
     ),
     'own_students', v_own_students,
-    'authorized_pickups', v_authorized_pickups
+    'authorized_pickups', v_authorized_pickups,
+    'saved_carpools', v_saved_carpools
   );
 end;
 $$;
@@ -424,16 +557,8 @@ begin
     ) sid
   ),
   allowed_students as (
-    select s.family_id, s.id as student_id
-    from public.students s
-    where s.family_id = v_requesting_family_id
-    union
-    select pa.granting_family_id, pas.student_id
-    from public.pickup_authorizations pa
-    join public.pickup_authorization_students pas on pas.authorization_id = pa.id
-    where pa.receiving_family_id = v_requesting_family_id
-      and pa.is_revoked = false
-      and v_today between pa.starts_on and pa.ends_on
+    select *
+    from public.allowed_students_for_family(v_requesting_family_id, v_today)
   ),
   invalid as (
     select st.student_id
@@ -525,6 +650,358 @@ begin
   return jsonb_build_object(
     'called_by', p_called_by,
     'families', v_called
+  );
+end;
+$$;
+
+create or replace function public.create_carpool_preset(
+  p_owner_carpool_number integer,
+  p_name text,
+  p_student_ids uuid[]
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_today date := public.school_today();
+  v_owner_family_id uuid;
+  v_preset_id uuid;
+  v_invalid_count integer;
+  v_name text := btrim(coalesce(p_name, ''));
+begin
+  if v_name = '' then
+    raise exception 'Name is required';
+  end if;
+
+  v_owner_family_id := public.family_id_for_carpool(p_owner_carpool_number);
+  if v_owner_family_id is null then
+    raise exception 'Carpool number not found';
+  end if;
+
+  if coalesce(array_length(p_student_ids, 1), 0) = 0 then
+    raise exception 'Select at least one student';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from (
+    select distinct sid
+    from unnest(p_student_ids) sid
+  ) submitted
+  left join public.allowed_students_for_family(v_owner_family_id, v_today) allowed
+    on allowed.student_id = submitted.sid
+  where allowed.student_id is null;
+
+  if v_invalid_count > 0 then
+    raise exception 'Saved carpools can only include students you are currently allowed to pick up';
+  end if;
+
+  insert into public.carpool_presets (owner_family_id, name)
+  values (v_owner_family_id, v_name)
+  returning id into v_preset_id;
+
+  insert into public.carpool_preset_students (preset_id, student_id)
+  select v_preset_id, submitted.sid
+  from (
+    select distinct sid
+    from unnest(p_student_ids) sid
+  ) submitted;
+
+  return jsonb_build_object('preset_id', v_preset_id);
+exception
+  when unique_violation then
+    raise exception 'You already have a saved carpool with this name';
+end;
+$$;
+
+create or replace function public.update_carpool_preset(
+  p_preset_id uuid,
+  p_owner_carpool_number integer,
+  p_name text,
+  p_student_ids uuid[]
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_today date := public.school_today();
+  v_owner_family_id uuid;
+  v_existing_owner uuid;
+  v_invalid_count integer;
+  v_name text := btrim(coalesce(p_name, ''));
+begin
+  if v_name = '' then
+    raise exception 'Name is required';
+  end if;
+
+  v_owner_family_id := public.family_id_for_carpool(p_owner_carpool_number);
+  if v_owner_family_id is null then
+    raise exception 'Carpool number not found';
+  end if;
+
+  select cp.owner_family_id
+  into v_existing_owner
+  from public.carpool_presets cp
+  where cp.id = p_preset_id;
+
+  if v_existing_owner is null or v_existing_owner <> v_owner_family_id then
+    raise exception 'Saved carpool not found';
+  end if;
+
+  if coalesce(array_length(p_student_ids, 1), 0) = 0 then
+    raise exception 'Select at least one student';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from (
+    select distinct sid
+    from unnest(p_student_ids) sid
+  ) submitted
+  left join public.allowed_students_for_family(v_owner_family_id, v_today) allowed
+    on allowed.student_id = submitted.sid
+  where allowed.student_id is null;
+
+  if v_invalid_count > 0 then
+    raise exception 'Saved carpools can only include students you are currently allowed to pick up';
+  end if;
+
+  update public.carpool_presets
+  set name = v_name
+  where id = p_preset_id;
+
+  delete from public.carpool_preset_students
+  where preset_id = p_preset_id;
+
+  insert into public.carpool_preset_students (preset_id, student_id)
+  select p_preset_id, submitted.sid
+  from (
+    select distinct sid
+    from unnest(p_student_ids) sid
+  ) submitted;
+
+  return jsonb_build_object('preset_id', p_preset_id);
+exception
+  when unique_violation then
+    raise exception 'You already have a saved carpool with this name';
+end;
+$$;
+
+create or replace function public.delete_carpool_preset(
+  p_preset_id uuid,
+  p_owner_carpool_number integer
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_family_id uuid;
+  v_deleted_count integer;
+begin
+  v_owner_family_id := public.family_id_for_carpool(p_owner_carpool_number);
+  if v_owner_family_id is null then
+    raise exception 'Carpool number not found';
+  end if;
+
+  delete from public.carpool_presets cp
+  where cp.id = p_preset_id
+    and cp.owner_family_id = v_owner_family_id;
+
+  get diagnostics v_deleted_count = row_count;
+
+  if v_deleted_count = 0 then
+    raise exception 'Saved carpool not found';
+  end if;
+
+  return true;
+end;
+$$;
+
+create or replace function public.submit_carpool_preset_check_in(
+  p_preset_id uuid,
+  p_owner_carpool_number integer,
+  p_called_by text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_today date := public.school_today();
+  v_owner_family_id uuid;
+  v_preset record;
+  v_called jsonb := '[]'::jsonb;
+  v_removed jsonb := '[]'::jsonb;
+  v_remaining_count integer := 0;
+begin
+  if p_called_by not in ('parent', 'spotter') then
+    raise exception 'Invalid caller';
+  end if;
+
+  v_owner_family_id := public.family_id_for_carpool(p_owner_carpool_number);
+  if v_owner_family_id is null then
+    raise exception 'Carpool number not found';
+  end if;
+
+  select cp.id, cp.name
+  into v_preset
+  from public.carpool_presets cp
+  where cp.id = p_preset_id
+    and cp.owner_family_id = v_owner_family_id;
+
+  if v_preset.id is null then
+    raise exception 'Saved carpool not found';
+  end if;
+
+  with invalid_students as (
+    select
+      s.id as student_id,
+      s.family_id,
+      f.carpool_number,
+      f.parent_names,
+      s.first_name,
+      s.last_name,
+      c.name as class_name
+    from public.carpool_preset_students cps
+    join public.students s on s.id = cps.student_id
+    join public.families f on f.id = s.family_id
+    join public.classes c on c.id = s.class_id
+    where cps.preset_id = p_preset_id
+      and not exists (
+        select 1
+        from public.allowed_students_for_family(v_owner_family_id, v_today) allowed
+        where allowed.student_id = cps.student_id
+      )
+  ),
+  deleted as (
+    delete from public.carpool_preset_students cps
+    using invalid_students invalid
+    where cps.preset_id = p_preset_id
+      and cps.student_id = invalid.student_id
+    returning invalid.student_id
+  )
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'student_id', invalid.student_id,
+        'family_id', invalid.family_id,
+        'carpool_number', invalid.carpool_number,
+        'parent_names', invalid.parent_names,
+        'first_name', invalid.first_name,
+        'last_name', invalid.last_name,
+        'class_name', invalid.class_name
+      )
+      order by invalid.last_name, invalid.first_name
+    ),
+    '[]'::jsonb
+  )
+  into v_removed
+  from invalid_students invalid;
+
+  with remaining_students as (
+    select
+      s.id as student_id,
+      s.family_id
+    from public.carpool_preset_students cps
+    join public.students s on s.id = cps.student_id
+    where cps.preset_id = p_preset_id
+  )
+  select count(*) into v_remaining_count
+  from remaining_students;
+
+  if v_remaining_count = 0 then
+    return jsonb_build_object(
+      'families', '[]'::jsonb,
+      'removed_students', v_removed,
+      'preset', jsonb_build_object(
+        'preset_id', v_preset.id,
+        'name', v_preset.name
+      ),
+      'is_empty_after_cleanup', true
+    );
+  end if;
+
+  with remaining_students as (
+    select
+      s.id as student_id,
+      s.family_id
+    from public.carpool_preset_students cps
+    join public.students s on s.id = cps.student_id
+    where cps.preset_id = p_preset_id
+  ),
+  upserted as (
+    insert into public.daily_status (student_id, date, status, called_at, called_by)
+    select rs.student_id, v_today, 'CALLED', now(), p_called_by
+    from remaining_students rs
+    on conflict (student_id, date)
+    do update set
+      status = excluded.status,
+      called_at = excluded.called_at,
+      called_by = excluded.called_by
+    returning student_id
+  ),
+  response_rows as (
+    select
+      f.id as family_id,
+      f.carpool_number,
+      f.parent_names,
+      s.id as student_id,
+      s.first_name,
+      s.last_name,
+      c.name as class_name
+    from public.students s
+    join public.families f on f.id = s.family_id
+    join public.classes c on c.id = s.class_id
+    join upserted u on u.student_id = s.id
+  ),
+  grouped as (
+    select
+      rr.family_id,
+      rr.carpool_number,
+      rr.parent_names,
+      jsonb_agg(
+        jsonb_build_object(
+          'student_id', rr.student_id,
+          'first_name', rr.first_name,
+          'last_name', rr.last_name,
+          'class_name', rr.class_name
+        )
+        order by rr.last_name, rr.first_name
+      ) as students
+    from response_rows rr
+    group by rr.family_id, rr.carpool_number, rr.parent_names
+    order by rr.carpool_number
+  )
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'family_id', g.family_id,
+        'carpool_number', g.carpool_number,
+        'parent_names', g.parent_names,
+        'students', g.students
+      )
+      order by g.carpool_number
+    ),
+    '[]'::jsonb
+  )
+  into v_called
+  from grouped g;
+
+  return jsonb_build_object(
+    'families', v_called,
+    'removed_students', v_removed,
+    'preset', jsonb_build_object(
+      'preset_id', v_preset.id,
+      'name', v_preset.name
+    ),
+    'is_empty_after_cleanup', false
   );
 end;
 $$;
@@ -796,6 +1273,8 @@ begin
     )
   );
 
+  perform public.prune_invalid_carpool_preset_students(v_receiving_family_id, public.school_today());
+
   return jsonb_build_object('authorization_id', p_authorization_id);
 end;
 $$;
@@ -857,18 +1336,424 @@ begin
     )
   );
 
+  perform public.prune_invalid_carpool_preset_students(v_receiving_family_id, public.school_today());
+
+  return true;
+end;
+$$;
+
+create or replace function public.admin_create_pickup_authorization(
+  p_granting_family_id uuid,
+  p_receiving_family_id uuid,
+  p_student_ids uuid[],
+  p_starts_on date,
+  p_ends_on date
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_authorization_id uuid;
+  v_invalid_count integer;
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  if p_starts_on is null or p_ends_on is null or p_starts_on > p_ends_on then
+    raise exception 'Invalid date range';
+  end if;
+
+  if p_granting_family_id is null or p_receiving_family_id is null then
+    raise exception 'Choose both families';
+  end if;
+
+  if p_granting_family_id = p_receiving_family_id then
+    raise exception 'Receiving family must be different';
+  end if;
+
+  if coalesce(array_length(p_student_ids, 1), 0) = 0 then
+    raise exception 'Select at least one student';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from unnest(p_student_ids) sid
+  left join public.students s on s.id = sid and s.family_id = p_granting_family_id
+  where s.id is null;
+
+  if v_invalid_count > 0 then
+    raise exception 'Selected students must belong to the granting family';
+  end if;
+
+  insert into public.pickup_authorizations (
+    granting_family_id,
+    receiving_family_id,
+    starts_on,
+    ends_on
+  ) values (
+    p_granting_family_id,
+    p_receiving_family_id,
+    p_starts_on,
+    p_ends_on
+  )
+  returning id into v_authorization_id;
+
+  insert into public.pickup_authorization_students (authorization_id, student_id)
+  select v_authorization_id, sid
+  from (
+    select distinct sid
+    from unnest(p_student_ids) sid
+  ) submitted;
+
+  perform public.write_pickup_authorization_audit(
+    v_authorization_id,
+    'CREATED',
+    'admin',
+    p_granting_family_id,
+    p_receiving_family_id,
+    p_starts_on,
+    p_ends_on,
+    p_student_ids
+  );
+
+  return jsonb_build_object('authorization_id', v_authorization_id);
+end;
+$$;
+
+create or replace function public.admin_update_pickup_authorization(
+  p_authorization_id uuid,
+  p_granting_family_id uuid,
+  p_student_ids uuid[],
+  p_starts_on date,
+  p_ends_on date
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_receiving_family_id uuid;
+  v_is_revoked boolean;
+  v_invalid_count integer;
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  if p_starts_on is null or p_ends_on is null or p_starts_on > p_ends_on then
+    raise exception 'Invalid date range';
+  end if;
+
+  if p_granting_family_id is null then
+    raise exception 'Choose a granting family';
+  end if;
+
+  select pa.receiving_family_id, pa.is_revoked
+  into v_receiving_family_id, v_is_revoked
+  from public.pickup_authorizations pa
+  where pa.id = p_authorization_id
+    and pa.granting_family_id = p_granting_family_id;
+
+  if v_receiving_family_id is null then
+    raise exception 'Authorization not found';
+  end if;
+
+  if v_is_revoked then
+    raise exception 'Authorization has been revoked';
+  end if;
+
+  if coalesce(array_length(p_student_ids, 1), 0) = 0 then
+    raise exception 'Select at least one student';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from unnest(p_student_ids) sid
+  left join public.students s on s.id = sid and s.family_id = p_granting_family_id
+  where s.id is null;
+
+  if v_invalid_count > 0 then
+    raise exception 'Selected students must belong to the granting family';
+  end if;
+
+  update public.pickup_authorizations
+  set starts_on = p_starts_on,
+      ends_on = p_ends_on
+  where id = p_authorization_id;
+
+  delete from public.pickup_authorization_students
+  where authorization_id = p_authorization_id;
+
+  insert into public.pickup_authorization_students (authorization_id, student_id)
+  select p_authorization_id, sid
+  from (
+    select distinct sid
+    from unnest(p_student_ids) sid
+  ) submitted;
+
+  perform public.write_pickup_authorization_audit(
+    p_authorization_id,
+    'UPDATED',
+    'admin',
+    p_granting_family_id,
+    v_receiving_family_id,
+    p_starts_on,
+    p_ends_on,
+    p_student_ids
+  );
+
+  perform public.prune_invalid_carpool_preset_students(v_receiving_family_id, public.school_today());
+
+  return jsonb_build_object('authorization_id', p_authorization_id);
+end;
+$$;
+
+create or replace function public.admin_revoke_pickup_authorization(
+  p_authorization_id uuid
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_granting_family_id uuid;
+  v_receiving_family_id uuid;
+  v_starts_on date;
+  v_ends_on date;
+  v_student_ids uuid[];
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  select pa.granting_family_id, pa.receiving_family_id, pa.starts_on, pa.ends_on
+  into v_granting_family_id, v_receiving_family_id, v_starts_on, v_ends_on
+  from public.pickup_authorizations pa
+  where pa.id = p_authorization_id
+    and pa.is_revoked = false;
+
+  if v_receiving_family_id is null then
+    raise exception 'Authorization not found';
+  end if;
+
+  select coalesce(array_agg(pas.student_id order by pas.student_id), '{}'::uuid[])
+  into v_student_ids
+  from public.pickup_authorization_students pas
+  where pas.authorization_id = p_authorization_id;
+
+  update public.pickup_authorizations
+  set is_revoked = true,
+      revoked_at = now(),
+      revoked_by = 'admin'
+  where id = p_authorization_id;
+
+  perform public.write_pickup_authorization_audit(
+    p_authorization_id,
+    'REVOKED',
+    'admin',
+    v_granting_family_id,
+    v_receiving_family_id,
+    v_starts_on,
+    v_ends_on,
+    v_student_ids
+  );
+
+  perform public.prune_invalid_carpool_preset_students(v_receiving_family_id, public.school_today());
+
+  return true;
+end;
+$$;
+
+create or replace function public.admin_create_carpool_preset(
+  p_owner_family_id uuid,
+  p_name text,
+  p_student_ids uuid[]
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_today date := public.school_today();
+  v_preset_id uuid;
+  v_invalid_count integer;
+  v_name text := btrim(coalesce(p_name, ''));
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  if v_name = '' then
+    raise exception 'Name is required';
+  end if;
+
+  if p_owner_family_id is null then
+    raise exception 'Choose an owner family';
+  end if;
+
+  if coalesce(array_length(p_student_ids, 1), 0) = 0 then
+    raise exception 'Select at least one student';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from (
+    select distinct sid
+    from unnest(p_student_ids) sid
+  ) submitted
+  left join public.allowed_students_for_family(p_owner_family_id, v_today) allowed
+    on allowed.student_id = submitted.sid
+  where allowed.student_id is null;
+
+  if v_invalid_count > 0 then
+    raise exception 'Saved carpools can only include students the family is currently allowed to pick up';
+  end if;
+
+  insert into public.carpool_presets (owner_family_id, name)
+  values (p_owner_family_id, v_name)
+  returning id into v_preset_id;
+
+  insert into public.carpool_preset_students (preset_id, student_id)
+  select v_preset_id, submitted.sid
+  from (
+    select distinct sid
+    from unnest(p_student_ids) sid
+  ) submitted;
+
+  return jsonb_build_object('preset_id', v_preset_id);
+exception
+  when unique_violation then
+    raise exception 'That family already has a saved carpool with this name';
+end;
+$$;
+
+create or replace function public.admin_update_carpool_preset(
+  p_preset_id uuid,
+  p_owner_family_id uuid,
+  p_name text,
+  p_student_ids uuid[]
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_today date := public.school_today();
+  v_existing_owner uuid;
+  v_invalid_count integer;
+  v_name text := btrim(coalesce(p_name, ''));
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  if v_name = '' then
+    raise exception 'Name is required';
+  end if;
+
+  select cp.owner_family_id
+  into v_existing_owner
+  from public.carpool_presets cp
+  where cp.id = p_preset_id;
+
+  if v_existing_owner is null or v_existing_owner <> p_owner_family_id then
+    raise exception 'Saved carpool not found';
+  end if;
+
+  if coalesce(array_length(p_student_ids, 1), 0) = 0 then
+    raise exception 'Select at least one student';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from (
+    select distinct sid
+    from unnest(p_student_ids) sid
+  ) submitted
+  left join public.allowed_students_for_family(p_owner_family_id, v_today) allowed
+    on allowed.student_id = submitted.sid
+  where allowed.student_id is null;
+
+  if v_invalid_count > 0 then
+    raise exception 'Saved carpools can only include students the family is currently allowed to pick up';
+  end if;
+
+  update public.carpool_presets
+  set name = v_name
+  where id = p_preset_id;
+
+  delete from public.carpool_preset_students
+  where preset_id = p_preset_id;
+
+  insert into public.carpool_preset_students (preset_id, student_id)
+  select p_preset_id, submitted.sid
+  from (
+    select distinct sid
+    from unnest(p_student_ids) sid
+  ) submitted;
+
+  return jsonb_build_object('preset_id', p_preset_id);
+exception
+  when unique_violation then
+    raise exception 'That family already has a saved carpool with this name';
+end;
+$$;
+
+create or replace function public.admin_delete_carpool_preset(
+  p_preset_id uuid
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_deleted_count integer;
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  delete from public.carpool_presets
+  where id = p_preset_id;
+
+  get diagnostics v_deleted_count = row_count;
+
+  if v_deleted_count = 0 then
+    raise exception 'Saved carpool not found';
+  end if;
+
   return true;
 end;
 $$;
 
 grant execute on function public.family_id_for_carpool(integer) to anon, authenticated;
+grant execute on function public.allowed_students_for_family(uuid, date) to authenticated;
 grant execute on function public.active_authorized_students_for_receiver(uuid, date) to authenticated;
+grant execute on function public.prune_invalid_carpool_preset_students(uuid, date) to authenticated;
 grant execute on function public.get_parent_checkin_context(integer) to anon, authenticated;
 grant execute on function public.submit_check_in_request(integer, jsonb, text) to anon, authenticated;
 grant execute on function public.get_family_authorizations(integer) to anon, authenticated;
 grant execute on function public.create_pickup_authorization(integer, integer, uuid[], date, date) to anon, authenticated;
 grant execute on function public.update_pickup_authorization(uuid, integer, uuid[], date, date) to anon, authenticated;
 grant execute on function public.revoke_pickup_authorization(uuid, integer) to anon, authenticated;
+grant execute on function public.create_carpool_preset(integer, text, uuid[]) to anon, authenticated;
+grant execute on function public.update_carpool_preset(uuid, integer, text, uuid[]) to anon, authenticated;
+grant execute on function public.delete_carpool_preset(uuid, integer) to anon, authenticated;
+grant execute on function public.submit_carpool_preset_check_in(uuid, integer, text) to anon, authenticated;
+grant execute on function public.admin_create_pickup_authorization(uuid, uuid, uuid[], date, date) to authenticated;
+grant execute on function public.admin_update_pickup_authorization(uuid, uuid, uuid[], date, date) to authenticated;
+grant execute on function public.admin_revoke_pickup_authorization(uuid) to authenticated;
+grant execute on function public.admin_create_carpool_preset(uuid, text, uuid[]) to authenticated;
+grant execute on function public.admin_update_carpool_preset(uuid, uuid, text, uuid[]) to authenticated;
+grant execute on function public.admin_delete_carpool_preset(uuid) to authenticated;
 
 alter table public.daily_status replica identity full;
 
@@ -894,6 +1779,8 @@ alter table public.app_users enable row level security;
 alter table public.pickup_authorizations enable row level security;
 alter table public.pickup_authorization_students enable row level security;
 alter table public.pickup_authorization_audit enable row level security;
+alter table public.carpool_presets enable row level security;
+alter table public.carpool_preset_students enable row level security;
 
 drop policy if exists families_select_staff on public.families;
 drop policy if exists families_admin_all on public.families;
@@ -913,6 +1800,10 @@ drop policy if exists pickup_authorization_students_select_staff on public.picku
 drop policy if exists pickup_authorization_students_admin_all on public.pickup_authorization_students;
 drop policy if exists pickup_authorization_audit_select_staff on public.pickup_authorization_audit;
 drop policy if exists pickup_authorization_audit_admin_all on public.pickup_authorization_audit;
+drop policy if exists carpool_presets_select_staff on public.carpool_presets;
+drop policy if exists carpool_presets_admin_all on public.carpool_presets;
+drop policy if exists carpool_preset_students_select_staff on public.carpool_preset_students;
+drop policy if exists carpool_preset_students_admin_all on public.carpool_preset_students;
 
 -- families: only spotter/admin can read; only admin can mutate
 create policy families_select_staff on public.families
@@ -970,4 +1861,16 @@ create policy pickup_authorization_audit_select_staff on public.pickup_authoriza
 for select using (public.is_spotter_or_admin());
 
 create policy pickup_authorization_audit_admin_all on public.pickup_authorization_audit
+for all using (public.is_admin()) with check (public.is_admin());
+
+create policy carpool_presets_select_staff on public.carpool_presets
+for select using (public.is_spotter_or_admin());
+
+create policy carpool_presets_admin_all on public.carpool_presets
+for all using (public.is_admin()) with check (public.is_admin());
+
+create policy carpool_preset_students_select_staff on public.carpool_preset_students
+for select using (public.is_spotter_or_admin());
+
+create policy carpool_preset_students_admin_all on public.carpool_preset_students
 for all using (public.is_admin()) with check (public.is_admin());

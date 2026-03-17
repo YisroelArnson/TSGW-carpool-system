@@ -94,6 +94,7 @@
       .brand-bar-actions {
         display: flex;
         align-items: center;
+        gap: 10px;
       }
 
       .brand-bar-action {
@@ -106,10 +107,21 @@
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
+        text-decoration: none;
       }
 
       .brand-bar-action:hover {
         background: rgba(255, 255, 255, 0.12);
+      }
+
+      .brand-bar-icon {
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.05rem;
       }
 
       .brand-name {
@@ -368,7 +380,98 @@
       #students-buttons {
         display: flex !important;
         flex-direction: column;
+        gap: 18px;
+      }
+
+      .checkin-stack {
+        display: grid;
+        gap: 18px;
+      }
+
+      .section-kicker {
+        margin: 0 0 12px;
+        font-size: 0.66rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+
+      .section-title {
+        margin: 0 0 8px;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1rem;
+        line-height: 1.15;
+        color: var(--text-dark);
+      }
+
+      .section-copy {
+        margin: 8px 0 0;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        line-height: 1.5;
+      }
+
+      .preset-grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .preset-card {
+        width: 100%;
+        border: 1px solid var(--border-light);
+        border-radius: 16px;
+        background: #fff;
+        padding: 18px;
+        text-align: left;
+        display: grid;
         gap: 8px;
+        cursor: pointer;
+        transition: transform 0.12s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+      }
+
+      .preset-card:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 24px rgba(107, 45, 91, 0.08);
+      }
+
+      .preset-card.active {
+        border-color: rgba(107, 45, 91, 0.4);
+        box-shadow: 0 12px 28px rgba(107, 45, 91, 0.12);
+        background: #fff9f4;
+      }
+
+      .preset-card-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .preset-card-name {
+        font-size: 1.16rem;
+        font-weight: 700;
+        color: var(--text-dark);
+        line-height: 1.2;
+      }
+
+      .preset-card-count,
+      .preset-card-action {
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+
+      .preset-card-preview {
+        color: var(--text-muted);
+        font-size: 0.95rem;
+        line-height: 1.45;
+      }
+
+      .preset-card-action {
+        display: none;
       }
 
       .checkin-shell,
@@ -392,6 +495,14 @@
         box-shadow: none;
       }
 
+      .family-card {
+        border: none;
+        border-radius: 0;
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
       .manage-shell {
         margin-top: 0;
       }
@@ -404,13 +515,13 @@
       .family-card-head,
       .authorization-card-head {
         display: grid;
-        gap: 12px;
+        gap: 6px;
       }
 
       .family-card-hero {
         display: grid;
-        gap: 8px;
-        padding-bottom: 4px;
+        gap: 4px;
+        padding-bottom: 2px;
       }
 
       .family-card-label,
@@ -427,32 +538,35 @@
       .authorization-card h3,
       .lookup-family-box h3 {
         margin: 0;
-        font-size: 1.8rem;
-        line-height: 1.15;
+        font-size: 1.06rem;
+        line-height: 1.25;
+        color: var(--text-dark);
+      }
+
+      .family-card h3 span {
+        color: var(--text-muted);
+        font-size: 0.88rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
       }
 
       .family-card-number {
-        margin: 0;
-        font-family: "Playfair Display", Georgia, serif;
-        font-size: 2.8rem;
-        font-weight: 800;
-        color: var(--brand-maroon);
-        line-height: 1;
+        display: none;
       }
 
       .family-card-meta,
       .family-card-note,
       .authorization-dates,
       .authorization-students {
-        margin: 6px 0 0;
+        margin: 4px 0 0;
         color: var(--text-muted);
-        font-size: 0.86rem;
+        font-size: 0.82rem;
       }
 
       .family-students {
         display: grid;
         gap: 8px;
-        margin-top: 12px;
+        margin-top: 8px;
       }
 
       .student-pick {
@@ -693,6 +807,37 @@
         box-shadow: none !important;
       }
 
+      .sticky-checkin-bar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 90;
+        padding: 14px 16px max(14px, env(safe-area-inset-bottom));
+      }
+
+      .sticky-checkin-shell {
+        max-width: 540px;
+        margin: 0 auto;
+        background: var(--surface-white);
+        border: 1px solid var(--border-light);
+        border-radius: 18px;
+        box-shadow:
+          0 12px 38px rgba(0, 0, 0, 0.12),
+          0 2px 8px rgba(107, 45, 91, 0.08);
+        padding: 14px;
+      }
+
+      .sticky-checkin-actions {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 10px;
+      }
+
+      html.parent-checkin-active body {
+        padding-bottom: 132px;
+      }
+
       .modal-overlay.hidden {
         display: none !important;
       }
@@ -808,6 +953,12 @@
           font-size: 0.74rem;
         }
 
+        .brand-bar-icon {
+          width: 36px;
+          height: 36px;
+          font-size: 0.96rem;
+        }
+
         .module-card {
           padding: 28px 24px;
         }
@@ -835,6 +986,10 @@
         .authorization-dates-grid {
           grid-template-columns: 1fr;
         }
+
+        .sticky-checkin-actions {
+          grid-template-columns: 1fr;
+        }
       }
 
       /* ─ Config warning ─ */
@@ -858,6 +1013,7 @@
           <span class="brand-sub">Torah School of Greater Washington</span>
         </div>
         <div class="brand-bar-actions">
+          <a id="parent-settings-link" href="settings/" class="brand-bar-action brand-bar-icon hidden" aria-label="Open settings">⚙</a>
           <button id="parent-logout-btn" type="button" class="brand-bar-action hidden">Log out</button>
         </div>
       </div>
@@ -876,7 +1032,7 @@
           <div class="number-intro">
             <span class="input-eyebrow">Parent Check-In</span>
             <h1>Check in for pickup</h1>
-            <p>Enter your carpool number to open your family pickup page, see approved pickup permissions, and check in the students you are picking up today.</p>
+            <p>Enter your carpool number to open your check-in page. Saved carpools appear first, and your student selections stay ready in the sticky bar at the bottom.</p>
           </div>
           <label class="input-eyebrow" for="carpool-number">Your Carpool Number</label>
           <input id="carpool-number" type="number" inputmode="numeric" placeholder="e.g. 101" />
@@ -890,56 +1046,25 @@
       <section id="students-section" class="students-flow hidden">
         <div class="parent-card module-card">
           <div class="checkin-shell">
-            <h2 class="students-heading">Who Are You Picking Up?</h2>
-            <p id="authorized-pickups-heading" class="students-selection-summary hidden">Authorized pickups are shown below your own family.</p>
-            <div id="students-buttons">
-              <div id="checkin-groups" class="authorization-grid"></div>
-              <p id="checkin-selection-summary" class="students-selection-summary"></p>
-              <button type="button" id="students-submit" class="btn btn-maroon students-submit">Check In Selected Students</button>
+            <h2 class="students-heading">Select Students To Check In</h2>
+            <div id="students-buttons" class="checkin-stack">
+              <section>
+                <p class="section-kicker">Saved Carpools</p>
+                <div id="saved-carpools-list" class="preset-grid"></div>
+              </section>
+
+              <section>
+                <p class="section-kicker">Your Family</p>
+                <div id="your-students-list" class="authorization-grid"></div>
+              </section>
+
+              <section id="authorized-students-section" class="hidden">
+                <p class="section-kicker">Student's your authorized to pick up</p>
+                <div id="authorized-students-list" class="authorization-grid"></div>
+              </section>
             </div>
           </div>
           <p id="students-error" class="field-error hidden"></p>
-        </div>
-
-        <div class="parent-card module-card">
-          <div class="manage-shell">
-            <div class="section-divider">
-              <h3>Manage Pickup Permissions</h3>
-              <p class="muted">Authorize another carpool to pick up selected students from your family for a custom date range or permanently.</p>
-            </div>
-
-            <div id="authorization-list" class="authorization-grid"></div>
-
-            <div class="authorization-form">
-              <div class="form-row">
-                <label for="authorize-carpool-number">Other Carpool Number</label>
-                <div class="authorization-inline">
-                  <input id="authorize-carpool-number" type="number" inputmode="numeric" placeholder="e.g. 204" />
-                  <button type="button" id="lookup-authorization-family" class="btn-w btn-maroon">Find</button>
-                </div>
-              </div>
-              <div id="authorization-lookup-result" class="authorization-grid"></div>
-              <label class="authorization-toggle" for="authorization-permanent">
-                <input id="authorization-permanent" type="checkbox" />
-                <span>Save this permission permanently</span>
-              </label>
-              <div class="authorization-dates-grid">
-                <div class="form-row">
-                  <label for="authorization-start-date">Start Date</label>
-                  <input id="authorization-start-date" type="date" />
-                </div>
-                <div class="form-row">
-                  <label for="authorization-end-date">End Date</label>
-                  <input id="authorization-end-date" type="date" />
-                </div>
-              </div>
-              <div class="btn-row">
-                <button type="button" id="authorization-submit" class="btn-w btn-maroon" disabled>Save Permission</button>
-                <button type="button" id="authorization-reset" class="btn-w btn-ghost">Clear Form</button>
-              </div>
-              <p id="authorization-message" class="authorization-summary hidden"></p>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -953,20 +1078,18 @@
               </svg>
             </div>
             <p id="done-message"></p>
-            <p class="done-note">Your child's teacher has been notified.</p>
+            <p id="done-note" class="done-note">Your child's teacher has been notified.</p>
             <button id="done-btn" class="btn-w btn-maroon">Done</button>
           </div>
         </section>
       </div>
     </main>
 
-    <div id="remove-authorization-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="remove-authorization-title">
-      <div class="modal-card confirm-modal-card">
-        <h2 id="remove-authorization-title">Remove pickup permission?</h2>
-        <p id="remove-authorization-text">This family will no longer be able to check in these students from your page.</p>
-        <div class="confirm-modal-actions">
-          <button id="cancel-remove-authorization" type="button" class="btn btn-secondary">Cancel</button>
-          <button id="confirm-remove-authorization" type="button" class="btn btn-primary">Remove</button>
+    <div id="sticky-checkin-bar" class="sticky-checkin-bar hidden">
+      <div class="sticky-checkin-shell">
+        <div class="sticky-checkin-actions">
+          <button id="sticky-clear" type="button" class="btn-w btn-ghost">Clear</button>
+          <button type="button" id="students-submit" class="btn-w btn-maroon students-submit">Check In 0 Students</button>
         </div>
       </div>
     </div>

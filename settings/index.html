@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TSGW Parent Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <style>
+      body {
+        background-color: var(--surface-ivory);
+        background-image: radial-gradient(circle, #ddd9d2 1px, transparent 1px);
+        background-size: 22px 22px;
+        min-height: 100vh;
+      }
+
+      .brand-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 0 20px;
+        height: 54px;
+        background: var(--brand-maroon);
+      }
+
+      .brand-bar-inner {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .brand-name {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: #fff;
+        line-height: 1;
+      }
+
+      .brand-sub {
+        font-size: 0.6rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.5);
+        font-family: "Open Sans", sans-serif;
+        line-height: 1;
+      }
+
+      .brand-bar-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .brand-bar-action {
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        background: transparent;
+        color: #fff;
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        text-decoration: none;
+      }
+
+      .brand-bar-action:hover {
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .gold-rule {
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          var(--brand-maroon) 0%,
+          var(--brand-gold) 30%,
+          var(--brand-gold) 70%,
+          var(--brand-maroon) 100%
+        );
+      }
+
+      .settings-layout {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 34px 16px 54px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .settings-shell,
+      .settings-card {
+        background: var(--surface-white);
+        border: 1px solid var(--border-light);
+        border-radius: 22px;
+        box-shadow:
+          0 1px 2px rgba(107, 45, 91, 0.06),
+          0 4px 18px rgba(107, 45, 91, 0.08),
+          0 16px 48px rgba(0, 0, 0, 0.05);
+      }
+
+      .settings-shell {
+        padding: 28px 24px;
+        display: grid;
+        gap: 34px;
+      }
+
+      .settings-card {
+        padding: 20px 18px;
+      }
+
+      .settings-page-head {
+        display: grid;
+        gap: 8px;
+      }
+
+      .settings-page-kicker,
+      .section-kicker,
+      .entity-kicker {
+        margin: 0;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+
+      .settings-page-head h1,
+      .section-head h2,
+      .item-title,
+      .lookup-family-box h3 {
+        margin: 0;
+        font-family: "Playfair Display", Georgia, serif;
+        color: var(--text-dark);
+        line-height: 1.15;
+      }
+
+      .settings-page-head h1 {
+        font-size: 1.8rem;
+      }
+
+      .settings-page-head p,
+      .section-copy,
+      .item-meta,
+      .lookup-family-copy,
+      .helper-copy {
+        margin: 0;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      .settings-section {
+        display: grid;
+        gap: 20px;
+      }
+
+      .section-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .section-head-copy {
+        display: grid;
+        gap: 6px;
+      }
+
+      .section-head h2 {
+        font-size: 1.35rem;
+      }
+
+      .section-action {
+        border: none;
+        background: var(--brand-maroon);
+        color: #fff;
+        border-radius: 999px;
+        padding: 11px 16px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .item-list,
+      .picker-groups,
+      .family-students {
+        display: grid;
+        gap: 16px;
+      }
+
+      .item-card,
+      .lookup-family-box,
+      .editor-panel {
+        border: 1px solid var(--border-light);
+        border-radius: 18px;
+        background: var(--surface-ivory);
+      }
+
+      .item-card {
+        padding: 18px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .item-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .item-title {
+        font-size: 1.08rem;
+      }
+
+      .item-count {
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 700;
+      }
+
+      .item-meta {
+        font-size: 0.92rem;
+      }
+
+      .helper-list {
+        display: grid;
+        gap: 14px;
+      }
+
+      .item-actions,
+      .btn-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .action-link {
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 0.86rem;
+        font-weight: 600;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        padding: 0;
+        cursor: pointer;
+      }
+
+      .action-link.primary {
+        color: var(--brand-maroon);
+      }
+
+      .editor-panel {
+        padding: 18px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .editor-panel.hidden {
+        display: none !important;
+      }
+
+      .editor-head {
+        display: grid;
+        gap: 4px;
+      }
+
+      .editor-head h3 {
+        margin: 0;
+        font-size: 1.05rem;
+        color: var(--text-dark);
+      }
+
+      .form-row {
+        display: grid;
+        gap: 8px;
+      }
+
+      .form-row label,
+      .authorization-toggle {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+
+      .editor-panel input {
+        width: 100%;
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        padding: 12px 14px;
+        font-size: 0.96rem;
+        background: #fff;
+      }
+
+      .authorization-inline {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+      }
+
+      .authorization-dates-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .authorization-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.92rem;
+        color: var(--text-dark);
+      }
+
+      .authorization-toggle input {
+        width: 18px;
+        height: 18px;
+      }
+
+      .lookup-family-box {
+        padding: 16px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .lookup-family-box h3 {
+        font-size: 1rem;
+      }
+
+      .picker-group {
+        display: grid;
+        gap: 10px;
+        padding: 16px;
+        border: 1px solid var(--border-light);
+        border-radius: 18px;
+        background: var(--surface-ivory);
+      }
+
+      .picker-group-head {
+        display: grid;
+        gap: 3px;
+      }
+
+      .picker-group-head h4 {
+        margin: 0;
+        font-size: 0.98rem;
+        color: var(--text-dark);
+      }
+
+      .student-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .student-row {
+        width: 100%;
+        border: 1px solid var(--border-light);
+        border-radius: 14px;
+        background: #fff;
+        padding: 12px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        cursor: pointer;
+        font-family: "Open Sans", sans-serif;
+        transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+      }
+
+      .student-row:hover {
+        border-color: rgba(107, 45, 91, 0.28);
+      }
+
+      .student-row.selected {
+        background: #eef8f0;
+        border-color: rgba(71, 132, 83, 0.48);
+        box-shadow: 0 8px 22px rgba(71, 132, 83, 0.09);
+      }
+
+      .student-row-main {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .student-row-toggle {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        border: 1px solid rgba(107, 45, 91, 0.24);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--brand-maroon);
+        flex: 0 0 auto;
+      }
+
+      .student-row.selected .student-row-toggle {
+        background: #478453;
+        color: #fff;
+        border-color: #478453;
+      }
+
+      .student-row-copy {
+        min-width: 0;
+        display: grid;
+        gap: 3px;
+        text-align: left;
+      }
+
+      .student-row-name {
+        font-weight: 700;
+        color: var(--text-dark);
+      }
+
+      .student-row-meta {
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        line-height: 1.35;
+      }
+
+      .btn-w {
+        width: 100%;
+        padding: 14px 18px;
+        border-radius: 12px;
+        border: none;
+        font-size: 0.96rem;
+        font-weight: 700;
+        cursor: pointer;
+        font-family: "Open Sans", sans-serif;
+      }
+
+      .btn-w.btn-maroon {
+        background: var(--brand-maroon);
+        color: #fff;
+      }
+
+      .btn-w.is-disabled {
+        opacity: 0.42;
+        box-shadow: none;
+      }
+
+      .btn-w.btn-ghost {
+        background: transparent;
+        color: var(--text-muted);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+
+      .authorization-summary {
+        margin: 0;
+        text-align: center;
+      }
+
+      .empty-state {
+        text-align: center;
+      }
+
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 120;
+        background: rgba(40, 25, 37, 0.42);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        backdrop-filter: blur(2px);
+      }
+
+      .modal-overlay.hidden {
+        display: none !important;
+      }
+
+      .modal-card {
+        width: min(760px, 100%);
+        max-height: 90vh;
+        overflow-y: auto;
+        background: var(--surface-white);
+        border: 1px solid var(--border-light);
+        border-radius: 24px;
+        box-shadow:
+          0 1px 2px rgba(0, 0, 0, 0.08),
+          0 24px 60px rgba(0, 0, 0, 0.18);
+        padding: 24px;
+        display: grid;
+        gap: 20px;
+      }
+
+      .modal-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .modal-head-copy {
+        display: grid;
+        gap: 6px;
+      }
+
+      .modal-head h3 {
+        margin: 0;
+        font-size: 1.2rem;
+        color: var(--text-dark);
+      }
+
+      .modal-close {
+        border: 1px solid var(--border-light);
+        background: #fff;
+        color: var(--text-muted);
+        border-radius: 999px;
+        width: 38px;
+        height: 38px;
+        font-size: 1rem;
+        cursor: pointer;
+      }
+
+      @media (max-width: 640px) {
+        .brand-bar {
+          padding: 0 14px;
+        }
+
+        .brand-bar-actions {
+          gap: 8px;
+        }
+
+        .brand-bar-action {
+          padding: 7px 12px;
+          font-size: 0.74rem;
+        }
+
+        .settings-shell,
+        .settings-card {
+          padding-left: 18px;
+          padding-right: 18px;
+        }
+
+        .section-head {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .authorization-inline,
+        .authorization-dates-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand-bar">
+        <div class="brand-bar-inner">
+          <span class="brand-name">TSGW Carpool</span>
+          <span class="brand-sub">Torah School of Greater Washington</span>
+        </div>
+        <div class="brand-bar-actions">
+          <a href="../" class="brand-bar-action">Back</a>
+          <button id="settings-logout-btn" type="button" class="brand-bar-action">Log out</button>
+        </div>
+      </div>
+      <div class="gold-rule"></div>
+    </header>
+
+    <main class="settings-layout">
+      <section id="config-warning" class="settings-card hidden">
+        <p class="error">Supabase is not configured. Update <code>/assets/js/config.js</code>.</p>
+      </section>
+
+      <section class="settings-shell">
+        <div class="settings-page-head">
+          <p class="settings-page-kicker" id="settings-family-number">Carpool #</p>
+          <h1 id="settings-family-name">Parent Settings</h1>
+          <p>Manage your saved carpools and pickup permissions here. The daily check-in page stays simple.</p>
+        </div>
+
+        <section class="settings-section">
+          <div class="section-head">
+            <div class="section-head-copy">
+              <p class="section-kicker">Saved Carpools</p>
+              <h2>Saved Carpools</h2>
+              <p class="section-copy">Create the carpool groups you use often. These appear first on the main check-in page.</p>
+            </div>
+            <button id="open-preset-editor" type="button" class="section-action">Add Saved Carpool</button>
+          </div>
+
+          <div id="settings-presets-list" class="item-list"></div>
+        </section>
+
+        <section class="settings-section">
+          <div class="section-head">
+            <div class="section-head-copy">
+              <p class="section-kicker">Current Access</p>
+              <h2>Students You're Authorized To Pick Up</h2>
+              <p class="section-copy">These are the students you can currently include in a saved carpool or pick up today.</p>
+            </div>
+          </div>
+
+          <div id="settings-authorized-pickups" class="helper-list"></div>
+        </section>
+
+        <section class="settings-section">
+          <div class="section-head">
+            <div class="section-head-copy">
+              <p class="section-kicker">Pickup Permissions</p>
+              <h2>Pickup Permissions</h2>
+              <p class="section-copy">Allow another family to pick up selected children from your family.</p>
+            </div>
+            <button id="open-authorization-editor" type="button" class="section-action">Add Permission</button>
+          </div>
+
+          <div id="settings-authorization-list" class="item-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <div id="preset-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="preset-editor-title">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div class="modal-head-copy">
+            <p class="entity-kicker">Saved Carpools</p>
+            <h3 id="preset-editor-title">Create Saved Carpool</h3>
+            <p class="helper-copy">Name this carpool and choose the students in it.</p>
+          </div>
+          <button id="preset-modal-close" type="button" class="modal-close" aria-label="Close">✕</button>
+        </div>
+
+        <div class="form-row">
+          <label for="preset-name">Saved Carpool Name</label>
+          <input id="preset-name" type="text" placeholder="e.g. Monday Carpool" />
+        </div>
+
+        <div id="preset-student-picker" class="picker-groups"></div>
+
+        <button type="button" id="preset-submit" class="btn-w btn-maroon is-disabled">Save Carpool</button>
+        <p id="preset-message" class="authorization-summary hidden"></p>
+      </div>
+    </div>
+
+    <div id="authorization-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="authorization-editor-title">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div class="modal-head-copy">
+            <p class="entity-kicker">Pickup Permissions</p>
+            <h3 id="authorization-editor-title">Create Pickup Permission</h3>
+            <p class="helper-copy">Find a family, then choose which of your children they may pick up.</p>
+          </div>
+          <button id="authorization-modal-close" type="button" class="modal-close" aria-label="Close">✕</button>
+        </div>
+
+        <div class="form-row">
+          <label for="authorize-carpool-number">Other Carpool Number</label>
+          <div class="authorization-inline">
+            <input id="authorize-carpool-number" type="number" inputmode="numeric" placeholder="e.g. 204" />
+            <button type="button" id="lookup-authorization-family" class="btn-w btn-maroon">Find</button>
+          </div>
+        </div>
+
+        <div id="authorization-lookup-result" class="picker-groups"></div>
+
+        <label class="authorization-toggle" for="authorization-permanent">
+          <input id="authorization-permanent" type="checkbox" />
+          <span>Save this permission permanently</span>
+        </label>
+
+        <div class="authorization-dates-grid">
+          <div class="form-row">
+            <label for="authorization-start-date">Start Date</label>
+            <input id="authorization-start-date" type="date" />
+          </div>
+          <div class="form-row">
+            <label for="authorization-end-date">End Date</label>
+            <input id="authorization-end-date" type="date" />
+          </div>
+        </div>
+
+        <button type="button" id="authorization-submit" class="btn-w btn-maroon is-disabled">Save Permission</button>
+        <p id="authorization-message" class="authorization-summary hidden"></p>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/supabase-client.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/parent-settings.js"></script>
+  </body>
+</html>

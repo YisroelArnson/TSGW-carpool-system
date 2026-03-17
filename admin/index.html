@@ -425,6 +425,30 @@
         box-shadow: 0 0 0 3px rgba(107, 45, 91, 0.1);
         background: #fff;
       }
+      .checkbox-list {
+        display: grid;
+        gap: 8px;
+      }
+      .checkbox-option {
+        display: grid;
+        gap: 4px;
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #fff;
+      }
+      .checkbox-option input {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+      }
+      .checkbox-option span {
+        font-weight: 600;
+        color: var(--text-dark);
+      }
+      .checkbox-option small {
+        color: var(--text-muted);
+      }
       .modal-footer {
         display: flex;
         gap: 10px;
@@ -611,6 +635,12 @@
           <div class="content-card-header">
             <h2>Pickup Permissions</h2>
           </div>
+          <div class="content-card-body">
+            <div class="admin-actions">
+              <button id="open-add-permission" class="btn-action maroon" type="button">+ Permission</button>
+              <button id="open-add-preset" class="btn-action gold" type="button">+ Saved Carpool</button>
+            </div>
+          </div>
           <div class="table-wrap">
             <table>
               <thead>
@@ -621,9 +651,26 @@
                   <th>Start</th>
                   <th>End</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="permissions-tbody"></tbody>
+            </table>
+          </div>
+          <div class="content-card-header" style="border-top:1px solid var(--border-light);">
+            <h2>Saved Carpools</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Owner Family</th>
+                  <th>Name</th>
+                  <th>Students</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="presets-tbody"></tbody>
             </table>
           </div>
           <div class="content-card-header" style="border-top:1px solid var(--border-light);">

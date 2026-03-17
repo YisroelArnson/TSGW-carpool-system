@@ -10,6 +10,7 @@ Implementation of `carpool-system-spec.md` using:
 ## File Structure
 
 - `/index.html` - Parent check-in page
+- `/settings/index.html` - Parent settings page for permissions and saved carpools
 - `/classroom/index.html` - Classroom hub and classroom display page
 - `/spotter/index.html` - Spotter dashboard (authenticated)
 - `/admin/index.html` - Admin dashboard (authenticated)
@@ -48,6 +49,7 @@ python3 -m http.server 8080
 Then open:
 
 - `http://localhost:8080/`
+- `http://localhost:8080/settings/`
 - `http://localhost:8080/classroom/`
 - `http://localhost:8080/spotter/`
 - `http://localhost:8080/admin/`
