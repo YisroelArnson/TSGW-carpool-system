@@ -17,6 +17,7 @@
         background-image: radial-gradient(circle, #ddd9d2 1px, transparent 1px);
         background-size: 22px 22px;
         min-height: 100vh;
+        overflow-x: hidden;
       }
 
       .brand-bar {
@@ -89,15 +90,16 @@
       }
 
       .settings-layout {
-        max-width: 860px;
+        max-width: 960px;
         margin: 0 auto;
-        padding: 34px 16px 54px;
+        padding: 40px 16px 64px;
         display: grid;
-        gap: 16px;
+        gap: 22px;
       }
 
-      .settings-shell,
-      .settings-card {
+      .settings-card,
+      .settings-page-head,
+      .settings-section {
         background: var(--surface-white);
         border: 1px solid var(--border-light);
         border-radius: 22px;
@@ -108,18 +110,19 @@
       }
 
       .settings-shell {
-        padding: 28px 24px;
         display: grid;
-        gap: 34px;
+        gap: 22px;
       }
 
-      .settings-card {
-        padding: 20px 18px;
+      .settings-card,
+      .settings-page-head,
+      .settings-section {
+        padding: 24px 22px;
       }
 
       .settings-page-head {
         display: grid;
-        gap: 8px;
+        gap: 10px;
       }
 
       .settings-page-kicker,
@@ -144,7 +147,7 @@
       }
 
       .settings-page-head h1 {
-        font-size: 1.8rem;
+        font-size: 2rem;
       }
 
       .settings-page-head p,
@@ -166,16 +169,87 @@
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 12px;
+        gap: 16px;
       }
 
       .section-head-copy {
         display: grid;
-        gap: 6px;
+        gap: 0;
+      }
+
+      .section-title-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
       }
 
       .section-head h2 {
         font-size: 1.35rem;
+      }
+
+      .help-inline {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .help-badge {
+        width: 28px;
+        height: 28px;
+        border: 1px solid rgba(107, 45, 91, 0.16);
+        border-radius: 999px;
+        background: var(--surface-ivory);
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+        font-size: 0.84rem;
+        font-weight: 700;
+        cursor: help;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+      }
+
+      .help-badge:hover,
+      .help-badge:focus-visible {
+        border-color: rgba(107, 45, 91, 0.3);
+        color: var(--brand-maroon);
+        outline: none;
+      }
+
+      .help-popover {
+        display: none;
+        position: absolute;
+        top: calc(100% + 10px);
+        left: 50%;
+        width: min(280px, calc(100vw - 56px));
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: #3d2a35;
+        color: #fff;
+        font-size: 0.84rem;
+        line-height: 1.5;
+        box-shadow: 0 18px 40px rgba(33, 17, 27, 0.26);
+        transform: translateX(-50%) translateY(-4px);
+        z-index: 20;
+      }
+
+      .help-popover::before {
+        content: "";
+        position: absolute;
+        top: -6px;
+        left: 50%;
+        width: 12px;
+        height: 12px;
+        background: inherit;
+        transform: translateX(-50%) rotate(45deg);
+      }
+
+      .help-inline:hover .help-popover,
+      .help-inline:focus-within .help-popover {
+        display: block;
+        transform: translateX(-50%) translateY(0);
       }
 
       .section-action {
@@ -208,9 +282,10 @@
       }
 
       .item-card {
-        padding: 18px;
+        padding: 20px 18px;
         display: grid;
-        gap: 12px;
+        gap: 10px;
+        background: #fff;
       }
 
       .item-row {
@@ -338,6 +413,7 @@
         padding: 16px;
         display: grid;
         gap: 8px;
+        background: #fff;
       }
 
       .lookup-family-box h3 {
@@ -350,7 +426,7 @@
         padding: 16px;
         border: 1px solid var(--border-light);
         border-radius: 18px;
-        background: var(--surface-ivory);
+        background: #fff;
       }
 
       .picker-group-head {
@@ -481,10 +557,10 @@
         inset: 0;
         z-index: 120;
         background: rgba(40, 25, 37, 0.42);
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        display: grid;
+        place-items: center;
         padding: 20px;
+        overflow-y: auto;
         backdrop-filter: blur(2px);
       }
 
@@ -493,9 +569,10 @@
       }
 
       .modal-card {
-        width: min(760px, 100%);
+        width: min(840px, calc(100vw - 40px));
         max-height: 90vh;
         overflow-y: auto;
+        margin: auto;
         background: var(--surface-white);
         border: 1px solid var(--border-light);
         border-radius: 24px;
@@ -505,6 +582,15 @@
         padding: 24px;
         display: grid;
         gap: 20px;
+      }
+
+      #preset-modal .modal-card {
+        width: min(1120px, calc(100vw - 40px));
+      }
+
+      #preset-modal .picker-groups {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
       }
 
       .modal-head {
@@ -532,8 +618,21 @@
         border-radius: 999px;
         width: 38px;
         height: 38px;
-        font-size: 1rem;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
         cursor: pointer;
+      }
+
+      .modal-close svg {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
+        stroke-width: 2.2;
+        fill: none;
+        stroke-linecap: round;
       }
 
       @media (max-width: 640px) {
@@ -550,8 +649,9 @@
           font-size: 0.74rem;
         }
 
-        .settings-shell,
-        .settings-card {
+        .settings-card,
+        .settings-page-head,
+        .settings-section {
           padding-left: 18px;
           padding-right: 18px;
         }
@@ -561,9 +661,46 @@
           align-items: flex-start;
         }
 
+        .help-popover,
+        .help-inline:hover .help-popover,
+        .help-inline:focus-within .help-popover {
+          left: 0;
+          transform: translateY(0);
+        }
+
+        .help-popover::before {
+          left: 20px;
+          transform: rotate(45deg);
+        }
+
         .authorization-inline,
         .authorization-dates-grid {
           grid-template-columns: 1fr;
+        }
+
+        .modal-overlay {
+          padding: 10px;
+        }
+
+        .modal-card,
+        #preset-modal .modal-card {
+          width: 100%;
+          max-width: none;
+          padding: 18px;
+          gap: 16px;
+          border-radius: 22px;
+        }
+
+        #preset-modal .picker-groups {
+          grid-template-columns: 1fr;
+        }
+
+        .picker-group {
+          padding: 14px;
+        }
+
+        .student-row {
+          padding: 12px;
         }
       }
     </style>
@@ -590,17 +727,22 @@
 
       <section class="settings-shell">
         <div class="settings-page-head">
-          <p class="settings-page-kicker" id="settings-family-number">Carpool #</p>
+          <p class="settings-page-kicker">Parent Settings</p>
           <h1 id="settings-family-name">Parent Settings</h1>
-          <p>Manage your saved carpools and pickup permissions here. The daily check-in page stays simple.</p>
+          <p id="settings-family-number">Carpool #</p>
+          <p>Choose what you want to manage below.</p>
         </div>
 
         <section class="settings-section">
           <div class="section-head">
             <div class="section-head-copy">
-              <p class="section-kicker">Saved Carpools</p>
-              <h2>Saved Carpools</h2>
-              <p class="section-copy">Create the carpool groups you use often. These appear first on the main check-in page.</p>
+              <div class="section-title-row">
+                <h2>Saved Carpools</h2>
+                <div class="help-inline">
+                  <button type="button" class="help-badge" aria-label="What are saved carpools?">?</button>
+                  <div class="help-popover" role="tooltip">Create a carpool for the students you pick up together often. These show up first on the daily check-in page.</div>
+                </div>
+              </div>
             </div>
             <button id="open-preset-editor" type="button" class="section-action">Add Saved Carpool</button>
           </div>
@@ -611,9 +753,13 @@
         <section class="settings-section">
           <div class="section-head">
             <div class="section-head-copy">
-              <p class="section-kicker">Current Access</p>
-              <h2>Students You're Authorized To Pick Up</h2>
-              <p class="section-copy">These are the students you can currently include in a saved carpool or pick up today.</p>
+              <div class="section-title-row">
+                <h2>Students You Can Pick Up</h2>
+                <div class="help-inline">
+                  <button type="button" class="help-badge" aria-label="What does this section mean?">?</button>
+                  <div class="help-popover" role="tooltip">These are the students you're authorized to pick up.</div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -623,9 +769,13 @@
         <section class="settings-section">
           <div class="section-head">
             <div class="section-head-copy">
-              <p class="section-kicker">Pickup Permissions</p>
-              <h2>Pickup Permissions</h2>
-              <p class="section-copy">Allow another family to pick up selected children from your family.</p>
+              <div class="section-title-row">
+                <h2>Who Can Pick Up Your Children</h2>
+                <div class="help-inline">
+                  <button type="button" class="help-badge" aria-label="What are pickup permissions?">?</button>
+                  <div class="help-popover" role="tooltip">These are the families that are authorized to pick up your children.</div>
+                </div>
+              </div>
             </div>
             <button id="open-authorization-editor" type="button" class="section-action">Add Permission</button>
           </div>
@@ -641,9 +791,14 @@
           <div class="modal-head-copy">
             <p class="entity-kicker">Saved Carpools</p>
             <h3 id="preset-editor-title">Create Saved Carpool</h3>
-            <p class="helper-copy">Name this carpool and choose the students in it.</p>
+            <p class="helper-copy">Name it and choose the students.</p>
           </div>
-          <button id="preset-modal-close" type="button" class="modal-close" aria-label="Close">✕</button>
+          <button id="preset-modal-close" type="button" class="modal-close" aria-label="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+            </svg>
+          </button>
         </div>
 
         <div class="form-row">
@@ -664,24 +819,27 @@
           <div class="modal-head-copy">
             <p class="entity-kicker">Pickup Permissions</p>
             <h3 id="authorization-editor-title">Create Pickup Permission</h3>
-            <p class="helper-copy">Find a family, then choose which of your children they may pick up.</p>
+            <p class="helper-copy">Choose a family, then choose your children.</p>
           </div>
-          <button id="authorization-modal-close" type="button" class="modal-close" aria-label="Close">✕</button>
+          <button id="authorization-modal-close" type="button" class="modal-close" aria-label="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+            </svg>
+          </button>
         </div>
 
         <div class="form-row">
-          <label for="authorize-carpool-number">Other Carpool Number</label>
-          <div class="authorization-inline">
-            <input id="authorize-carpool-number" type="number" inputmode="numeric" placeholder="e.g. 204" />
-            <button type="button" id="lookup-authorization-family" class="btn-w btn-maroon">Find</button>
-          </div>
+          <label for="authorize-family-search">Parent Name</label>
+          <input id="authorize-family-search" type="text" placeholder="Search parent names" autocomplete="off" />
         </div>
 
+        <div id="authorization-family-results" class="student-list"></div>
         <div id="authorization-lookup-result" class="picker-groups"></div>
 
         <label class="authorization-toggle" for="authorization-permanent">
           <input id="authorization-permanent" type="checkbox" />
-          <span>Save this permission permanently</span>
+          <span>Keep this permission until I remove it</span>
         </label>
 
         <div class="authorization-dates-grid">

@@ -118,7 +118,6 @@
     const cards = [{
       family_id: ownFamily.family_id,
       parent_names: ownFamily.parent_names,
-      carpool_number: ownFamily.carpool_number,
       students: state.context.own_students || [],
       label: "Your Family",
       note: ""
@@ -128,7 +127,6 @@
       cards.push({
         family_id: family.family_id,
         parent_names: family.parent_names,
-        carpool_number: family.carpool_number,
         students: family.students || [],
         label: "Students You're Going To Pick Up",
         note: `Approved from ${family.starts_on} to ${family.ends_on}`
@@ -220,7 +218,10 @@
   function selectEntireFamily(familyId) {
     clearActivePresets();
     const card = familyCards().find((item) => item.family_id === familyId);
-    const next = new Set((card?.students || []).map((student) => String(student.student_id)));
+    const allStudentIds = (card?.students || []).map((student) => String(student.student_id));
+    const current = state.selectedByFamily.get(familyId) || new Set();
+    const hasAllSelected = allStudentIds.length > 0 && allStudentIds.every((studentId) => current.has(studentId));
+    const next = hasAllSelected ? new Set() : new Set(allStudentIds);
     state.manualSelectedByFamily.set(familyId, next);
     rebuildSelections();
     renderCheckinPage();
@@ -232,28 +233,35 @@
     if (!list) return;
 
     if (!presets.length) {
-      list.innerHTML = '<p class="muted empty-state">No saved carpools yet. Use the gear icon to create one.</p>';
+      list.innerHTML = "";
+      show("saved-carpools-section", false);
       return;
     }
+
+    show("saved-carpools-section", true);
 
     list.innerHTML = presets.map((preset) => {
       const isActive = state.activePresetIds.has(preset.preset_id);
       const preview = (preset.students || [])
         .map((student) => `${student.first_name} ${student.last_name}`)
         .join(", ");
+      const count = Number(preset.student_count || 0);
 
       return `
         <button
           type="button"
-          class="preset-card${isActive ? " active" : ""}"
+          class="selection-row${isActive ? " selected" : ""}"
           data-preset-id="${escapeHtml(preset.preset_id)}"
           aria-pressed="${isActive ? "true" : "false"}"
         >
-          <span class="preset-card-top">
-            <span class="preset-card-name">${escapeHtml(preset.name || "Saved Carpool")}</span>
-            <span class="preset-card-count">${escapeHtml(String(preset.student_count || 0))} students</span>
+          <span class="selection-row-main">
+            <span class="selection-row-toggle">${isActive ? "✓" : "+"}</span>
+            <span class="selection-row-copy">
+              <span class="selection-row-name">${escapeHtml(preset.name || "Quick Pick")}</span>
+              <span class="selection-row-meta">${escapeHtml(preview || "No children")}</span>
+            </span>
           </span>
-          <span class="preset-card-preview">${escapeHtml(preview || "No students")}</span>
+          <span class="selection-row-count">${escapeHtml(String(count))} ${count === 1 ? "child" : "children"}</span>
         </button>
       `;
     }).join("");
@@ -268,7 +276,35 @@
       ? authorizedCards.map(familyCardHtml).join("")
       : '<p class="muted empty-state">No outside students are currently authorized for your family.</p>';
 
+    syncSelectAllButton(ownCard);
     show("authorized-students-section", authorizedCards.length > 0);
+  }
+
+  function syncSelectAllButton(card) {
+    const button = el("select-all-children");
+    const icon = el("select-all-children-icon");
+    const label = el("select-all-children-label");
+    if (!button || !icon || !label) return;
+
+    const studentIds = (card?.students || []).map((student) => String(student.student_id));
+    const selected = card ? (state.selectedByFamily.get(card.family_id) || new Set()) : new Set();
+    const hasChildren = studentIds.length > 0;
+    const hasAllSelected = hasChildren && studentIds.every((studentId) => selected.has(studentId));
+
+    if (!hasChildren || !card) {
+      button.dataset.selectFamily = "";
+      button.classList.add("hidden");
+      button.classList.remove("selected");
+      icon.textContent = "+";
+      label.textContent = "Select All";
+      return;
+    }
+
+    button.dataset.selectFamily = String(card.family_id);
+    button.classList.remove("hidden");
+    button.classList.toggle("selected", hasAllSelected);
+    icon.textContent = hasAllSelected ? "✓" : "+";
+    label.textContent = hasAllSelected ? "Clear All" : "Select All";
   }
 
   function familyCardHtml(card) {
@@ -279,14 +315,17 @@
       return `
         <button
           type="button"
-          class="btn btn-primary student-pick${isSelected ? " selected" : ""}"
+          class="selection-row student-pick${isSelected ? " selected" : ""}"
           data-family-id="${escapeHtml(card.family_id)}"
           data-student-id="${escapeHtml(studentId)}"
           aria-pressed="${isSelected ? "true" : "false"}"
         >
-          <span class="student-pick-content">
-            <span class="student-pick-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
-            <small class="student-pick-grade">${escapeHtml(student.class_name || "")}</small>
+          <span class="selection-row-main">
+            <span class="selection-row-toggle">${isSelected ? "✓" : "+"}</span>
+            <span class="student-pick-content">
+              <span class="student-pick-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
+              <small class="student-pick-grade">${escapeHtml(student.class_name || "")}</small>
+            </span>
           </span>
         </button>
       `;
@@ -296,7 +335,7 @@
       <article class="family-card">
         <div class="family-card-head">
           <div class="family-card-hero">
-            ${card.label === "Your Family" ? "" : `<h3>${escapeHtml(card.parent_names)} <span>#${escapeHtml(String(card.carpool_number))}</span></h3>`}
+            ${card.label === "Your Family" ? "" : `<h3>${escapeHtml(card.parent_names)}</h3>`}
           </div>
         </div>
         <div class="family-students">${studentsHtml}</div>
@@ -311,7 +350,7 @@
     const isStudentsStepActive = document.documentElement.classList.contains("parent-checkin-active");
     if (submit) {
       submit.disabled = !count || state.loading;
-      submit.textContent = `Check In ${count} Student${count === 1 ? "" : "s"}`;
+      submit.textContent = `I'm Here For ${count} ${count === 1 ? "Child" : "Children"}`;
     }
     if (clearBtn) clearBtn.disabled = !count || state.loading;
     show("sticky-checkin-bar", isStudentsStepActive && state.number && Boolean(state.context));
@@ -375,7 +414,7 @@
 
   function setDoneState(message, note) {
     el("done-message").textContent = message;
-    el("done-note").textContent = note || "Your child's teacher has been notified.";
+    el("done-note").textContent = note || "The school has been notified.";
     hideAllSections();
     show("entry-card", false);
     show("done-card", true);
@@ -391,7 +430,7 @@
   async function submitSelectedStudents() {
     const targets = collectTargets();
     if (!targets.length) {
-      showError("students-error", "Choose at least one student.");
+      showError("students-error", "Choose at least one child.");
       return;
     }
 
@@ -401,27 +440,27 @@
 
     try {
       let result;
-      let note = "Your child's teacher has been notified.";
+      let note = "The school has been notified.";
 
       if (state.activePresetIds.size === 1 && manualSelectedCount() === 0) {
         const [presetId] = Array.from(state.activePresetIds);
         result = await submitPresetCheckIn(presetId);
         if (result.is_empty_after_cleanup) {
           await loadFamily(state.number);
-          showError("students-error", "This saved carpool no longer has any authorized students. Update it in Settings.");
+          showError("students-error", "This quick pick needs to be updated in Settings before it can be used again.");
           return;
         }
 
         const removed = (result.removed_students || []).map((student) => `${student.first_name} ${student.last_name}`);
         if (removed.length) {
-          note = `Updated the saved carpool by removing: ${removed.join(", ")}.`;
+          note = `Your quick pick was updated after expired approvals were removed for: ${removed.join(", ")}.`;
         }
       } else {
         result = await submitCheckInRequest(targets);
       }
 
       const calledFamilies = formatCalledStudents(result);
-      setDoneState(`Checked in: ${calledFamilies.join(", ")}.`, note);
+      setDoneState(`Pickup request sent for ${calledFamilies.join(", ")}.`, note);
       await loadFamily(state.number);
     } catch (error) {
       showError("students-error", error.message || "Unable to check in right now. Please try again.");
@@ -483,6 +522,12 @@
           selectEntireFamily(familyBtn.dataset.selectFamily);
         }
       });
+    });
+
+    el("select-all-children").addEventListener("click", (event) => {
+      const familyId = event.currentTarget.dataset.selectFamily;
+      if (!familyId) return;
+      selectEntireFamily(familyId);
     });
 
     el("sticky-clear").addEventListener("click", () => {

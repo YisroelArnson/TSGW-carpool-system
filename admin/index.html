@@ -227,6 +227,14 @@
         align-items: center;
         text-align: center;
         gap: 6px;
+        cursor: pointer;
+        transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+      }
+
+      .all-students-card:hover {
+        border-color: rgba(107, 45, 91, 0.28);
+        box-shadow: 0 8px 20px rgba(107, 45, 91, 0.08);
+        transform: translateY(-1px);
       }
 
       .all-students-card.called {
@@ -252,6 +260,17 @@
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--text-muted);
+      }
+
+      .status.is-toggle {
+        cursor: pointer;
+        transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+      }
+
+      .status.is-toggle:hover {
+        border-color: rgba(107, 45, 91, 0.28);
+        box-shadow: 0 6px 14px rgba(107, 45, 91, 0.08);
+        transform: translateY(-1px);
       }
 
       /* ─ Table overrides ─ */
@@ -425,35 +444,171 @@
         box-shadow: 0 0 0 3px rgba(107, 45, 91, 0.1);
         background: #fff;
       }
+
+      .modal-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 2px 0 14px;
+        color: var(--text-dark);
+        font-size: 0.92rem;
+        font-family: "Open Sans", sans-serif;
+      }
+
+      .modal-toggle input {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+      }
+
       .checkbox-list {
         display: grid;
         gap: 8px;
       }
+
       .checkbox-option {
+        display: block;
+        cursor: pointer;
+      }
+
+      .checkbox-option input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+        width: 1px;
+        height: 1px;
+      }
+
+      .checkbox-option-row {
+        width: 100%;
+        border: 1px solid var(--border-light);
+        border-radius: 14px;
+        background: #fff;
+        padding: 12px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+      }
+
+      .checkbox-option:hover .checkbox-option-row {
+        border-color: rgba(107, 45, 91, 0.28);
+      }
+
+      .checkbox-option input:focus-visible + .checkbox-option-row {
+        border-color: var(--brand-maroon);
+        box-shadow: 0 0 0 3px rgba(107, 45, 91, 0.12);
+      }
+
+      .checkbox-option input:checked + .checkbox-option-row {
+        background: #eef8f0;
+        border-color: rgba(71, 132, 83, 0.48);
+        box-shadow: 0 8px 22px rgba(71, 132, 83, 0.09);
+      }
+
+      .checkbox-option-main {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .checkbox-option-toggle {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        border: 1px solid rgba(107, 45, 91, 0.24);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--brand-maroon);
+        font-size: 1rem;
+        font-weight: 700;
+        flex: 0 0 auto;
+      }
+
+      .checkbox-option-toggle::before {
+        content: "+";
+      }
+
+      .checkbox-option input:checked + .checkbox-option-row .checkbox-option-toggle::before {
+        content: "✓";
+      }
+
+      .checkbox-option input:checked + .checkbox-option-row .checkbox-option-toggle {
+        background: #478453;
+        color: #fff;
+        border-color: #478453;
+      }
+
+      .checkbox-option-copy {
+        min-width: 0;
         display: grid;
         gap: 4px;
-        border: 1px solid var(--border-light);
-        border-radius: 12px;
-        padding: 10px 12px;
-        background: #fff;
       }
-      .checkbox-option input {
-        width: 16px;
-        height: 16px;
-        margin: 0;
-      }
-      .checkbox-option span {
-        font-weight: 600;
+
+      .checkbox-option-name {
+        font-weight: 700;
         color: var(--text-dark);
+        line-height: 1.25;
       }
-      .checkbox-option small {
+
+      .checkbox-option-meta {
         color: var(--text-muted);
+        font-size: 0.82rem;
+        line-height: 1.35;
       }
+
       .modal-footer {
         display: flex;
         gap: 10px;
         justify-content: flex-end;
         margin-top: 6px;
+      }
+
+      .permissions-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: nowrap;
+      }
+
+      .icon-action-btn {
+        width: 42px;
+        height: 42px;
+        padding: 0;
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        background: #fff;
+        color: var(--text-muted);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+      }
+
+      .icon-action-btn:hover {
+        border-color: rgba(107, 45, 91, 0.28);
+        background: var(--surface-sand);
+        color: var(--text-dark);
+      }
+
+      .icon-action-btn svg {
+        width: 18px;
+        height: 18px;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .icon-action-btn.danger:hover {
+        border-color: rgba(176, 42, 55, 0.32);
+        background: #fbecee;
+        color: var(--status-danger);
       }
 
       /* ─ Sortable headers ─ */
@@ -642,15 +797,15 @@
             </div>
           </div>
           <div class="table-wrap">
-            <table>
+            <table id="permissions-table">
               <thead>
                 <tr>
-                  <th>Granting Family</th>
-                  <th>Receiving Family</th>
-                  <th>Students</th>
-                  <th>Start</th>
-                  <th>End</th>
-                  <th>Status</th>
+                  <th data-sort="granting">Granting Family</th>
+                  <th data-sort="receiving">Receiving Family</th>
+                  <th data-sort="students">Students</th>
+                  <th data-sort="start">Start</th>
+                  <th data-sort="end">End</th>
+                  <th data-sort="status">Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -661,12 +816,12 @@
             <h2>Saved Carpools</h2>
           </div>
           <div class="table-wrap">
-            <table>
+            <table id="presets-table">
               <thead>
                 <tr>
-                  <th>Owner Family</th>
-                  <th>Name</th>
-                  <th>Students</th>
+                  <th data-sort="owner">Owner Family</th>
+                  <th data-sort="name">Name</th>
+                  <th data-sort="students">Students</th>
                   <th>Actions</th>
                 </tr>
               </thead>

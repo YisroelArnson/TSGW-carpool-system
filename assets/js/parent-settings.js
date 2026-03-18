@@ -10,6 +10,10 @@
     context: null,
     authorizations: [],
     lookupFamily: null,
+    familySearchResults: [],
+    familySearchLoading: false,
+    familySearchRequestSeq: 0,
+    familySearchTimer: null,
     manageSelection: new Set(),
     editingAuthorizationId: null,
     presetSelection: new Set(),
@@ -22,6 +26,23 @@
 
   function todayIso() {
     return new Date().toISOString().slice(0, 10);
+  }
+
+  function formatDateLabel(value) {
+    if (!value || value === PERMANENT_END_DATE) return "Permanent";
+
+    const [year, month, day] = String(value).split("-").map(Number);
+    if (!year || !month || !day) return value;
+
+    return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    });
+  }
+
+  function pluralize(count, singular, plural) {
+    return `${count} ${count === 1 ? singular : (plural || `${singular}s`)}`;
   }
 
   function setMessage(id, message, klass) {
@@ -54,9 +75,19 @@
     return data || [];
   }
 
+  async function searchReceivingFamilies(query) {
+    const client = mustClient();
+    const { data, error } = await client.rpc("search_receiving_families", {
+      p_granting_carpool_number: Number(state.number),
+      p_query: query
+    });
+    if (error) throw error;
+    return data || [];
+  }
+
   async function createAuthorization(payload) {
     const client = mustClient();
-    const { data, error } = await client.rpc("create_pickup_authorization", payload);
+    const { data, error } = await client.rpc("create_pickup_authorization_for_family", payload);
     if (error) throw error;
     return data;
   }
@@ -155,17 +186,18 @@
     const node = el("settings-authorized-pickups");
     const authorized = state.context?.authorized_pickups || [];
     if (!authorized.length) {
-      node.innerHTML = '<p class="item-meta empty-state">No outside students are currently authorized for your family.</p>';
+      node.innerHTML = '<p class="item-meta empty-state">No students are currently available to your family.</p>';
       return;
     }
 
     node.innerHTML = authorized.map((family) => {
       const students = (family.students || []).map((student) => `${student.first_name} ${student.last_name}`).join(", ");
+      const studentCount = family.students?.length || 0;
       return `
         <article class="item-card">
           <div class="item-row">
             <h3 class="item-title">${escapeHtml(family.parent_names || "Family")}</h3>
-            <span class="item-count">#${escapeHtml(String(family.carpool_number || ""))}</span>
+            <span class="item-count">${escapeHtml(pluralize(studentCount, "student"))}</span>
           </div>
           <p class="item-meta">${escapeHtml(students || "No students")}</p>
         </article>
@@ -187,16 +219,20 @@
     node.innerHTML = state.authorizations.map((auth) => {
       const receiving = auth.receiving_family || {};
       const students = (auth.students || []).map((student) => `${student.first_name} ${student.last_name}`).join(", ");
-      const endLabel = auth.ends_on === PERMANENT_END_DATE ? "Permanent" : auth.ends_on;
+      const startLabel = formatDateLabel(auth.starts_on);
+      const endLabel = formatDateLabel(auth.ends_on);
+      const datesLabel =
+        endLabel === "Permanent"
+          ? `Starts ${startLabel}. No end date.`
+          : `${startLabel} to ${endLabel}`;
       return `
         <article class="item-card">
           <div class="item-row">
             <h3 class="item-title">${escapeHtml(receiving.parent_names || "Family")}</h3>
             <span class="item-count">${escapeHtml(authStatus(auth))}</span>
           </div>
-          <p class="item-meta">Carpool #${escapeHtml(String(receiving.carpool_number || ""))}</p>
-          <p class="item-meta">${escapeHtml(students || "No students")}</p>
-          <p class="item-meta">${escapeHtml(auth.starts_on)} to ${escapeHtml(endLabel || "")}</p>
+          <p class="item-meta">${escapeHtml(`Can pick up: ${students || "No students selected"}`)}</p>
+          <p class="item-meta">${escapeHtml(`Dates: ${datesLabel}`)}</p>
           <div class="item-actions">
             <button type="button" class="action-link primary" data-edit-auth="${escapeHtml(auth.authorization_id)}">Edit</button>
             <button type="button" class="action-link" data-remove-auth="${escapeHtml(auth.authorization_id)}">Remove</button>
@@ -206,19 +242,123 @@
     }).join("");
   }
 
+  function clearAuthorizationSearchState() {
+    if (state.familySearchTimer) {
+      window.clearTimeout(state.familySearchTimer);
+      state.familySearchTimer = null;
+    }
+    state.familySearchRequestSeq += 1;
+    state.familySearchResults = [];
+    state.familySearchLoading = false;
+  }
+
+  function syncAuthorizationFamilyInput() {
+    const input = el("authorize-family-search");
+    if (!input) return;
+    input.disabled = Boolean(state.editingAuthorizationId);
+  }
+
+  function renderAuthorizationFamilyResults() {
+    const node = el("authorization-family-results");
+    const input = el("authorize-family-search");
+    if (!node || !input) return;
+
+    syncAuthorizationFamilyInput();
+
+    const query = input.value.trim();
+    if (state.editingAuthorizationId) {
+      node.innerHTML = '<p class="item-meta empty-state">To switch families, remove this permission and create a new one.</p>';
+      return;
+    }
+
+    if (!query) {
+      node.innerHTML = '<p class="item-meta empty-state">Search by parent name to find a family.</p>';
+      return;
+    }
+
+    if (query.length < 2) {
+      node.innerHTML = '<p class="item-meta empty-state">Type at least 2 letters to search.</p>';
+      return;
+    }
+
+    if (state.familySearchLoading) {
+      node.innerHTML = '<p class="item-meta empty-state">Searching families...</p>';
+      return;
+    }
+
+    if (!state.familySearchResults.length) {
+      node.innerHTML = '<p class="item-meta empty-state">No parent names matched that search.</p>';
+      return;
+    }
+
+    node.innerHTML = state.familySearchResults.map((family) => {
+      const selected = state.lookupFamily?.family_id === family.family_id;
+      return selectionRowHtml({
+        id: family.family_id,
+        name: family.parent_names || "Family",
+        meta: selected ? "Selected family" : "Select this family",
+        selected,
+        dataAttr: "data-select-family"
+      });
+    }).join("");
+  }
+
+  function queueAuthorizationFamilySearch() {
+    const input = el("authorize-family-search");
+    if (!input) return;
+
+    const query = input.value.trim();
+    clearAuthorizationSearchState();
+
+    if (state.lookupFamily && query !== (state.lookupFamily.parent_names || "")) {
+      state.lookupFamily = null;
+      renderAuthorizationLookup();
+    }
+
+    if (state.editingAuthorizationId || !query || query.length < 2) {
+      renderAuthorizationFamilyResults();
+      return;
+    }
+
+    state.familySearchLoading = true;
+    const requestSeq = state.familySearchRequestSeq + 1;
+    state.familySearchRequestSeq = requestSeq;
+    renderAuthorizationFamilyResults();
+
+    state.familySearchTimer = window.setTimeout(async () => {
+      state.familySearchTimer = null;
+
+      try {
+        const results = await searchReceivingFamilies(query);
+        if (requestSeq !== state.familySearchRequestSeq) return;
+        state.familySearchResults = results;
+      } catch (error) {
+        if (requestSeq !== state.familySearchRequestSeq) return;
+        state.familySearchResults = [];
+        setMessage("authorization-message", error.message || "Unable to search families.", "error");
+      } finally {
+        if (requestSeq !== state.familySearchRequestSeq) return;
+        state.familySearchLoading = false;
+        renderAuthorizationFamilyResults();
+      }
+    }, 180);
+  }
+
   function resetAuthorizationForm() {
     state.lookupFamily = null;
     state.manageSelection = new Set();
     state.editingAuthorizationId = null;
+    clearAuthorizationSearchState();
     el("authorization-editor-title").textContent = "Create Pickup Permission";
     el("open-authorization-editor").textContent = "Add Permission";
-    el("authorize-carpool-number").value = "";
+    el("authorize-family-search").value = "";
     el("authorization-start-date").value = todayIso();
     el("authorization-end-date").value = "";
     el("authorization-permanent").checked = false;
     el("authorization-end-date").disabled = false;
     el("authorization-submit").textContent = "Save Permission";
     setMessage("authorization-message", "");
+    renderAuthorizationFamilyResults();
     renderAuthorizationLookup();
     setPseudoDisabled("authorization-submit", true);
     closeAuthorizationEditor();
@@ -234,7 +374,7 @@
   function renderAuthorizationLookup() {
     const details = el("authorization-lookup-result");
     if (!state.lookupFamily) {
-      details.innerHTML = '<p class="item-meta empty-state">Find a family to begin building this permission.</p>';
+      details.innerHTML = '<p class="item-meta empty-state">Choose a family to continue.</p>';
       setPseudoDisabled("authorization-submit", true);
       return;
     }
@@ -254,7 +394,7 @@
     details.innerHTML = `
       <div class="lookup-family-box">
         <p class="entity-kicker">Receiving Family</p>
-        <h3>${escapeHtml(`${state.lookupFamily.parent_names} #${state.lookupFamily.carpool_number}`)}</h3>
+        <h3>${escapeHtml(state.lookupFamily.parent_names || "Family")}</h3>
       </div>
       <div class="picker-group">
         <div class="picker-group-head">
@@ -273,44 +413,21 @@
     );
   }
 
-  async function lookupReceivingFamily() {
-    const number = el("authorize-carpool-number").value.trim();
-    setMessage("authorization-message", "");
-
-    if (!number) {
-      setMessage("authorization-message", "Enter a carpool number to authorize.", "error");
-      return;
-    }
-
-    if (Number(number) === Number(state.number)) {
-      setMessage("authorization-message", "Choose a different carpool number.", "error");
-      return;
-    }
-
-    try {
-      const data = await getCheckinContext(number);
-      state.lookupFamily = data.requesting_family;
-      renderAuthorizationLookup();
-    } catch (error) {
-      state.lookupFamily = null;
-      renderAuthorizationLookup();
-      setMessage("authorization-message", "Carpool number not found.", "error");
-    }
-  }
-
   function loadAuthIntoForm(auth) {
     state.editingAuthorizationId = auth.authorization_id;
     state.lookupFamily = auth.receiving_family;
     state.manageSelection = new Set((auth.students || []).map((student) => String(student.student_id)));
+    clearAuthorizationSearchState();
     el("authorization-editor-title").textContent = "Edit Pickup Permission";
     el("open-authorization-editor").textContent = "Add Permission";
-    el("authorize-carpool-number").value = auth.receiving_family.carpool_number || "";
+    el("authorize-family-search").value = auth.receiving_family.parent_names || "";
     el("authorization-start-date").value = auth.starts_on || todayIso();
     const isPermanent = auth.ends_on === PERMANENT_END_DATE;
     el("authorization-permanent").checked = isPermanent;
     el("authorization-end-date").value = isPermanent ? "" : (auth.ends_on || "");
     syncPermanentUi();
     el("authorization-submit").textContent = "Save Changes";
+    renderAuthorizationFamilyResults();
     renderAuthorizationLookup();
     openAuthorizationEditor();
   }
@@ -320,15 +437,15 @@
     const endDate = el("authorization-permanent").checked ? PERMANENT_END_DATE : el("authorization-end-date").value;
 
     if (!state.lookupFamily) {
-      setMessage("authorization-message", "Look up a receiving family first.", "error");
+      setMessage("authorization-message", "Choose a receiving family first.", "error");
       return;
     }
     if (!startDate || !endDate) {
-      setMessage("authorization-message", "Choose a start date and either an end date or permanent permission.", "error");
+      setMessage("authorization-message", "Choose a start date and an end date, or keep it active until you remove it.", "error");
       return;
     }
     if (!state.manageSelection.size) {
-      setMessage("authorization-message", "Choose at least one student to authorize.", "error");
+      setMessage("authorization-message", "Choose at least one child.", "error");
       return;
     }
 
@@ -348,7 +465,7 @@
       } else {
         await createAuthorization({
           ...payload,
-          p_receiving_carpool_number: Number(state.lookupFamily.carpool_number)
+          p_receiving_family_id: state.lookupFamily.family_id
         });
       }
 
@@ -368,7 +485,7 @@
       groups.push({
         family_id: own.family_id,
         heading: "Your Children",
-        subheading: `${own.parent_names} #${own.carpool_number}`,
+        subheading: own.parent_names,
         students: state.context?.own_students || []
       });
     }
@@ -377,7 +494,7 @@
       groups.push({
         family_id: family.family_id,
         heading: "Authorized Pickups",
-        subheading: `${family.parent_names} #${family.carpool_number}`,
+        subheading: family.parent_names,
         students: family.students || []
       });
     });
@@ -435,9 +552,9 @@
         <article class="item-card">
           <div class="item-row">
             <h3 class="item-title">${escapeHtml(preset.name || "Saved Carpool")}</h3>
-            <span class="item-count">${escapeHtml(String(preset.student_count || 0))} students</span>
+            <span class="item-count">${escapeHtml(pluralize(Number(preset.student_count || 0), "student"))}</span>
           </div>
-          <p class="item-meta">${escapeHtml(students || "No students")}</p>
+          <p class="item-meta">${escapeHtml(`Includes: ${students || "No students"}`)}</p>
           <div class="item-actions">
             <button type="button" class="action-link primary" data-edit-preset="${escapeHtml(preset.preset_id)}">Edit</button>
             <button type="button" class="action-link" data-delete-preset="${escapeHtml(preset.preset_id)}">Delete</button>
@@ -514,6 +631,7 @@
     renderAuthorizationList();
     renderPresetList();
     renderAuthorizationLookup();
+    renderAuthorizationFamilyResults();
     renderPresetPicker();
   }
 
@@ -579,24 +697,45 @@
       state.lookupFamily = null;
       state.manageSelection = new Set();
       state.editingAuthorizationId = null;
+      clearAuthorizationSearchState();
       el("authorization-editor-title").textContent = "Create Pickup Permission";
-      el("authorize-carpool-number").value = "";
+      el("authorize-family-search").value = "";
       el("authorization-start-date").value = todayIso();
       el("authorization-end-date").value = "";
       el("authorization-permanent").checked = false;
       syncPermanentUi();
       el("authorization-submit").textContent = "Save Permission";
       openAuthorizationEditor();
+      renderAuthorizationFamilyResults();
       renderAuthorizationLookup();
       setPseudoDisabled("authorization-submit", true);
     });
 
-    el("lookup-authorization-family").addEventListener("click", lookupReceivingFamily);
-    el("authorize-carpool-number").addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        lookupReceivingFamily();
-      }
+    el("authorize-family-search").addEventListener("input", () => {
+      setMessage("authorization-message", "");
+      queueAuthorizationFamilySearch();
+    });
+
+    el("authorization-family-results").addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-select-family]");
+      if (!btn) return;
+      const family = state.familySearchResults.find((item) => item.family_id === btn.dataset.selectFamily);
+      if (!family) return;
+      state.lookupFamily = family;
+      el("authorize-family-search").value = family.parent_names || "";
+      renderAuthorizationFamilyResults();
+      renderAuthorizationLookup();
+    });
+
+    el("authorize-family-search").addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      const [firstMatch] = state.familySearchResults;
+      if (!firstMatch) return;
+      event.preventDefault();
+      state.lookupFamily = firstMatch;
+      el("authorize-family-search").value = firstMatch.parent_names || "";
+      renderAuthorizationFamilyResults();
+      renderAuthorizationLookup();
     });
 
     el("authorization-lookup-result").addEventListener("click", (event) => {

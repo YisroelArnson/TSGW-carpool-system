@@ -409,7 +409,6 @@ begin
     select
       ar.authorization_id,
       ar.granting_family_id,
-      ar.granting_carpool_number,
       ar.granting_parent_names,
       ar.starts_on,
       ar.ends_on,
@@ -426,24 +425,22 @@ begin
     group by
       ar.authorization_id,
       ar.granting_family_id,
-      ar.granting_carpool_number,
       ar.granting_parent_names,
       ar.starts_on,
       ar.ends_on
-    order by ar.granting_carpool_number
+    order by lower(ar.granting_parent_names), ar.authorization_id
   )
   select coalesce(
     jsonb_agg(
       jsonb_build_object(
         'authorization_id', fg.authorization_id,
         'family_id', fg.granting_family_id,
-        'carpool_number', fg.granting_carpool_number,
         'parent_names', fg.granting_parent_names,
         'starts_on', fg.starts_on,
         'ends_on', fg.ends_on,
         'students', fg.students
       )
-      order by fg.granting_carpool_number
+      order by lower(fg.granting_parent_names), fg.authorization_id
     ),
     '[]'::jsonb
   )
@@ -457,7 +454,6 @@ begin
       cp.id as preset_id,
       cp.name,
       s.family_id,
-      f.carpool_number,
       f.parent_names,
       s.id as student_id,
       s.first_name,
@@ -479,7 +475,6 @@ begin
           jsonb_build_object(
             'student_id', pr.student_id,
             'family_id', pr.family_id,
-            'carpool_number', pr.carpool_number,
             'parent_names', pr.parent_names,
             'first_name', pr.first_name,
             'last_name', pr.last_name,
@@ -1033,7 +1028,6 @@ begin
       pa.revoked_at,
       pa.revoked_by,
       rf.id as receiving_family_id,
-      rf.carpool_number as receiving_carpool_number,
       rf.parent_names as receiving_parent_names,
       case
         when pa.is_revoked then 'Revoked'
@@ -1074,7 +1068,6 @@ begin
       ar.revoked_at,
       ar.revoked_by,
       ar.receiving_family_id,
-      ar.receiving_carpool_number,
       ar.receiving_parent_names,
       ar.status_label
     order by ar.created_at desc
@@ -1093,7 +1086,6 @@ begin
         'revoked_by', aws.revoked_by,
         'receiving_family', jsonb_build_object(
           'family_id', aws.receiving_family_id,
-          'carpool_number', aws.receiving_carpool_number,
           'parent_names', aws.receiving_parent_names
         ),
         'students', aws.students
@@ -1106,6 +1098,155 @@ begin
   from auth_with_students aws;
 
   return v_result;
+end;
+$$;
+
+create or replace function public.search_receiving_families(
+  p_granting_carpool_number integer,
+  p_query text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_granting_family_id uuid;
+  v_query text := nullif(btrim(coalesce(p_query, '')), '');
+  v_result jsonb := '[]'::jsonb;
+begin
+  v_granting_family_id := public.family_id_for_carpool(p_granting_carpool_number);
+  if v_granting_family_id is null then
+    raise exception 'Carpool number not found';
+  end if;
+
+  if v_query is null or char_length(v_query) < 2 then
+    return v_result;
+  end if;
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'family_id', family_match.id,
+        'parent_names', family_match.parent_names
+      )
+      order by family_match.sort_rank, lower(family_match.parent_names), family_match.id
+    ),
+    '[]'::jsonb
+  )
+  into v_result
+  from (
+    select
+      f.id,
+      f.parent_names,
+      case
+        when lower(f.parent_names) = lower(v_query) then 0
+        when lower(f.parent_names) like lower(v_query) || '%' then 1
+        else 2
+      end as sort_rank
+    from public.families f
+    where f.id <> v_granting_family_id
+      and f.parent_names ilike '%' || v_query || '%'
+    order by
+      case
+        when lower(f.parent_names) = lower(v_query) then 0
+        when lower(f.parent_names) like lower(v_query) || '%' then 1
+        else 2
+      end,
+      lower(f.parent_names),
+      f.id
+    limit 12
+  ) family_match;
+
+  return v_result;
+end;
+$$;
+
+create or replace function public.create_pickup_authorization_for_family(
+  p_granting_carpool_number integer,
+  p_receiving_family_id uuid,
+  p_student_ids uuid[],
+  p_starts_on date,
+  p_ends_on date
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_granting_family_id uuid;
+  v_receiving_family_id uuid;
+  v_authorization_id uuid;
+  v_invalid_count integer;
+begin
+  if p_starts_on is null or p_ends_on is null or p_starts_on > p_ends_on then
+    raise exception 'Invalid date range';
+  end if;
+
+  v_granting_family_id := public.family_id_for_carpool(p_granting_carpool_number);
+
+  select f.id
+  into v_receiving_family_id
+  from public.families f
+  where f.id = p_receiving_family_id
+  limit 1;
+
+  if v_granting_family_id is null or v_receiving_family_id is null then
+    raise exception 'Family not found';
+  end if;
+
+  if v_granting_family_id = v_receiving_family_id then
+    raise exception 'Receiving family must be different';
+  end if;
+
+  if coalesce(array_length(p_student_ids, 1), 0) = 0 then
+    raise exception 'Select at least one student';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from unnest(p_student_ids) sid
+  left join public.students s on s.id = sid and s.family_id = v_granting_family_id
+  where s.id is null;
+
+  if v_invalid_count > 0 then
+    raise exception 'Selected students must belong to the granting family';
+  end if;
+
+  insert into public.pickup_authorizations (
+    granting_family_id,
+    receiving_family_id,
+    starts_on,
+    ends_on
+  ) values (
+    v_granting_family_id,
+    v_receiving_family_id,
+    p_starts_on,
+    p_ends_on
+  )
+  returning id into v_authorization_id;
+
+  insert into public.pickup_authorization_students (authorization_id, student_id)
+  select v_authorization_id, sid
+  from unnest(p_student_ids) sid;
+
+  perform public.write_pickup_authorization_audit(
+    v_authorization_id,
+    'CREATED',
+    'parent',
+    v_granting_family_id,
+    v_receiving_family_id,
+    p_starts_on,
+    p_ends_on,
+    p_student_ids,
+    jsonb_build_object(
+      'granting_carpool_number', p_granting_carpool_number,
+      'receiving_family_id', p_receiving_family_id
+    )
+  );
+
+  return jsonb_build_object('authorization_id', v_authorization_id);
 end;
 $$;
 
@@ -1741,6 +1882,8 @@ grant execute on function public.prune_invalid_carpool_preset_students(uuid, dat
 grant execute on function public.get_parent_checkin_context(integer) to anon, authenticated;
 grant execute on function public.submit_check_in_request(integer, jsonb, text) to anon, authenticated;
 grant execute on function public.get_family_authorizations(integer) to anon, authenticated;
+grant execute on function public.search_receiving_families(integer, text) to anon, authenticated;
+grant execute on function public.create_pickup_authorization_for_family(integer, uuid, uuid[], date, date) to anon, authenticated;
 grant execute on function public.create_pickup_authorization(integer, integer, uuid[], date, date) to anon, authenticated;
 grant execute on function public.update_pickup_authorization(uuid, integer, uuid[], date, date) to anon, authenticated;
 grant execute on function public.revoke_pickup_authorization(uuid, integer) to anon, authenticated;

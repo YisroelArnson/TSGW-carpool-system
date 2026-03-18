@@ -2,6 +2,8 @@
   const { mustClient, show, requireAuth, csvToRows, escapeHtml, schoolTodayISO, fetchSchoolToday } = window.carpoolUtils || {};
   if (!mustClient) return;
 
+  const PERMANENT_END_DATE = "9999-12-31";
+
   const state = {
     today: schoolTodayISO(),
     classes: [],
@@ -26,7 +28,9 @@
     today:    { col: null, dir: "asc" },
     students: { col: null, dir: "asc" },
     families: { col: null, dir: "asc" },
-    classes:  { col: null, dir: "asc" }
+    classes:  { col: null, dir: "asc" },
+    permissions: { col: null, dir: "asc" },
+    presets: { col: null, dir: "asc" }
   };
 
   function el(id) {
@@ -51,6 +55,11 @@
 
   function studentLabel(student) {
     return `${student.last_name}, ${student.first_name}`;
+  }
+
+  function formatDateLabel(value) {
+    if (!value || value === PERMANENT_END_DATE) return "Permanent";
+    return value;
   }
 
   function authorizationStudentIds(authId) {
@@ -124,6 +133,47 @@
 
   function dailyStatusMap() {
     return new Map(state.dailyStatus.map((row) => [row.student_id, row]));
+  }
+
+  async function setTodayStudentStatus(studentId, status) {
+    const client = mustClient();
+    const payload = [{
+      student_id: studentId,
+      date: state.today,
+      status,
+      called_at: new Date().toISOString(),
+      called_by: "admin"
+    }];
+
+    const { error } = await client.from("daily_status").upsert(payload, { onConflict: "student_id,date" });
+    if (error) throw error;
+  }
+
+  function applyTodayStatusLocally(studentId, status) {
+    const nextRecord = {
+      student_id: studentId,
+      date: state.today,
+      status,
+      called_at: new Date().toISOString(),
+      called_by: "admin"
+    };
+    const existingIndex = state.dailyStatus.findIndex((row) => row.student_id === studentId && row.date === state.today);
+    if (existingIndex >= 0) {
+      state.dailyStatus[existingIndex] = {
+        ...state.dailyStatus[existingIndex],
+        ...nextRecord
+      };
+    } else {
+      state.dailyStatus.unshift(nextRecord);
+    }
+  }
+
+  async function toggleTodayStudentStatus(studentId) {
+    const current = dailyStatusMap().get(studentId);
+    const nextStatus = current && current.status === "CALLED" ? "WAITING" : "CALLED";
+    await setTodayStudentStatus(studentId, nextStatus);
+    applyTodayStatusLocally(studentId, nextStatus);
+    renderToday();
   }
 
   function applySortHeaders(tableId, col, dir) {
@@ -373,7 +423,7 @@
           <td>${escapeHtml(stu && stu.classes ? stu.classes.name : "")}</td>
           <td>${escapeHtml(stu && stu.families ? stu.families.parent_names : "")}</td>
           <td>${escapeHtml(stu && stu.families ? String(stu.families.carpool_number) : "")}</td>
-          <td><span class="${statusClass}">${escapeHtml(rec.status)}</span></td>
+          <td><span class="${statusClass}${stu ? " is-toggle" : ""}" ${stu ? `data-today-student-id="${escapeHtml(stu.id)}"` : ""}>${escapeHtml(rec.status)}</span></td>
           <td>${escapeHtml(rec.called_by || "-")}</td>
         </tr>`;
       })
@@ -400,7 +450,7 @@
         const status = rec ? rec.status : "WAITING";
         const cardClass = status === "CALLED" ? "all-students-card called" : "all-students-card";
         const className = student.classes ? student.classes.name : "";
-        return `<div class="${cardClass}">
+        return `<div class="${cardClass}" data-today-grid-student-id="${escapeHtml(student.id)}">
           <div class="all-students-name-line">
             <span class="all-students-name">${escapeHtml(student.first_name)} ${escapeHtml(student.last_name)}</span>
             <span class="all-students-meta">${escapeHtml(className)}</span>
@@ -440,7 +490,29 @@
       studentsByPreset.set(row.preset_id, list);
     });
 
-    const authRows = state.pickupAuthorizations
+    const { col: permissionsCol, dir: permissionsDir } = sortState.permissions;
+    const sortedPermissions = sortedBy(state.pickupAuthorizations, permissionsCol, permissionsDir, (auth) => {
+      const granting = familyById.get(auth.granting_family_id);
+      const receiving = familyById.get(auth.receiving_family_id);
+      const students = (studentsByAuthorization.get(auth.id) || [])
+        .sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name))
+        .map((student) => `${student.first_name} ${student.last_name}`)
+        .join(", ");
+      let status = "Active";
+      if (auth.is_revoked) status = "Revoked";
+      else if (state.today < auth.starts_on) status = "Upcoming";
+      else if (state.today > auth.ends_on) status = "Expired";
+
+      if (permissionsCol === "granting") return granting ? familyLabel(granting) : "";
+      if (permissionsCol === "receiving") return receiving ? familyLabel(receiving) : "";
+      if (permissionsCol === "students") return students;
+      if (permissionsCol === "start") return auth.starts_on || "";
+      if (permissionsCol === "end") return auth.ends_on || "";
+      if (permissionsCol === "status") return status;
+      return "";
+    });
+
+    const authRows = sortedPermissions
       .map((auth) => {
         const granting = familyById.get(auth.granting_family_id);
         const receiving = familyById.get(auth.receiving_family_id);
@@ -452,25 +524,58 @@
         if (auth.is_revoked) status = "Revoked";
         else if (state.today < auth.starts_on) status = "Upcoming";
         else if (state.today > auth.ends_on) status = "Expired";
+        const actionsCell = auth.is_revoked
+          ? '<td class="muted">-</td>'
+          : `<td>
+              <div class="permissions-actions">
+                <button class="icon-action-btn" type="button" data-edit-auth="${escapeHtml(auth.id)}" aria-label="Edit permission">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"></path>
+                  </svg>
+                </button>
+                <button class="icon-action-btn danger" type="button" data-revoke-auth="${escapeHtml(auth.id)}" aria-label="Revoke permission">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M3 6h18"></path>
+                    <path d="M8 6V4h8v2"></path>
+                    <path d="M19 6l-1 14H6L5 6"></path>
+                    <path d="M10 11v6"></path>
+                    <path d="M14 11v6"></path>
+                  </svg>
+                </button>
+              </div>
+            </td>`;
 
         return `<tr>
           <td>${escapeHtml(granting ? `#${granting.carpool_number} - ${granting.parent_names}` : "Unknown")}</td>
           <td>${escapeHtml(receiving ? `#${receiving.carpool_number} - ${receiving.parent_names}` : "Unknown")}</td>
           <td>${escapeHtml(students)}</td>
-          <td>${escapeHtml(auth.starts_on || "")}</td>
-          <td>${escapeHtml(auth.ends_on || "")}</td>
+          <td>${escapeHtml(formatDateLabel(auth.starts_on || ""))}</td>
+          <td>${escapeHtml(formatDateLabel(auth.ends_on || ""))}</td>
           <td>${escapeHtml(status)}</td>
-          <td class="inline">
-            ${auth.is_revoked ? "" : `<button class="btn btn-secondary" data-edit-auth="${escapeHtml(auth.id)}">Edit</button>`}
-            ${auth.is_revoked ? "" : `<button class="btn btn-secondary" data-revoke-auth="${escapeHtml(auth.id)}">Revoke</button>`}
-          </td>
+          ${actionsCell}
         </tr>`;
       })
       .join("");
 
     el("permissions-tbody").innerHTML = authRows || '<tr><td colspan="7" class="muted">No permissions yet.</td></tr>';
+    applySortHeaders("permissions-table", permissionsCol, permissionsDir);
 
-    const presetRows = state.carpoolPresets
+    const { col: presetsCol, dir: presetsDir } = sortState.presets;
+    const sortedPresets = sortedBy(state.carpoolPresets, presetsCol, presetsDir, (preset) => {
+      const owner = familyById.get(preset.owner_family_id);
+      const students = (studentsByPreset.get(preset.id) || [])
+        .sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name))
+        .map((student) => `${student.first_name} ${student.last_name}`)
+        .join(", ");
+
+      if (presetsCol === "owner") return owner ? familyLabel(owner) : "";
+      if (presetsCol === "name") return preset.name || "";
+      if (presetsCol === "students") return students;
+      return "";
+    });
+
+    const presetRows = sortedPresets
       .map((preset) => {
         const owner = familyById.get(preset.owner_family_id);
         const students = (studentsByPreset.get(preset.id) || [])
@@ -491,6 +596,7 @@
       .join("");
 
     el("presets-tbody").innerHTML = presetRows || '<tr><td colspan="4" class="muted">No saved carpools yet.</td></tr>';
+    applySortHeaders("presets-table", presetsCol, presetsDir);
 
     const auditRows = state.pickupAuthorizationAudit
       .map((audit) => {
@@ -508,7 +614,7 @@
           <td>${escapeHtml(granting ? `#${granting.carpool_number} - ${granting.parent_names}` : "Unknown")}</td>
           <td>${escapeHtml(receiving ? `#${receiving.carpool_number} - ${receiving.parent_names}` : "Unknown")}</td>
           <td>${escapeHtml(names)}</td>
-          <td>${escapeHtml(audit.starts_on || "")} to ${escapeHtml(audit.ends_on || "")}</td>
+          <td>${escapeHtml(formatDateLabel(audit.starts_on || ""))} to ${escapeHtml(formatDateLabel(audit.ends_on || ""))}</td>
           <td>${escapeHtml(audit.actor_type || "")}</td>
         </tr>`;
       })
@@ -529,9 +635,18 @@
 
     return students.map((student) => {
       const checked = selectedIds.includes(student.id) ? "checked" : "";
+      const className = student.classes ? student.classes.name : "";
       return `<label class="checkbox-option">
         <input type="checkbox" data-permission-student value="${escapeHtml(student.id)}" ${checked} />
-        <span>${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
+        <span class="checkbox-option-row">
+          <span class="checkbox-option-main">
+            <span class="checkbox-option-toggle" aria-hidden="true"></span>
+            <span class="checkbox-option-copy">
+              <span class="checkbox-option-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
+              ${className ? `<span class="checkbox-option-meta">${escapeHtml(className)}</span>` : ""}
+            </span>
+          </span>
+        </span>
       </label>`;
     }).join("");
   }
@@ -552,8 +667,15 @@
       const className = student.classes ? student.classes.name : "";
       return `<label class="checkbox-option">
         <input type="checkbox" data-preset-student value="${escapeHtml(student.id)}" ${checked} />
-        <span>${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
-        <small>${escapeHtml(`${className} | ${sourceLabel} | ${familyText}`)}</small>
+        <span class="checkbox-option-row">
+          <span class="checkbox-option-main">
+            <span class="checkbox-option-toggle" aria-hidden="true"></span>
+            <span class="checkbox-option-copy">
+              <span class="checkbox-option-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
+              <span class="checkbox-option-meta">${escapeHtml(`${className} | ${sourceLabel} | ${familyText}`)}</span>
+            </span>
+          </span>
+        </span>
       </label>`;
     }).join("");
   }
@@ -704,13 +826,17 @@
           <label>Students</label>
           <div id="modal-permission-students" class="checkbox-list">${permissionStudentPickerHtml(data?.granting_family_id || "", data?.student_ids || [])}</div>
         </div>
+        <label class="modal-toggle" for="modal-permission-permanent">
+          <input id="modal-permission-permanent" type="checkbox" ${data?.ends_on === PERMANENT_END_DATE ? "checked" : ""} />
+          <span>Save this permission permanently</span>
+        </label>
         <div class="form-row">
           <label for="modal-permission-start">Start Date</label>
           <input id="modal-permission-start" type="date" value="${escapeHtml(data?.starts_on || state.today)}" required />
         </div>
         <div class="form-row">
           <label for="modal-permission-end">End Date</label>
-          <input id="modal-permission-end" type="date" value="${escapeHtml(data?.ends_on || state.today)}" required />
+          <input id="modal-permission-end" type="date" value="${escapeHtml(data?.ends_on === PERMANENT_END_DATE ? "" : (data?.ends_on || state.today))}" required />
         </div>
       `;
     }
@@ -760,6 +886,7 @@
       const selectedIds = data?.student_ids || [];
       const grantingSelect = el("modal-permission-granting");
       const receivingSelect = el("modal-permission-receiving");
+      const permanentToggle = el("modal-permission-permanent");
       if (grantingSelect && !grantingSelect.disabled) {
         grantingSelect.addEventListener("change", () => {
           const currentReceiving = receivingSelect ? receivingSelect.value : "";
@@ -773,6 +900,10 @@
           }
         });
       }
+      if (permanentToggle) {
+        permanentToggle.addEventListener("change", syncPermissionPermanentUi);
+      }
+      syncPermissionPermanentUi();
       refreshPermissionModalStudents(selectedIds);
     }
 
@@ -964,7 +1095,7 @@
     const grantingFamilyId = el("modal-permission-granting").value;
     const receivingFamilyId = el("modal-permission-receiving").value;
     const startsOn = el("modal-permission-start").value;
-    const endsOn = el("modal-permission-end").value;
+    const endsOn = el("modal-permission-permanent").checked ? PERMANENT_END_DATE : el("modal-permission-end").value;
     const studentIds = Array.from(document.querySelectorAll("[data-permission-student]:checked")).map((input) => input.value);
 
     if (!grantingFamilyId || !receivingFamilyId || !startsOn || !endsOn || !studentIds.length) {
@@ -997,6 +1128,20 @@
 
     await refreshAndRender();
     closeModal();
+  }
+
+  function syncPermissionPermanentUi() {
+    const permanentToggle = el("modal-permission-permanent");
+    const endDate = el("modal-permission-end");
+    if (!permanentToggle || !endDate) return;
+
+    const isPermanent = permanentToggle.checked;
+    endDate.disabled = isPermanent;
+    if (isPermanent) {
+      endDate.value = "";
+    } else if (!endDate.value) {
+      endDate.value = state.today;
+    }
   }
 
   async function savePreset(isEdit) {
@@ -1205,10 +1350,12 @@
       today: renderToday,
       students: renderStudents,
       families: renderFamilies,
-      classes: renderClasses
+      classes: renderClasses,
+      permissions: renderPermissions,
+      presets: renderPermissions
     };
 
-    ["today", "students", "families", "classes"].forEach(key => {
+    ["today", "students", "families", "classes", "permissions", "presets"].forEach(key => {
       const table = el(`${key}-table`);
       if (!table) return;
       table.querySelectorAll("th[data-sort]").forEach(th => {
@@ -1268,6 +1415,30 @@
       const btn = event.target.closest(".tab-btn");
       if (!btn) return;
       setTab(btn.dataset.tab);
+    });
+
+    el("today-attempts-tbody").addEventListener("click", async (event) => {
+      const statusNode = event.target.closest("[data-today-student-id]");
+      if (!statusNode) return;
+      const studentId = statusNode.dataset.todayStudentId;
+      if (!studentId) return;
+      try {
+        await toggleTodayStudentStatus(studentId);
+      } catch (error) {
+        alert(error.message || "Unable to update student status.");
+      }
+    });
+
+    el("today-student-grid").addEventListener("click", async (event) => {
+      const card = event.target.closest("[data-today-grid-student-id]");
+      if (!card) return;
+      const studentId = card.dataset.todayGridStudentId;
+      if (!studentId) return;
+      try {
+        await toggleTodayStudentStatus(studentId);
+      } catch (error) {
+        alert(error.message || "Unable to update student status.");
+      }
     });
 
     el("families-tbody").addEventListener("click", (event) => {
