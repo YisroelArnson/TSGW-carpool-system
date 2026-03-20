@@ -3,13 +3,17 @@
   if (!mustClient) return;
 
   const STORAGE_KEY = "tsgw_carpool_number";
+  const REPING_COOLDOWN_MS = 2 * 60 * 1000;
   const state = {
     number: null,
     context: null,
     selectedByFamily: new Map(),
     manualSelectedByFamily: new Map(),
     activePresetIds: new Set(),
-    loading: false
+    loading: false,
+    lastSubmittedStudents: [],
+    repingBusyIds: new Set(),
+    repingTimer: null
   };
 
   function el(id) {
@@ -87,6 +91,11 @@
     });
     if (error) throw error;
     return data;
+  }
+
+  function isRepingCooldownError(error) {
+    const message = String(error?.message || "").toLowerCase();
+    return message.includes("reping") || message.includes("already active");
   }
 
   function showNumberStep(clearNumberError) {
@@ -414,17 +423,269 @@
 
   function setDoneState(message, note) {
     el("done-message").textContent = message;
-    el("done-note").textContent = note || "The school has been notified.";
+    el("done-note").textContent = note || "The classroom has been notified to send your child out.";
     hideAllSections();
     show("entry-card", false);
     show("done-card", true);
     show("done-section", true);
+    setDoneRepingStatus("");
+    renderDoneRepingActions();
   }
 
   function formatCalledStudents(result) {
     return (result.families || []).flatMap((family) =>
       (family.students || []).map((student) => `${student.first_name} ${student.last_name}`)
     );
+  }
+
+  function formatSkippedStudents(result) {
+    return (result.skipped_students || []).map((student) => `${student.first_name} ${student.last_name}`);
+  }
+
+  function flattenCalledStudents(result) {
+    return (result.families || []).flatMap((family) =>
+      (family.students || []).map((student) => ({
+        family_id: family.family_id,
+        student_id: String(student.student_id),
+        first_name: student.first_name,
+        last_name: student.last_name,
+        class_name: student.class_name || "",
+        cooldownUntil: Date.now() + REPING_COOLDOWN_MS
+      }))
+    );
+  }
+
+  function flattenSkippedStudents(result) {
+    return (result.skipped_students || []).map((student) => ({
+      family_id: student.family_id,
+      student_id: String(student.student_id),
+      first_name: student.first_name,
+      last_name: student.last_name,
+      class_name: student.class_name || "",
+      cooldownUntil: student.retry_at ? new Date(student.retry_at).getTime() : (Date.now() + REPING_COOLDOWN_MS)
+    }));
+  }
+
+  function rememberLastSubmittedStudents(result) {
+    const merged = new Map();
+
+    [...flattenCalledStudents(result), ...flattenSkippedStudents(result)].forEach((student) => {
+      const existing = merged.get(student.student_id);
+      if (!existing || student.cooldownUntil > existing.cooldownUntil) {
+        merged.set(student.student_id, student);
+      }
+    });
+
+    state.lastSubmittedStudents = Array.from(merged.values());
+  }
+
+  function mergeSubmissionResults(results) {
+    const familyMap = new Map();
+    const skippedMap = new Map();
+
+    results.forEach((result) => {
+      (result.families || []).forEach((family) => {
+        const existing = familyMap.get(family.family_id) || {
+          family_id: family.family_id,
+          carpool_number: family.carpool_number,
+          parent_names: family.parent_names,
+          students: []
+        };
+        existing.students.push(...(family.students || []));
+        familyMap.set(family.family_id, existing);
+      });
+
+      (result.skipped_students || []).forEach((student) => {
+        skippedMap.set(student.student_id, student);
+      });
+    });
+
+    const families = Array.from(familyMap.values()).map((family) => ({
+      ...family,
+      students: family.students.sort((a, b) =>
+        `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`)
+      )
+    })).sort((a, b) => Number(a.carpool_number || 0) - Number(b.carpool_number || 0));
+
+    const skippedStudents = Array.from(skippedMap.values()).sort((a, b) =>
+      `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`)
+    );
+
+    return {
+      called_by: "parent",
+      families,
+      skipped_students: skippedStudents
+    };
+  }
+
+  async function submitTargetsIndividually(targets) {
+    const results = [];
+
+    for (const target of targets) {
+      for (const studentId of target.student_ids || []) {
+        try {
+          const result = await submitCheckInRequest([{
+            family_id: target.family_id,
+            student_ids: [studentId]
+          }]);
+          results.push(result || { families: [], skipped_students: [] });
+        } catch (error) {
+          if (!isRepingCooldownError(error)) throw error;
+
+          const student = familyCards()
+            .flatMap((family) => family.students || [])
+            .find((entry) => String(entry.student_id) === String(studentId));
+
+          results.push({
+            families: [],
+            skipped_students: [{
+              family_id: target.family_id,
+              student_id: String(studentId),
+              first_name: student?.first_name || "Student",
+              last_name: student?.last_name || "",
+              class_name: student?.class_name || "",
+              retry_at: new Date(Date.now() + REPING_COOLDOWN_MS).toISOString()
+            }]
+          });
+        }
+      }
+    }
+
+    return mergeSubmissionResults(results);
+  }
+
+  function buildDoneCopy(result, defaultNote) {
+    const called = formatCalledStudents(result);
+    const skipped = formatSkippedStudents(result);
+
+    if (called.length && skipped.length) {
+      return {
+        message: `Pickup request sent for ${called.join(", ")}.`,
+        note: `Already active for ${skipped.join(", ")}. The classroom has already been asked to send them out.`
+      };
+    }
+
+    if (called.length) {
+      return {
+        message: `Pickup request sent for ${called.join(", ")}.`,
+        note: defaultNote || "The classroom has been notified to send your child out."
+      };
+    }
+
+    if (skipped.length) {
+      return {
+        message: `Pickup request is already active for ${skipped.join(", ")}.`,
+        note: "The classroom has already been asked to send them out."
+      };
+    }
+
+    return {
+      message: "No students were updated.",
+      note: defaultNote || "Please try again."
+    };
+  }
+
+  function setDoneRepingStatus(message, klass) {
+    const node = el("done-reping-status");
+    if (!node) return;
+    node.className = `done-reping-status${klass ? ` ${klass}` : ""}`;
+    node.textContent = message || "";
+    show("done-reping-status", Boolean(message));
+  }
+
+  function formatRepingCountdown(msRemaining) {
+    const totalSeconds = Math.max(0, Math.ceil(msRemaining / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = String(totalSeconds % 60).padStart(2, "0");
+    return `${minutes}:${seconds}`;
+  }
+
+  function renderDoneRepingActions() {
+    const section = el("done-reping-section");
+    const list = el("done-reping-list");
+    if (!section || !list) return;
+
+    if (!state.lastSubmittedStudents.length) {
+      list.innerHTML = "";
+      show("done-reping-section", false);
+      return;
+    }
+
+    list.innerHTML = state.lastSubmittedStudents.map((student) => {
+      const fullName = `${student.first_name} ${student.last_name}`;
+      const msRemaining = student.cooldownUntil - Date.now();
+      const isBusy = state.repingBusyIds.has(student.student_id);
+      const isCoolingDown = msRemaining > 0;
+      const buttonText = isBusy ? `Sending reminder for ${fullName}...` : `Reping ${fullName}`;
+      const metaParts = [];
+      if (student.class_name) {
+        metaParts.push(`<span class="done-reping-meta">${escapeHtml(student.class_name)}</span>`);
+      }
+      if (isCoolingDown) {
+        metaParts.push(`
+          <span class="done-reping-cooldown">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M11 5 6 9H3v6h3l5 4z"></path>
+              <path d="M15 9a5 5 0 0 1 0 6"></path>
+              <path d="M18.5 6.5a9 9 0 0 1 0 11"></path>
+              <path d="M4 4l16 16"></path>
+            </svg>
+            ${escapeHtml(formatRepingCountdown(msRemaining))}
+          </span>
+        `);
+      }
+      const meta = metaParts.length ? `<span class="done-reping-meta-row">${metaParts.join("")}</span>` : "";
+
+      return `
+        <button
+          type="button"
+          class="selection-row done-reping-btn"
+          data-reping-student="${escapeHtml(student.student_id)}"
+          ${isBusy || isCoolingDown ? "disabled" : ""}
+        >
+          <span class="selection-row-copy">
+            <span class="selection-row-name">${escapeHtml(buttonText)}</span>
+            ${meta}
+          </span>
+        </button>
+      `;
+    }).join("");
+
+    show("done-reping-section", true);
+  }
+
+  async function repingLastSubmittedStudent(studentId) {
+    const target = state.lastSubmittedStudents.find((student) => student.student_id === studentId);
+    if (!target || !state.number || state.repingBusyIds.has(studentId)) return;
+
+    state.repingBusyIds.add(studentId);
+    setDoneRepingStatus("");
+    renderDoneRepingActions();
+
+    try {
+      const result = await submitCheckInRequest([{
+        family_id: target.family_id,
+        student_ids: [target.student_id]
+      }]);
+      rememberLastSubmittedStudents({
+        families: [],
+        skipped_students: [],
+        ...result
+      });
+      const calledNames = formatCalledStudents(result);
+      const skippedNames = formatSkippedStudents(result);
+      if (calledNames.length) {
+        setDoneRepingStatus(`${calledNames.join(", ")} is showing again in the classroom.`, "success");
+      } else if (skippedNames.length) {
+        setDoneRepingStatus(`${skippedNames.join(", ")} is already active for the classroom.`, "success");
+      }
+      await loadFamily(state.number);
+    } catch (error) {
+      setDoneRepingStatus(error.message || "Unable to reping right now. Please try again.", "error");
+    } finally {
+      state.repingBusyIds.delete(studentId);
+      renderDoneRepingActions();
+    }
   }
 
   async function submitSelectedStudents() {
@@ -456,11 +717,17 @@
           note = `Your quick pick was updated after expired approvals were removed for: ${removed.join(", ")}.`;
         }
       } else {
-        result = await submitCheckInRequest(targets);
+        try {
+          result = await submitCheckInRequest(targets);
+        } catch (error) {
+          if (!isRepingCooldownError(error)) throw error;
+          result = await submitTargetsIndividually(targets);
+        }
       }
 
-      const calledFamilies = formatCalledStudents(result);
-      setDoneState(`Pickup request sent for ${calledFamilies.join(", ")}.`, note);
+      rememberLastSubmittedStudents(result);
+      const doneCopy = buildDoneCopy(result, note);
+      setDoneState(doneCopy.message, doneCopy.note);
       await loadFamily(state.number);
     } catch (error) {
       showError("students-error", error.message || "Unable to check in right now. Please try again.");
@@ -474,9 +741,13 @@
     localStorage.removeItem(STORAGE_KEY);
     state.number = null;
     state.context = null;
+    state.lastSubmittedStudents = [];
+    state.repingBusyIds = new Set();
     resetSelections();
     syncNumberUi();
     setBootPending(false);
+    setDoneRepingStatus("");
+    renderDoneRepingActions();
     showNumberStep(true);
   }
 
@@ -501,6 +772,12 @@
       show("students-section", true);
       setStudentsActive(true);
       renderStickyBar();
+    });
+
+    el("done-reping-list").addEventListener("click", (event) => {
+      const repingBtn = event.target.closest("[data-reping-student]");
+      if (!repingBtn) return;
+      repingLastSubmittedStudent(repingBtn.dataset.repingStudent);
     });
 
     el("saved-carpools-list").addEventListener("click", (event) => {
@@ -558,7 +835,18 @@
       syncNumberUi();
       showNumberStep(true);
     }
+
+    state.repingTimer = window.setInterval(() => {
+      const doneSection = el("done-section");
+      if (!doneSection || doneSection.classList.contains("hidden")) return;
+      if (!state.lastSubmittedStudents.length) return;
+      renderDoneRepingActions();
+    }, 1000);
   }
+
+  window.addEventListener("beforeunload", () => {
+    if (state.repingTimer) clearInterval(state.repingTimer);
+  });
 
   init();
 })();

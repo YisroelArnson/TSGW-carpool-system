@@ -4,10 +4,12 @@
 
   const state = {
     today: schoolTodayISO(),
+    families: [],
     students: [],
     statuses: new Map(),
     channel: null,
     context: null,
+    lookupFamily: null,
     selectedByFamily: new Map()
   };
 
@@ -20,6 +22,114 @@
     node.className = klass || "";
     node.textContent = text;
     show("spotter-checkin-message", Boolean(text));
+  }
+
+  function familyMeta(familyId) {
+    return state.families.find((family) => family.id === familyId) || null;
+  }
+
+  function contextCards() {
+    if (!state.context) return [];
+    const own = state.context.requesting_family;
+    const cards = [{
+      family_id: own.family_id,
+      carpool_number: own.carpool_number,
+      parent_names: own.parent_names,
+      label: "Your Family",
+      note: "",
+      students: state.context.own_students || []
+    }];
+
+    (state.context.authorized_pickups || []).forEach((family) => {
+      const meta = familyMeta(family.family_id);
+      cards.push({
+        family_id: family.family_id,
+        carpool_number: meta?.carpool_number || "",
+        parent_names: family.parent_names,
+        label: "Authorized Kids",
+        note: `Approved from ${family.starts_on} to ${family.ends_on}`,
+        students: family.students || []
+      });
+    });
+
+    return cards;
+  }
+
+  function resetTopSelections() {
+    state.selectedByFamily = new Map();
+    contextCards().forEach((card) => state.selectedByFamily.set(card.family_id, new Set()));
+  }
+
+  function selectedCount() {
+    let total = 0;
+    state.selectedByFamily.forEach((set) => {
+      total += set.size;
+    });
+    return total;
+  }
+
+  function selectedCountForFamily(card) {
+    return (state.selectedByFamily.get(card.family_id) || new Set()).size;
+  }
+
+  function familySelectionState(card) {
+    const count = selectedCountForFamily(card);
+    if (!count) return "empty";
+    if (count >= card.students.length) return "full";
+    return "partial";
+  }
+
+  function normalizedText(value) {
+    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function filteredQuickCarpools() {
+    const query = normalizedText(el("spotter-carpool-input").value);
+    const families = [...state.families].sort((a, b) => Number(a.carpool_number) - Number(b.carpool_number));
+    if (!query) return families;
+    return families.filter((family) =>
+      String(family.carpool_number).includes(query) ||
+      normalizedText(family.parent_names).includes(query)
+    );
+  }
+
+  function resolveLookupFamily() {
+    const query = el("spotter-carpool-input").value.trim();
+    if (!query) return null;
+
+    const exactNumber = state.families.find((family) => String(family.carpool_number) === query);
+    if (exactNumber) return exactNumber;
+
+    const normalizedQuery = normalizedText(query);
+    const exactName = state.families.find((family) => normalizedText(family.parent_names) === normalizedQuery);
+    if (exactName) return exactName;
+
+    return filteredQuickCarpools()[0] || null;
+  }
+
+  function renderQuickCarpools() {
+    const tray = el("spotter-quick-carpools");
+    if (!tray) return;
+
+    const activeNumber = state.lookupFamily ? String(state.lookupFamily.carpool_number) : "";
+    const families = filteredQuickCarpools();
+
+    if (!families.length) {
+      tray.innerHTML = '<p class="spotter-quick-empty">No carpools match that search.</p>';
+      return;
+    }
+
+    tray.innerHTML = families.map((family) => `
+      <button
+        type="button"
+        class="spotter-quick-carpool${String(family.carpool_number) === activeNumber ? " active" : ""}"
+        data-quick-carpool="${escapeHtml(String(family.carpool_number))}"
+        aria-label="Open carpool ${escapeHtml(String(family.carpool_number))} for ${escapeHtml(family.parent_names)}"
+      >
+        <span class="spotter-quick-carpool-number">${escapeHtml(String(family.carpool_number))}</span>
+        <span class="spotter-quick-carpool-name">${escapeHtml(family.parent_names)}</span>
+      </button>
+    `).join("");
   }
 
   function studentStatus(studentId) {
@@ -54,14 +164,47 @@
       .map((s) => {
         const status = studentStatus(s.id);
         const tag = status === "CALLED" ? "status status-called" : "status status-waiting";
-        const toggleTo = status === "CALLED" ? "WAITING" : "CALLED";
+        const toggleNext = status === "CALLED" ? "WAITING" : "CALLED";
+        const toggleIsActive = status === "CALLED";
+        const actions = `<div class="spotter-row-actions">
+            <button
+              class="spotter-status-toggle${toggleIsActive ? " active" : ""}"
+              data-status-action="toggle"
+              data-next-status="${toggleNext}"
+              data-student-id="${escapeHtml(s.id)}"
+              aria-pressed="${toggleIsActive ? "true" : "false"}"
+              aria-label="${toggleIsActive
+                ? `Set ${escapeHtml(`${s.first_name} ${s.last_name}`)} to waiting`
+                : `Set ${escapeHtml(`${s.first_name} ${s.last_name}`)} to called`}"
+              title="${toggleIsActive ? "Set waiting" : "Set called"}"
+              type="button"
+            >
+              <span class="spotter-status-toggle-track"><span class="spotter-status-toggle-thumb"></span></span>
+            </button>
+            <button
+              class="spotter-icon-btn${toggleIsActive ? " active" : " inactive"}"
+              data-status-action="reping"
+              data-next-status="CALLED"
+              data-student-id="${escapeHtml(s.id)}"
+              aria-label="Reping ${escapeHtml(`${s.first_name} ${s.last_name}`)}"
+              title="Reping"
+              type="button"
+              ${toggleIsActive ? "" : "disabled"}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M15 17H9"></path>
+                <path d="M10 21h4"></path>
+                <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path>
+              </svg>
+            </button>
+          </div>`;
 
         return `<tr>
           <td>${escapeHtml(`${s.last_name}, ${s.first_name}`)}</td>
           <td>${escapeHtml(s.class_name)}</td>
           <td>${escapeHtml(String(s.carpool_number))}</td>
           <td><span class="${tag}">${status}</span></td>
-          <td><button class="btn btn-secondary" data-student-id="${escapeHtml(s.id)}" data-toggle-to="${toggleTo}">Set ${toggleTo}</button></td>
+          <td>${actions}</td>
         </tr>`;
       })
       .join("");
@@ -69,13 +212,25 @@
     const tbody = el("spotter-tbody");
     tbody.innerHTML = rows || '<tr><td colspan="5" class="muted">No students found.</td></tr>';
 
-    tbody.querySelectorAll("button[data-student-id]").forEach((btn) => {
+    tbody.querySelectorAll("button[data-status-action]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         btn.disabled = true;
+        const studentId = btn.dataset.studentId;
+        const nextStatus = btn.dataset.nextStatus || "CALLED";
+        const action = btn.dataset.statusAction;
         try {
-          await setStatus(btn.dataset.studentId, btn.dataset.toggleTo, "spotter");
-          state.statuses.set(btn.dataset.studentId, btn.dataset.toggleTo);
+          await setStatus(studentId, nextStatus, "spotter");
+          state.statuses.set(studentId, nextStatus);
           renderTable();
+          const student = state.students.find((entry) => entry.id === studentId);
+          const fullName = student ? `${student.first_name} ${student.last_name}` : "Student";
+          if (action === "reping") {
+            setMessage(`${fullName} reping sent`, "success");
+          } else if (nextStatus === "CALLED") {
+            setMessage(`${fullName} called`, "success");
+          } else {
+            setMessage(`${fullName} set to waiting`, "success");
+          }
         } catch (error) {
           setMessage("Unable to update status.", "error");
         } finally {
@@ -119,80 +274,51 @@
     return data;
   }
 
-  function contextCards() {
-    if (!state.context) return [];
-    const own = state.context.requesting_family;
-    const cards = [{
-      family_id: own.family_id,
-      carpool_number: own.carpool_number,
-      parent_names: own.parent_names,
-      label: "Entered Carpool",
-      note: "Primary family for this number",
-      students: state.context.own_students || []
-    }];
+  function setSelectedFamily(familyId, studentIds) {
+    state.selectedByFamily.set(familyId, new Set(studentIds.map((studentId) => String(studentId))));
+  }
 
-    (state.context.authorized_pickups || []).forEach((family) => {
-      cards.push({
-        family_id: family.family_id,
-        carpool_number: family.carpool_number,
-        parent_names: family.parent_names,
-        label: "Authorized Pickup",
-        note: `Authorized from ${family.starts_on} to ${family.ends_on}`,
-        students: family.students || []
+  function toggleStudentSelection(familyId, studentId) {
+    const set = state.selectedByFamily.get(familyId) || new Set();
+    if (set.has(studentId)) set.delete(studentId);
+    else set.add(studentId);
+    state.selectedByFamily.set(familyId, set);
+  }
+
+  function selectEntireFamily(familyId) {
+    const card = contextCards().find((item) => item.family_id === familyId);
+    const existing = state.selectedByFamily.get(familyId) || new Set();
+    const studentIds = (card?.students || []).map((student) => String(student.student_id));
+    const allSelected = studentIds.length > 0 && studentIds.every((studentId) => existing.has(studentId));
+    state.selectedByFamily.set(familyId, allSelected ? new Set() : new Set(studentIds));
+  }
+
+  function isPresetSelected(preset) {
+    if (!(preset.students || []).length) return false;
+    return (preset.students || []).every((student) => {
+      const familySet = state.selectedByFamily.get(student.family_id) || new Set();
+      return familySet.has(String(student.student_id));
+    });
+  }
+
+  function applyPresetSelection(presetId) {
+    const preset = (state.context?.saved_carpools || []).find((item) => item.preset_id === presetId);
+    if (!preset) return;
+
+    if (isPresetSelected(preset)) {
+      (preset.students || []).forEach((student) => {
+        const familySet = state.selectedByFamily.get(student.family_id) || new Set();
+        familySet.delete(String(student.student_id));
+        state.selectedByFamily.set(student.family_id, familySet);
       });
+      return;
+    }
+
+    (preset.students || []).forEach((student) => {
+      const familySet = state.selectedByFamily.get(student.family_id) || new Set();
+      familySet.add(String(student.student_id));
+      state.selectedByFamily.set(student.family_id, familySet);
     });
-
-    return cards;
-  }
-
-  function resetTopSelections() {
-    state.selectedByFamily = new Map();
-    contextCards().forEach((card) => state.selectedByFamily.set(card.family_id, new Set()));
-  }
-
-  function selectedCount() {
-    let total = 0;
-    state.selectedByFamily.forEach((set) => {
-      total += set.size;
-    });
-    return total;
-  }
-
-  function cardHtml(card) {
-    const selected = state.selectedByFamily.get(card.family_id) || new Set();
-    return `
-      <article class="spotter-family-card">
-        <div class="spotter-family-head">
-          <div>
-            <p class="spotter-family-label">${escapeHtml(card.label)}</p>
-            <h3>${escapeHtml(card.parent_names)}</h3>
-            <p class="spotter-family-meta">Carpool #${escapeHtml(String(card.carpool_number))}</p>
-          </div>
-          <button type="button" class="btn btn-accent" data-select-family="${escapeHtml(card.family_id)}">All ${card.students.length}</button>
-        </div>
-        <p class="spotter-family-note">${escapeHtml(card.note)}</p>
-        <div class="spotter-student-grid">
-          ${card.students.map((student) => {
-            const studentId = String(student.student_id);
-            const isSelected = selected.has(studentId);
-            return `
-              <button
-                type="button"
-                class="btn btn-primary spotter-student-pick${isSelected ? " selected" : ""}"
-                data-family-id="${escapeHtml(card.family_id)}"
-                data-student-id="${escapeHtml(studentId)}"
-                aria-pressed="${isSelected ? "true" : "false"}"
-              >
-                <span class="spotter-student-copy">
-                  <span class="spotter-student-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
-                  <small>${escapeHtml(student.class_name || "")}</small>
-                </span>
-              </button>
-            `;
-          }).join("")}
-        </div>
-      </article>
-    `;
   }
 
   function renderContextPanel() {
@@ -204,32 +330,156 @@
     }
 
     const cards = contextCards();
+    const ownCard = cards[0] || null;
+    const authorizedStudents = cards.slice(1).flatMap((card) =>
+      (card.students || []).map((student) => ({
+        ...student,
+        family_id: card.family_id,
+        parent_names: card.parent_names,
+        carpool_number: card.carpool_number
+      }))
+    );
+    const totalSelected = selectedCount();
+    const ownSelected = ownCard ? familySelectionState(ownCard) === "full" : false;
+    const presetButtons = (state.context.saved_carpools || []).map((preset) => {
+      const count = Number(preset.student_count || 0);
+      const active = isPresetSelected(preset);
+      const preview = (preset.students || []).map((student) => student.first_name).join(", ");
+      return `
+        <button
+          type="button"
+          class="spotter-preset-pick${active ? " selected" : ""}"
+          data-preset-id="${escapeHtml(preset.preset_id)}"
+          aria-pressed="${active ? "true" : "false"}"
+        >
+          <span class="spotter-preset-pick-icon">${active ? "✓" : "+"}</span>
+          <span class="spotter-preset-pick-copy">
+            <span class="spotter-preset-pick-kicker">Saved Carpool</span>
+            <span class="spotter-preset-pick-name">${escapeHtml(preset.name || "Quick Pick")}</span>
+            <span class="spotter-preset-pick-meta">${escapeHtml(preview || `${count} students`)}</span>
+          </span>
+        </button>
+      `;
+    }).join("");
+
+    const ownStudentsHtml = ownCard ? (ownCard.students || []).map((student) => {
+      const selected = state.selectedByFamily.get(ownCard.family_id) || new Set();
+      const studentId = String(student.student_id);
+      const isSelected = selected.has(studentId);
+      return `
+        <button
+          type="button"
+          class="spotter-student-pick${isSelected ? " selected" : ""}"
+          data-family-id="${escapeHtml(ownCard.family_id)}"
+          data-student-id="${escapeHtml(studentId)}"
+          aria-pressed="${isSelected ? "true" : "false"}"
+        >
+          <span class="spotter-student-copy">
+            <span class="spotter-student-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
+            <small>${escapeHtml(student.class_name || "")}</small>
+          </span>
+          <span class="spotter-student-pick-toggle">${isSelected ? "✓" : "+"}</span>
+        </button>
+      `;
+    }).join("") : "";
+
+    const authorizedStudentsHtml = authorizedStudents.map((student) => {
+      const familySet = state.selectedByFamily.get(student.family_id) || new Set();
+      const studentId = String(student.student_id);
+      const isSelected = familySet.has(studentId);
+      return `
+        <button
+          type="button"
+          class="spotter-student-pick${isSelected ? " selected" : ""}"
+          data-family-id="${escapeHtml(student.family_id)}"
+          data-student-id="${escapeHtml(studentId)}"
+          aria-pressed="${isSelected ? "true" : "false"}"
+        >
+          <span class="spotter-student-copy">
+            <span class="spotter-student-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
+            <small>${escapeHtml(student.class_name || "")} · ${escapeHtml(student.parent_names)}${student.carpool_number ? ` · Carpool #${escapeHtml(String(student.carpool_number))}` : ""}</small>
+          </span>
+          <span class="spotter-student-pick-toggle">${isSelected ? "✓" : "+"}</span>
+        </button>
+      `;
+    }).join("");
+
     panel.innerHTML = `
-      <div class="spotter-context-grid">${cards.map(cardHtml).join("")}</div>
-      <p id="spotter-selection-summary" class="spotter-selection-summary">${
-        selectedCount() ? `${selectedCount()} student${selectedCount() === 1 ? "" : "s"} selected` : "Choose students or tap All."
-      }</p>
-      <button type="button" id="spotter-submit-selection" class="btn btn-primary spotter-submit-selection" ${selectedCount() ? "" : "disabled"}>Check In Selected Students</button>
+      <div class="spotter-context-shell">
+        <div class="spotter-context-head">
+          <p class="spotter-context-kicker">Family Found</p>
+          <h3>#${escapeHtml(String(state.context.requesting_family.carpool_number))} ${escapeHtml(state.context.requesting_family.parent_names)}</h3>
+          <p class="spotter-context-copy">Saved carpools are at the top, then spotter can tap own kids or any currently authorized pickup kids below.</p>
+        </div>
+        ${(state.context.saved_carpools || []).length ? `
+          <section class="spotter-preset-section">
+            <div class="spotter-section-head">
+              <div>
+                <p class="spotter-section-kicker">Saved Carpools</p>
+                <h4 class="spotter-section-title">Tap a saved carpool</h4>
+              </div>
+            </div>
+            <div class="spotter-preset-picks">${presetButtons}</div>
+          </section>
+        ` : ""}
+        ${ownCard ? `
+          <section class="spotter-students-section">
+            <div class="spotter-section-head">
+              <div>
+                <p class="spotter-section-kicker">Own Kids</p>
+                <h4 class="spotter-section-title">Students in this family</h4>
+              </div>
+              <button
+                type="button"
+                class="spotter-select-all${ownSelected ? " selected" : ""}"
+                data-select-family="${escapeHtml(ownCard.family_id)}"
+                aria-pressed="${ownSelected ? "true" : "false"}"
+              >
+                <span class="spotter-select-all-icon">${ownSelected ? "✓" : "+"}</span>
+                <span>${ownSelected ? "Clear All" : "Select All"}</span>
+              </button>
+            </div>
+            <div class="spotter-student-list">${ownStudentsHtml}</div>
+          </section>
+        ` : ""}
+        <section class="spotter-students-section">
+          <div class="spotter-section-head">
+            <div>
+              <p class="spotter-section-kicker">Authorized Kids</p>
+              <h4 class="spotter-section-title">Students this family can pick up</h4>
+            </div>
+          </div>
+          <div class="spotter-student-list">${authorizedStudentsHtml || '<p class="muted">No outside students are currently authorized for this family.</p>'}</div>
+        </section>
+        <p id="spotter-selection-summary" class="spotter-selection-summary">${
+          totalSelected ? `${totalSelected} student${totalSelected === 1 ? "" : "s"} selected` : "Choose students or tap a saved carpool above."
+        }</p>
+        <button type="button" id="spotter-submit-selection" class="btn btn-primary spotter-submit-selection" ${totalSelected ? "" : "disabled"}>Check In ${totalSelected || ""} ${totalSelected === 1 ? "Student" : totalSelected ? "Students" : "Selected Students"}</button>
+      </div>
     `;
     show("spotter-context-panel", true);
   }
 
   async function lookupCarpool() {
-    const number = el("spotter-carpool-input").value.trim();
-    if (!number) {
-      setMessage("Enter a carpool number.", "error");
+    const lookupFamily = resolveLookupFamily();
+    if (!lookupFamily) {
+      setMessage("Enter a carpool number or family name.", "error");
       return;
     }
 
+    state.lookupFamily = lookupFamily;
+    el("spotter-carpool-input").value = String(lookupFamily.carpool_number);
+    renderQuickCarpools();
+
     try {
-      state.context = await getCheckinContext(number);
+      state.context = await getCheckinContext(lookupFamily.carpool_number);
       resetTopSelections();
       renderContextPanel();
       setMessage("");
     } catch (error) {
       state.context = null;
       renderContextPanel();
-      setMessage(error.message || `Number not found: ${number}`, "error");
+      setMessage(error.message || `Unable to open ${lookupFamily.parent_names}`, "error");
     }
   }
 
@@ -246,7 +496,7 @@
   }
 
   async function submitSelected() {
-    const number = el("spotter-carpool-input").value.trim();
+    const number = state.lookupFamily?.carpool_number || resolveLookupFamily()?.carpool_number;
     const targets = collectTargets();
     if (!number || !targets.length) {
       setMessage("Choose at least one student.", "error");
@@ -264,8 +514,10 @@
       );
       setMessage(`${names.join(", ")} called`, "success");
       state.context = null;
+      state.lookupFamily = null;
       renderContextPanel();
       el("spotter-carpool-input").value = "";
+      renderQuickCarpools();
       el("spotter-carpool-input").focus();
     } catch (error) {
       setMessage(error.message || "Unable to check in selection.", "error");
@@ -278,12 +530,24 @@
     const [studentsRes, statusRes] = await Promise.all([
       client
         .from("students")
-        .select("id,first_name,last_name,class_id,family_id,classes(name),families(carpool_number)"),
+        .select("id,first_name,last_name,class_id,family_id,classes(name),families(id,carpool_number,parent_names)"),
       client.from("daily_status").select("student_id,status").eq("date", state.today)
     ]);
 
     if (studentsRes.error) throw studentsRes.error;
     if (statusRes.error) throw statusRes.error;
+
+    const familyMap = new Map();
+    (studentsRes.data || []).forEach((student) => {
+      const family = student.families;
+      if (!family || familyMap.has(family.id)) return;
+      familyMap.set(family.id, {
+        id: family.id,
+        carpool_number: family.carpool_number,
+        parent_names: family.parent_names || ""
+      });
+    });
+    state.families = Array.from(familyMap.values());
 
     state.students = (studentsRes.data || []).map((s) => ({
       id: s.id,
@@ -320,25 +584,37 @@
         lookupCarpool();
       }
     });
+    el("spotter-carpool-input").addEventListener("input", () => {
+      state.lookupFamily = null;
+      renderQuickCarpools();
+    });
+
+    el("spotter-quick-carpools").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-quick-carpool]");
+      if (!button) return;
+      el("spotter-carpool-input").value = button.dataset.quickCarpool;
+      renderQuickCarpools();
+      lookupCarpool();
+    });
 
     el("spotter-context-panel").addEventListener("click", (event) => {
       const studentBtn = event.target.closest("[data-student-id]");
       if (studentBtn) {
-        const familyId = studentBtn.dataset.familyId;
-        const studentId = studentBtn.dataset.studentId;
-        const set = state.selectedByFamily.get(familyId) || new Set();
-        if (set.has(studentId)) set.delete(studentId);
-        else set.add(studentId);
-        state.selectedByFamily.set(familyId, set);
+        toggleStudentSelection(studentBtn.dataset.familyId, studentBtn.dataset.studentId);
         renderContextPanel();
         return;
       }
 
       const familyBtn = event.target.closest("[data-select-family]");
       if (familyBtn) {
-        const familyId = familyBtn.dataset.selectFamily;
-        const card = contextCards().find((item) => item.family_id === familyId);
-        state.selectedByFamily.set(familyId, new Set((card?.students || []).map((student) => String(student.student_id))));
+        selectEntireFamily(familyBtn.dataset.selectFamily);
+        renderContextPanel();
+        return;
+      }
+
+      const presetBtn = event.target.closest("[data-preset-id]");
+      if (presetBtn) {
+        applyPresetSelection(presetBtn.dataset.presetId);
         renderContextPanel();
         return;
       }
@@ -397,6 +673,7 @@
       state.today = await fetchSchoolToday();
       await fetchRoster();
       renderTable();
+      renderQuickCarpools();
       subscribeRealtime();
       el("spotter-carpool-input").focus();
     } catch (error) {

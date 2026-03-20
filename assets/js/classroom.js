@@ -12,6 +12,7 @@
     classes: [],
     students: [],
     statusesByStudent: new Map(),
+    calledAtByStudent: new Map(),
     studentToClass: new Map(),
     classTotals: new Map(),
     classCalled: new Map(),
@@ -20,6 +21,7 @@
     syncInterval: null,
     alertTimer: null,
     audioContext: null,
+    audioReady: false,
     alertQueue: [],
     activeAlertStudentId: null
   };
@@ -31,6 +33,20 @@
   function showError(message) {
     el("classroom-error-text").textContent = message;
     show("classroom-error", true);
+  }
+
+  function updateAudioUi(messageOverride) {
+    const controls = document.querySelector(".display-audio-controls");
+    const button = el("display-audio-button");
+    const status = el("display-audio-status");
+    if (!button || !status) return;
+
+    if (controls) controls.classList.toggle("ready", state.audioReady);
+    button.classList.toggle("ready", state.audioReady);
+    button.setAttribute("aria-pressed", String(state.audioReady));
+    button.setAttribute("aria-label", state.audioReady ? "Sound active. Click to test sound." : "Sound off. Click to enable sound.");
+    button.title = state.audioReady ? "Sound active" : "Enable sound";
+    status.textContent = messageOverride || (state.audioReady ? "Sound ready" : "Sound locked");
   }
 
   function parseClassIds() {
@@ -96,7 +112,7 @@
     const [classesRes, studentsRes, statusRes] = await Promise.all([
       client.from("classes").select("id,name,display_order").order("display_order", { ascending: true }),
       client.from("students").select("id,first_name,last_name,class_id"),
-      client.from("daily_status").select("student_id,status").eq("date", state.today)
+      client.from("daily_status").select("student_id,status,called_at").eq("date", state.today)
     ]);
 
     if (classesRes.error) throw classesRes.error;
@@ -106,9 +122,11 @@
     state.classes = classesRes.data || [];
     state.students = studentsRes.data || [];
     state.statusesByStudent = new Map();
+    state.calledAtByStudent = new Map();
 
     (statusRes.data || []).forEach((row) => {
       state.statusesByStudent.set(row.student_id, row.status);
+      if (row.called_at) state.calledAtByStudent.set(row.student_id, row.called_at);
     });
 
     buildMaps();
@@ -281,32 +299,79 @@
     state.classCalled.set(classId, (state.classCalled.get(classId) || 0) + delta);
   }
 
-  function playChime() {
+  async function ensureAudioContext() {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
+    if (!AudioCtx) return null;
 
     if (!state.audioContext) {
       state.audioContext = new AudioCtx();
     }
 
     const ctx = state.audioContext;
-    if (ctx.state === "suspended") {
-      ctx.resume().catch(() => {});
+    if (ctx.state !== "running") {
+      try {
+        await ctx.resume();
+      } catch (error) {
+        state.audioReady = false;
+        updateAudioUi("Tap Enable Sound");
+        return null;
+      }
     }
 
+    state.audioReady = ctx.state === "running";
+    updateAudioUi();
+    return state.audioReady ? ctx : null;
+  }
+
+  function unlockAudio() {
+    ensureAudioContext().catch(() => {});
+  }
+
+  function autoEnableSound() {
+    updateAudioUi("Trying sound");
+    ensureAudioContext()
+      .then((ctx) => {
+        if (ctx) {
+          updateAudioUi("Sound ready");
+          return;
+        }
+        updateAudioUi("Tap if sound stays off");
+      })
+      .catch(() => {
+        updateAudioUi("Tap if sound stays off");
+      });
+  }
+
+  async function playChime() {
+    const ctx = await ensureAudioContext();
+    if (!ctx) return;
+
     const start = ctx.currentTime + 0.01;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "triangle";
-    osc.frequency.value = 1046.5;
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.22, start + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.08, start + 0.22);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 1.35);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(start);
-    osc.stop(start + 1.4);
+    const notes = [
+      { frequency: 659.25, peak: 0.16, duration: 0.18 },
+      { frequency: 880.0, peak: 0.22, duration: 0.28 }
+    ];
+
+    notes.forEach((note, index) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const noteStart = start + (index * 0.17);
+      osc.type = "sine";
+      osc.frequency.value = note.frequency;
+      gain.gain.setValueAtTime(0.0001, noteStart);
+      gain.gain.exponentialRampToValueAtTime(note.peak, noteStart + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + note.duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(noteStart);
+      osc.stop(noteStart + note.duration + 0.03);
+    });
+  }
+
+  function bindAudioUnlock() {
+    document.addEventListener("pointerdown", unlockAudio, { passive: true });
+    document.addEventListener("touchstart", unlockAudio, { passive: true });
+    document.addEventListener("keydown", unlockAudio);
   }
 
   function processAlertQueue() {
@@ -349,8 +414,46 @@
     }, ALERT_VISIBLE_MS);
   }
 
-  function queueCalledStudent(studentId) {
-    if (state.activeAlertStudentId === studentId || state.alertQueue.includes(studentId)) return;
+  function replayActiveAlert(studentId) {
+    const student = state.students.find((entry) => entry.id === studentId);
+    if (!student) return;
+
+    const alertOverlay = el("display-alert-overlay");
+    const alertTitle = el("display-alert-title");
+    const alertClass = el("display-alert-class");
+    if (!alertOverlay || !alertTitle || !alertClass) return;
+
+    const className = getClassName(student.class_id);
+    alertTitle.textContent = `${student.first_name} ${student.last_name}`;
+    alertClass.textContent = className;
+
+    if (state.alertTimer) {
+      clearTimeout(state.alertTimer);
+    }
+
+    alertOverlay.classList.remove("visible");
+    void alertOverlay.offsetWidth;
+    alertOverlay.classList.add("visible");
+    playChime();
+
+    state.alertTimer = window.setTimeout(() => {
+      alertOverlay.classList.remove("visible");
+
+      state.alertTimer = window.setTimeout(() => {
+        state.activeAlertStudentId = null;
+        processAlertQueue();
+      }, ALERT_FADE_MS);
+    }, ALERT_VISIBLE_MS);
+  }
+
+  function queueCalledStudent(studentId, options = {}) {
+    const forceReplay = Boolean(options.forceReplay);
+    if (forceReplay && state.activeAlertStudentId === studentId) {
+      replayActiveAlert(studentId);
+      return;
+    }
+
+    if (!forceReplay && (state.activeAlertStudentId === studentId || state.alertQueue.includes(studentId))) return;
     state.alertQueue.push(studentId);
     processAlertQueue();
   }
@@ -362,9 +465,13 @@
     const studentId = record.student_id;
     const oldStatus = payload.old && payload.old.status ? payload.old.status : state.statusesByStudent.get(studentId) || "WAITING";
     const newStatus = payload.new && payload.new.status ? payload.new.status : "WAITING";
+    const oldCalledAt = payload.old && payload.old.called_at ? payload.old.called_at : state.calledAtByStudent.get(studentId) || null;
+    const newCalledAt = payload.new && payload.new.called_at ? payload.new.called_at : null;
 
     applyDelta(oldStatus, newStatus, studentId);
     state.statusesByStudent.set(studentId, newStatus);
+    if (newCalledAt) state.calledAtByStudent.set(studentId, newCalledAt);
+    else state.calledAtByStudent.delete(studentId);
 
     const classId = state.studentToClass.get(studentId);
     if (classId) updateHubCard(classId);
@@ -372,18 +479,24 @@
 
     if (state.mode === "display" && state.classIds.includes(classId)) {
       const becameCalled = oldStatus !== "CALLED" && newStatus === "CALLED";
+      const refreshedCalled = oldStatus === "CALLED" && newStatus === "CALLED" && Boolean(newCalledAt) && newCalledAt !== oldCalledAt;
       updateDisplayStudent(studentId);
       if (becameCalled) queueCalledStudent(studentId);
+      if (refreshedCalled) queueCalledStudent(studentId, { forceReplay: true });
     }
   }
 
   async function fullResync() {
     const client = mustClient();
-    const { data, error } = await client.from("daily_status").select("student_id,status").eq("date", state.today);
+    const { data, error } = await client.from("daily_status").select("student_id,status,called_at").eq("date", state.today);
     if (error) return;
 
     state.statusesByStudent = new Map();
-    (data || []).forEach((row) => state.statusesByStudent.set(row.student_id, row.status));
+    state.calledAtByStudent = new Map();
+    (data || []).forEach((row) => {
+      state.statusesByStudent.set(row.student_id, row.status);
+      if (row.called_at) state.calledAtByStudent.set(row.student_id, row.called_at);
+    });
     buildMaps();
 
     if (state.mode === "hub") renderHub();
@@ -434,6 +547,18 @@
       state.selectedHubClassIds.clear();
       renderHub();
     });
+
+    el("display-audio-button")?.addEventListener("click", async () => {
+      const ctx = await ensureAudioContext();
+      if (!ctx) {
+        updateAudioUi("Tap Enable Sound");
+        return;
+      }
+
+      updateAudioUi("Playing test sound");
+      await playChime();
+      window.setTimeout(() => updateAudioUi(), 900);
+    });
   }
 
   async function init() {
@@ -444,13 +569,18 @@
 
     deriveRoute();
     bindUi();
+    bindAudioUnlock();
 
     try {
       state.today = await fetchSchoolToday();
       await fetchBase();
 
       if (state.mode === "hub") renderHub();
-      else renderDisplay();
+      else {
+        renderDisplay();
+        updateAudioUi();
+        window.setTimeout(autoEnableSound, 100);
+      }
 
       startRealtime();
     } catch (error) {

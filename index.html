@@ -997,6 +997,84 @@
         margin: 0 0 16px;
       }
 
+      .done-reping-section {
+        width: 100%;
+        display: grid;
+        gap: 10px;
+        margin: 4px 0 10px;
+      }
+
+      .done-reping-kicker {
+        margin: 0;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+
+      .done-reping-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .done-reping-btn {
+        justify-content: flex-start;
+      }
+
+      .done-reping-btn:disabled {
+        opacity: 0.58;
+        cursor: not-allowed;
+      }
+
+      .done-reping-meta {
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        line-height: 1.35;
+      }
+
+      .done-reping-meta-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .done-reping-cooldown {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      .done-reping-cooldown svg {
+        width: 14px;
+        height: 14px;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex: none;
+      }
+
+      .done-reping-status {
+        margin: 0;
+        font-size: 0.84rem;
+        font-family: "Open Sans", sans-serif;
+      }
+
+      .done-reping-status.success {
+        color: #1e6a23;
+      }
+
+      .done-reping-status.error {
+        color: var(--status-danger);
+      }
+
       /* ─ Errors ─ */
       .field-error {
         font-size: 0.88rem;
@@ -1191,6 +1269,11 @@
             </div>
             <p id="done-message"></p>
             <p id="done-note" class="done-note">The school has been notified.</p>
+            <section id="done-reping-section" class="done-reping-section hidden">
+              <p class="done-reping-kicker">Need to remind the classroom to send someone out again?</p>
+              <div id="done-reping-list" class="done-reping-list"></div>
+              <p id="done-reping-status" class="done-reping-status hidden"></p>
+            </section>
             <button id="done-btn" class="btn-w btn-maroon">Done</button>
           </div>
         </section>

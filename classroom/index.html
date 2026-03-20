@@ -345,6 +345,69 @@
         margin-top: 5px;
       }
 
+      .display-audio-controls {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 8px;
+      }
+
+      .display-audio-controls.ready {
+        opacity: 0.55;
+      }
+
+      .display-audio-button {
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        border-radius: 999px;
+        width: 56px;
+        height: 56px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+      }
+
+      .display-audio-button:hover {
+        transform: translateY(-1px);
+      }
+
+      .display-audio-button svg {
+        width: 24px;
+        height: 24px;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .display-audio-button .sound-wave {
+        opacity: 0.46;
+        transition: opacity 0.18s ease;
+      }
+
+      .display-audio-button.ready {
+        background: #2a7d31;
+        border-color: rgba(120, 214, 130, 0.65);
+        box-shadow: 0 0 0 4px rgba(75, 168, 86, 0.18);
+      }
+
+      .display-audio-button.ready .sound-wave {
+        opacity: 1;
+      }
+
+      .display-audio-status {
+        min-height: 1.1rem;
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.78);
+        text-align: right;
+      }
+
       /* Gold rule under header */
       .projector .display-header::after {
         content: none;
@@ -555,6 +618,23 @@
           <div>
             <h1 id="display-class-name">Class</h1>
             <span class="display-sub">Dismissal</span>
+          </div>
+          <div class="display-audio-controls">
+            <button
+              id="display-audio-button"
+              class="display-audio-button"
+              type="button"
+              aria-pressed="false"
+              aria-label="Enable sound"
+              title="Enable sound"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M11 5 6 9H3v6h3l5 4z"></path>
+                <path class="sound-wave" d="M15.5 9.5a4 4 0 0 1 0 5"></path>
+                <path class="sound-wave" d="M18.5 7a8 8 0 0 1 0 10"></path>
+              </svg>
+            </button>
+            <div id="display-audio-status" class="display-audio-status">Sound locked</div>
           </div>
         </div>
         <div class="projector-gold-rule"></div>

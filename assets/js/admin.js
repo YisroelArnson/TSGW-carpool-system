@@ -176,6 +176,12 @@
     renderToday();
   }
 
+  async function repingTodayStudent(studentId) {
+    await setTodayStudentStatus(studentId, "CALLED");
+    applyTodayStatusLocally(studentId, "CALLED");
+    renderToday();
+  }
+
   function applySortHeaders(tableId, col, dir) {
     const table = el(tableId);
     if (!table) return;
@@ -425,11 +431,12 @@
           <td>${escapeHtml(stu && stu.families ? String(stu.families.carpool_number) : "")}</td>
           <td><span class="${statusClass}${stu ? " is-toggle" : ""}" ${stu ? `data-today-student-id="${escapeHtml(stu.id)}"` : ""}>${escapeHtml(rec.status)}</span></td>
           <td>${escapeHtml(rec.called_by || "-")}</td>
+          <td>${stu ? `<button class="btn btn-secondary" data-reping-student="${escapeHtml(stu.id)}">${rec.status === "CALLED" ? "Reping" : "Set CALLED"}</button>` : "-"}</td>
         </tr>`;
       })
       .join("");
 
-    el("today-attempts-tbody").innerHTML = rows || '<tr><td colspan="7" class="muted">No dismissal attempts yet today.</td></tr>';
+    el("today-attempts-tbody").innerHTML = rows || '<tr><td colspan="8" class="muted">No dismissal attempts yet today.</td></tr>';
     applySortHeaders("today-table", col, dir);
     renderTodayStudentGrid();
   }
@@ -1418,6 +1425,18 @@
     });
 
     el("today-attempts-tbody").addEventListener("click", async (event) => {
+      const repingBtn = event.target.closest("[data-reping-student]");
+      if (repingBtn) {
+        const studentId = repingBtn.dataset.repingStudent;
+        if (!studentId) return;
+        try {
+          await repingTodayStudent(studentId);
+        } catch (error) {
+          alert(error.message || "Unable to reping student.");
+        }
+        return;
+      }
+
       const statusNode = event.target.closest("[data-today-student-id]");
       if (!statusNode) return;
       const studentId = statusNode.dataset.todayStudentId;
@@ -1435,7 +1454,12 @@
       const studentId = card.dataset.todayGridStudentId;
       if (!studentId) return;
       try {
-        await toggleTodayStudentStatus(studentId);
+        const current = dailyStatusMap().get(studentId);
+        if (current && current.status === "CALLED") {
+          await repingTodayStudent(studentId);
+        } else {
+          await toggleTodayStudentStatus(studentId);
+        }
       } catch (error) {
         alert(error.message || "Unable to update student status.");
       }

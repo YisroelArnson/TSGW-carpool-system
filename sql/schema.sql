@@ -253,6 +253,32 @@ as $$
     and p_on_date between pa.starts_on and pa.ends_on;
 $$;
 
+create or replace function public.parent_reping_cooldown_students(
+  p_called_by text,
+  p_student_ids uuid[],
+  p_on_date date
+)
+returns table(
+  student_id uuid,
+  retry_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    ds.student_id,
+    ds.called_at + interval '2 minutes' as retry_at
+  from public.daily_status ds
+  where p_called_by = 'parent'
+    and ds.date = p_on_date
+    and ds.status = 'CALLED'
+    and ds.student_id = any(coalesce(p_student_ids, '{}'::uuid[]))
+    and ds.called_at is not null
+    and ds.called_at > now() - interval '2 minutes';
+$$;
+
 create or replace function public.active_authorized_students_for_receiver(
   p_receiving_family_id uuid,
   p_on_date date
@@ -532,9 +558,14 @@ declare
   v_requesting_family_id uuid;
   v_bad_count integer;
   v_called jsonb := '[]'::jsonb;
+  v_skipped jsonb := '[]'::jsonb;
 begin
   if p_called_by not in ('parent', 'spotter') then
     raise exception 'Invalid caller';
+  end if;
+
+  if p_called_by = 'spotter' and not public.is_spotter_or_admin() then
+    raise exception 'Spotter authentication required';
   end if;
 
   v_requesting_family_id := public.family_id_for_carpool(p_requesting_carpool_number);
@@ -584,10 +615,24 @@ begin
       st.student_id
     from submitted_targets st
   ),
+  cooldown_students as (
+    select cds.student_id, cds.retry_at
+    from public.parent_reping_cooldown_students(
+      p_called_by,
+      coalesce((select array_agg(ss.student_id) from selected_students ss), '{}'::uuid[]),
+      v_today
+    ) cds
+  ),
+  eligible_students as (
+    select ss.family_id, ss.student_id
+    from selected_students ss
+    left join cooldown_students cds on cds.student_id = ss.student_id
+    where cds.student_id is null
+  ),
   upserted as (
     insert into public.daily_status (student_id, date, status, called_at, called_by)
-    select ss.student_id, v_today, 'CALLED', now(), p_called_by
-    from selected_students ss
+    select es.student_id, v_today, 'CALLED', now(), p_called_by
+    from eligible_students es
     on conflict (student_id, date)
     do update set
       status = excluded.status,
@@ -608,6 +653,22 @@ begin
     join public.families f on f.id = s.family_id
     join public.classes c on c.id = s.class_id
     join upserted u on u.student_id = s.id
+  ),
+  skipped_rows as (
+    select
+      f.id as family_id,
+      f.carpool_number,
+      f.parent_names,
+      s.id as student_id,
+      s.first_name,
+      s.last_name,
+      c.name as class_name,
+      cds.retry_at
+    from selected_students ss
+    join cooldown_students cds on cds.student_id = ss.student_id
+    join public.students s on s.id = ss.student_id
+    join public.families f on f.id = s.family_id
+    join public.classes c on c.id = s.class_id
   ),
   grouped as (
     select
@@ -642,9 +703,68 @@ begin
   into v_called
   from grouped g;
 
+  with submitted_targets as (
+    select distinct
+      (item->>'family_id')::uuid as family_id,
+      sid.student_id
+    from jsonb_array_elements(coalesce(p_targets, '[]'::jsonb)) item
+    cross join lateral (
+      select jsonb_array_elements_text(item->'student_ids')::uuid as student_id
+    ) sid
+  ),
+  selected_students as (
+    select distinct
+      st.family_id,
+      st.student_id
+    from submitted_targets st
+  ),
+  cooldown_students as (
+    select cds.student_id, cds.retry_at
+    from public.parent_reping_cooldown_students(
+      p_called_by,
+      coalesce((select array_agg(ss.student_id) from selected_students ss), '{}'::uuid[]),
+      v_today
+    ) cds
+  ),
+  skipped_rows as (
+    select
+      f.id as family_id,
+      f.carpool_number,
+      f.parent_names,
+      s.id as student_id,
+      s.first_name,
+      s.last_name,
+      c.name as class_name,
+      cds.retry_at
+    from selected_students ss
+    join cooldown_students cds on cds.student_id = ss.student_id
+    join public.students s on s.id = ss.student_id
+    join public.families f on f.id = s.family_id
+    join public.classes c on c.id = s.class_id
+  )
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'family_id', sr.family_id,
+        'carpool_number', sr.carpool_number,
+        'parent_names', sr.parent_names,
+        'student_id', sr.student_id,
+        'first_name', sr.first_name,
+        'last_name', sr.last_name,
+        'class_name', sr.class_name,
+        'retry_at', sr.retry_at
+      )
+      order by sr.last_name, sr.first_name
+    ),
+    '[]'::jsonb
+  )
+  into v_skipped
+  from skipped_rows sr;
+
   return jsonb_build_object(
     'called_by', p_called_by,
-    'families', v_called
+    'families', v_called,
+    'skipped_students', v_skipped
   );
 end;
 $$;
@@ -835,9 +955,14 @@ declare
   v_called jsonb := '[]'::jsonb;
   v_removed jsonb := '[]'::jsonb;
   v_remaining_count integer := 0;
+  v_skipped jsonb := '[]'::jsonb;
 begin
   if p_called_by not in ('parent', 'spotter') then
     raise exception 'Invalid caller';
+  end if;
+
+  if p_called_by = 'spotter' and not public.is_spotter_or_admin() then
+    raise exception 'Spotter authentication required';
   end if;
 
   v_owner_family_id := public.family_id_for_carpool(p_owner_carpool_number);
@@ -931,10 +1056,24 @@ begin
     join public.students s on s.id = cps.student_id
     where cps.preset_id = p_preset_id
   ),
+  cooldown_students as (
+    select cds.student_id, cds.retry_at
+    from public.parent_reping_cooldown_students(
+      p_called_by,
+      coalesce((select array_agg(rs.student_id) from remaining_students rs), '{}'::uuid[]),
+      v_today
+    ) cds
+  ),
+  eligible_students as (
+    select rs.student_id, rs.family_id
+    from remaining_students rs
+    left join cooldown_students cds on cds.student_id = rs.student_id
+    where cds.student_id is null
+  ),
   upserted as (
     insert into public.daily_status (student_id, date, status, called_at, called_by)
-    select rs.student_id, v_today, 'CALLED', now(), p_called_by
-    from remaining_students rs
+    select es.student_id, v_today, 'CALLED', now(), p_called_by
+    from eligible_students es
     on conflict (student_id, date)
     do update set
       status = excluded.status,
@@ -955,6 +1094,22 @@ begin
     join public.families f on f.id = s.family_id
     join public.classes c on c.id = s.class_id
     join upserted u on u.student_id = s.id
+  ),
+  skipped_rows as (
+    select
+      f.id as family_id,
+      f.carpool_number,
+      f.parent_names,
+      s.id as student_id,
+      s.first_name,
+      s.last_name,
+      c.name as class_name,
+      cds.retry_at
+    from remaining_students rs
+    join cooldown_students cds on cds.student_id = rs.student_id
+    join public.students s on s.id = rs.student_id
+    join public.families f on f.id = s.family_id
+    join public.classes c on c.id = s.class_id
   ),
   grouped as (
     select
@@ -989,8 +1144,60 @@ begin
   into v_called
   from grouped g;
 
+  with remaining_students as (
+    select
+      s.id as student_id,
+      s.family_id
+    from public.carpool_preset_students cps
+    join public.students s on s.id = cps.student_id
+    where cps.preset_id = p_preset_id
+  ),
+  cooldown_students as (
+    select cds.student_id, cds.retry_at
+    from public.parent_reping_cooldown_students(
+      p_called_by,
+      coalesce((select array_agg(rs.student_id) from remaining_students rs), '{}'::uuid[]),
+      v_today
+    ) cds
+  ),
+  skipped_rows as (
+    select
+      f.id as family_id,
+      f.carpool_number,
+      f.parent_names,
+      s.id as student_id,
+      s.first_name,
+      s.last_name,
+      c.name as class_name,
+      cds.retry_at
+    from remaining_students rs
+    join cooldown_students cds on cds.student_id = rs.student_id
+    join public.students s on s.id = rs.student_id
+    join public.families f on f.id = s.family_id
+    join public.classes c on c.id = s.class_id
+  )
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'family_id', sr.family_id,
+        'carpool_number', sr.carpool_number,
+        'parent_names', sr.parent_names,
+        'student_id', sr.student_id,
+        'first_name', sr.first_name,
+        'last_name', sr.last_name,
+        'class_name', sr.class_name,
+        'retry_at', sr.retry_at
+      )
+      order by sr.last_name, sr.first_name
+    ),
+    '[]'::jsonb
+  )
+  into v_skipped
+  from skipped_rows sr;
+
   return jsonb_build_object(
     'families', v_called,
+    'skipped_students', v_skipped,
     'removed_students', v_removed,
     'preset', jsonb_build_object(
       'preset_id', v_preset.id,
