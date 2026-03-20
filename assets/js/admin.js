@@ -57,6 +57,49 @@
     return `${student.last_name}, ${student.first_name}`;
   }
 
+  function editIconSvg() {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 20h9"></path>
+      <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"></path>
+    </svg>`;
+  }
+
+  function trashIconSvg() {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 6h18"></path>
+      <path d="M8 6V4h8v2"></path>
+      <path d="M19 6l-1 14H6L5 6"></path>
+      <path d="M10 11v6"></path>
+      <path d="M14 11v6"></path>
+    </svg>`;
+  }
+
+  function bellIconSvg() {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M15 17H9"></path>
+      <path d="M10 21h4"></path>
+      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path>
+    </svg>`;
+  }
+
+  function editActionButton(datasetAttr, value, label) {
+    return `<button class="icon-action-btn" type="button" ${datasetAttr}="${escapeHtml(value)}" aria-label="${escapeHtml(label)}">
+      ${editIconSvg()}
+    </button>`;
+  }
+
+  function deleteActionButton(datasetAttr, value, label) {
+    return `<button class="icon-action-btn danger" type="button" ${datasetAttr}="${escapeHtml(value)}" aria-label="${escapeHtml(label)}">
+      ${trashIconSvg()}
+    </button>`;
+  }
+
+  function bellActionButton(datasetAttr, value, label) {
+    return `<button class="icon-action-btn" type="button" ${datasetAttr}="${escapeHtml(value)}" aria-label="${escapeHtml(label)}">
+      ${bellIconSvg()}
+    </button>`;
+  }
+
   function formatDateLabel(value) {
     if (!value || value === PERMANENT_END_DATE) return "Permanent";
     return value;
@@ -278,9 +321,11 @@
           <td>${escapeHtml(f.parent_names || "")}</td>
           <td>${escapeHtml(f.contact_info || "")}</td>
           <td>${escapeHtml(students.join(", "))}</td>
-          <td class="inline">
-            <button class="btn btn-secondary" data-edit-family="${escapeHtml(f.id)}">Edit</button>
-            <button class="btn btn-secondary" data-delete-family="${escapeHtml(f.id)}">Delete</button>
+          <td>
+            <div class="permissions-actions">
+              ${editActionButton("data-edit-family", f.id, "Edit family")}
+              ${deleteActionButton("data-delete-family", f.id, "Delete family")}
+            </div>
           </td>
         </tr>`;
       })
@@ -328,9 +373,11 @@
           <td>${escapeHtml(c.name)}</td>
           <td>${escapeHtml(String(c.display_order))}</td>
           <td>${escapeHtml(String(count))}</td>
-          <td class="inline">
-            <button class="btn btn-secondary" data-edit-class="${escapeHtml(c.id)}">Edit</button>
-            <button class="btn btn-secondary" data-delete-class="${escapeHtml(c.id)}">Delete</button>
+          <td>
+            <div class="permissions-actions">
+              ${editActionButton("data-edit-class", c.id, "Edit class")}
+              ${deleteActionButton("data-delete-class", c.id, "Delete class")}
+            </div>
           </td>
         </tr>
         <tr class="class-detail-row hidden" data-detail-for="${escapeHtml(c.id)}">
@@ -380,9 +427,11 @@
           <td>${escapeHtml(s.classes ? s.classes.name : "")}</td>
           <td>${escapeHtml(s.families ? s.families.parent_names : "")}</td>
           <td>${escapeHtml(s.families ? String(s.families.carpool_number) : "")}</td>
-          <td class="inline">
-            <button class="btn btn-secondary" data-edit-student="${escapeHtml(s.id)}">Edit</button>
-            <button class="btn btn-secondary" data-delete-student="${escapeHtml(s.id)}">Delete</button>
+          <td>
+            <div class="permissions-actions">
+              ${editActionButton("data-edit-student", s.id, "Edit student")}
+              ${deleteActionButton("data-delete-student", s.id, "Delete student")}
+            </div>
           </td>
         </tr>`;
       })
@@ -431,7 +480,7 @@
           <td>${escapeHtml(stu && stu.families ? String(stu.families.carpool_number) : "")}</td>
           <td><span class="${statusClass}${stu ? " is-toggle" : ""}" ${stu ? `data-today-student-id="${escapeHtml(stu.id)}"` : ""}>${escapeHtml(rec.status)}</span></td>
           <td>${escapeHtml(rec.called_by || "-")}</td>
-          <td>${stu ? `<button class="btn btn-secondary" data-reping-student="${escapeHtml(stu.id)}">${rec.status === "CALLED" ? "Reping" : "Set CALLED"}</button>` : "-"}</td>
+          <td>${stu ? bellActionButton("data-reping-student", stu.id, rec.status === "CALLED" ? "Reping student" : "Call student") : "-"}</td>
         </tr>`;
       })
       .join("");
@@ -535,21 +584,8 @@
           ? '<td class="muted">-</td>'
           : `<td>
               <div class="permissions-actions">
-                <button class="icon-action-btn" type="button" data-edit-auth="${escapeHtml(auth.id)}" aria-label="Edit permission">
-                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <path d="M12 20h9"></path>
-                    <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"></path>
-                  </svg>
-                </button>
-                <button class="icon-action-btn danger" type="button" data-revoke-auth="${escapeHtml(auth.id)}" aria-label="Revoke permission">
-                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <path d="M3 6h18"></path>
-                    <path d="M8 6V4h8v2"></path>
-                    <path d="M19 6l-1 14H6L5 6"></path>
-                    <path d="M10 11v6"></path>
-                    <path d="M14 11v6"></path>
-                  </svg>
-                </button>
+                ${editActionButton("data-edit-auth", auth.id, "Edit permission")}
+                ${deleteActionButton("data-revoke-auth", auth.id, "Revoke permission")}
               </div>
             </td>`;
 
@@ -594,9 +630,11 @@
           <td>${escapeHtml(owner ? `#${owner.carpool_number} - ${owner.parent_names}` : "Unknown")}</td>
           <td>${escapeHtml(preset.name || "")}</td>
           <td>${escapeHtml(students || "No students")}</td>
-          <td class="inline">
-            <button class="btn btn-secondary" data-edit-preset="${escapeHtml(preset.id)}">Edit</button>
-            <button class="btn btn-secondary" data-delete-preset="${escapeHtml(preset.id)}">Delete</button>
+          <td>
+            <div class="permissions-actions">
+              ${editActionButton("data-edit-preset", preset.id, "Edit saved carpool")}
+              ${deleteActionButton("data-delete-preset", preset.id, "Delete saved carpool")}
+            </div>
           </td>
         </tr>`;
       })

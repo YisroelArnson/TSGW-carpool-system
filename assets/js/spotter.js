@@ -83,6 +83,13 @@
     return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
   }
 
+  function familyLastName(parentNames) {
+    const text = String(parentNames || "").trim();
+    if (!text) return "Family";
+    const parts = text.split(/\s+/);
+    return parts[parts.length - 1];
+  }
+
   function filteredQuickCarpools() {
     const query = normalizedText(el("spotter-carpool-input").value);
     const families = [...state.families].sort((a, b) => Number(a.carpool_number) - Number(b.carpool_number));
@@ -127,7 +134,7 @@
         aria-label="Open carpool ${escapeHtml(String(family.carpool_number))} for ${escapeHtml(family.parent_names)}"
       >
         <span class="spotter-quick-carpool-number">${escapeHtml(String(family.carpool_number))}</span>
-        <span class="spotter-quick-carpool-name">${escapeHtml(family.parent_names)}</span>
+        <span class="spotter-quick-carpool-name">${escapeHtml(familyLastName(family.parent_names))}</span>
       </button>
     `).join("");
   }
