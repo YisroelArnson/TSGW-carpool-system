@@ -1,8 +1,63 @@
 (function adminPage() {
-  const { mustClient, show, requireAuth, csvToRows, escapeHtml, schoolTodayISO, fetchSchoolToday } = window.carpoolUtils || {};
+  const {
+    mustClient,
+    show,
+    requireAuth,
+    csvToArrays,
+    escapeHtml,
+    schoolTodayISO,
+    fetchSchoolToday,
+    familyDisplayName,
+    normalizeText
+  } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const PERMANENT_END_DATE = "9999-12-31";
+  const IMPORT_EDITABLE_FIELDS = [
+    "carpool_number",
+    "student_first_name",
+    "student_last_name",
+    "class_name",
+    "parent_one_title",
+    "parent_one_first_name",
+    "parent_one_last_name",
+    "parent_two_title",
+    "parent_two_first_name",
+    "parent_two_last_name"
+  ];
+  const REQUIRED_IMPORT_FIELDS = ["carpool_number", "student_first_name", "student_last_name", "class_name"];
+  const IMPORT_HEADER_ALIASES = {
+    lastname: "student_last_name",
+    studentlastname: "student_last_name",
+    firstname: "student_first_name",
+    studentfirstname: "student_first_name",
+    grade: "grade",
+    class: "class_name",
+    classname: "class_name",
+    classgroup: "class_name",
+    carpool: "carpool_number",
+    carpoolnumber: "carpool_number",
+    carpoolno: "carpool_number",
+    carpoolnum: "carpool_number",
+    carpoolid: "carpool_number",
+    parentnames: "legacy_parent_names",
+    parent1title: "parent_one_title",
+    parent1firstname: "parent_one_first_name",
+    parent1lastname: "parent_one_last_name",
+    parent2title: "parent_two_title",
+    parent2firstname: "parent_two_first_name",
+    parent2lastname: "parent_two_last_name",
+    student_first_name: "student_first_name",
+    student_last_name: "student_last_name",
+    class_name: "class_name",
+    carpool_number: "carpool_number",
+    parent_one_title: "parent_one_title",
+    parent_one_first_name: "parent_one_first_name",
+    parent_one_last_name: "parent_one_last_name",
+    parent_two_title: "parent_two_title",
+    parent_two_first_name: "parent_two_first_name",
+    parent_two_last_name: "parent_two_last_name"
+  };
 
   const state = {
     today: schoolTodayISO(),
@@ -18,6 +73,14 @@
     currentTab: "today",
     channel: null,
     refreshTimer: null,
+    importPreview: {
+      fileName: "",
+      rows: [],
+      headerIssues: [],
+      classOrderHints: [],
+      parseError: "",
+      resultHtml: "No import run in this session."
+    },
     modal: {
       mode: null,
       entityId: null
@@ -46,7 +109,7 @@
   }
 
   function familyLabel(family) {
-    return `#${family.carpool_number} - ${family.parent_names}`;
+    return `#${family.carpool_number} - ${familyDisplayName(family)}`;
   }
 
   function classLabel(cls) {
@@ -55,6 +118,144 @@
 
   function studentLabel(student) {
     return `${student.last_name}, ${student.first_name}`;
+  }
+
+  function cleanValue(value) {
+    return String(value || "").trim();
+  }
+
+  function importKey(value) {
+    return cleanValue(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  }
+
+  function normalizedClassName(value) {
+    return cleanValue(value).replace(/\s+/g, " ");
+  }
+
+  function canonicalCarpool(value) {
+    const text = cleanValue(value);
+    return /^\d+$/.test(text) ? String(Number(text)) : text;
+  }
+
+  function normalizedStudentName(value) {
+    return normalizeText(value);
+  }
+
+  function personDisplayName(firstName, lastName) {
+    return [cleanValue(firstName), cleanValue(lastName)].filter(Boolean).join(" ");
+  }
+
+  function familyNamePayload(prefix, data) {
+    return {
+      [`${prefix}_title`]: cleanValue(data?.[`${prefix}_title`]) || null,
+      [`${prefix}_first_name`]: cleanValue(data?.[`${prefix}_first_name`]) || null,
+      [`${prefix}_last_name`]: cleanValue(data?.[`${prefix}_last_name`]) || null
+    };
+  }
+
+  function familyPayloadFromValues(values) {
+    return {
+      carpool_number: Number(values.carpool_number),
+      ...familyNamePayload("parent_one", values),
+      ...familyNamePayload("parent_two", values),
+      contact_info: cleanValue(values.contact_info) || null
+    };
+  }
+
+  function sameFamilyData(a, b) {
+    return [
+      "parent_one_title",
+      "parent_one_first_name",
+      "parent_one_last_name",
+      "parent_two_title",
+      "parent_two_first_name",
+      "parent_two_last_name"
+    ].every((field) => cleanValue(a?.[field]) === cleanValue(b?.[field]));
+  }
+
+  function legacyParentParts(value) {
+    const pieces = String(value || "")
+      .split(/\s*(?:&|\/| and )\s*/i)
+      .map((part) => cleanValue(part))
+      .filter(Boolean)
+      .slice(0, 2);
+
+    return pieces.map((piece) => {
+      const words = piece.split(/\s+/).filter(Boolean);
+      if (words.length <= 1) {
+        return { first: piece, last: "" };
+      }
+      return {
+        first: words.slice(0, -1).join(" "),
+        last: words.slice(-1).join("")
+      };
+    });
+  }
+
+  function applyLegacyParentNames(row) {
+    if (!cleanValue(row.legacy_parent_names)) return row;
+    const [one, two] = legacyParentParts(row.legacy_parent_names);
+    if (one) {
+      row.parent_one_first_name = row.parent_one_first_name || one.first;
+      row.parent_one_last_name = row.parent_one_last_name || one.last;
+    }
+    if (two) {
+      row.parent_two_first_name = row.parent_two_first_name || two.first;
+      row.parent_two_last_name = row.parent_two_last_name || two.last;
+    }
+    return row;
+  }
+
+  function canonicalImportRow(sourceRowNumber, values) {
+    const row = {
+      row_number: sourceRowNumber,
+      skipped: false,
+      errors: [],
+      planned_action: "",
+      carpool_number: cleanValue(values.carpool_number),
+      student_first_name: cleanValue(values.student_first_name),
+      student_last_name: cleanValue(values.student_last_name),
+      class_name: cleanValue(values.class_name),
+      grade: cleanValue(values.grade),
+      parent_one_title: cleanValue(values.parent_one_title),
+      parent_one_first_name: cleanValue(values.parent_one_first_name),
+      parent_one_last_name: cleanValue(values.parent_one_last_name),
+      parent_two_title: cleanValue(values.parent_two_title),
+      parent_two_first_name: cleanValue(values.parent_two_first_name),
+      parent_two_last_name: cleanValue(values.parent_two_last_name),
+      legacy_parent_names: cleanValue(values.legacy_parent_names)
+    };
+    return applyLegacyParentNames(row);
+  }
+
+  function expectedHeader(field) {
+    return field.replaceAll("_", " ");
+  }
+
+  function familyFieldsFromRow(row) {
+    return {
+      parent_one_title: row.parent_one_title,
+      parent_one_first_name: row.parent_one_first_name,
+      parent_one_last_name: row.parent_one_last_name,
+      parent_two_title: row.parent_two_title,
+      parent_two_first_name: row.parent_two_first_name,
+      parent_two_last_name: row.parent_two_last_name
+    };
+  }
+
+  function hydrateFamily(family) {
+    return {
+      ...family,
+      display_name: familyDisplayName(family)
+    };
+  }
+
+  function hydrateStudent(student) {
+    const family = student.families ? hydrateFamily(student.families) : null;
+    return {
+      ...student,
+      families: family
+    };
   }
 
   function editIconSvg() {
@@ -240,10 +441,13 @@
     const client = mustClient();
     const [classesRes, familiesRes, studentsRes, dailyStatusRes] = await Promise.all([
       client.from("classes").select("id,name,display_order").order("display_order", { ascending: true }),
-      client.from("families").select("id,carpool_number,parent_names,contact_info").order("carpool_number", { ascending: true }),
+      client
+        .from("families")
+        .select("id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name,contact_info")
+        .order("carpool_number", { ascending: true }),
       client
         .from("students")
-        .select("id,first_name,last_name,class_id,family_id,classes(name),families(parent_names,carpool_number)")
+        .select("id,first_name,last_name,class_id,family_id,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)")
         .order("last_name", { ascending: true }),
       client
         .from("daily_status")
@@ -271,8 +475,8 @@
     if (presetStudentsRes.error) throw presetStudentsRes.error;
 
     state.classes = classesRes.data || [];
-    state.families = familiesRes.data || [];
-    state.students = studentsRes.data || [];
+    state.families = (familiesRes.data || []).map(hydrateFamily);
+    state.students = (studentsRes.data || []).map(hydrateStudent);
     state.dailyStatus = dailyStatusRes.data || [];
     state.pickupAuthorizations = pickupAuthRes.data || [];
     state.pickupAuthorizationStudents = pickupAuthStudentsRes.data || [];
@@ -306,7 +510,7 @@
     const { col, dir } = sortState.families;
     const valFn = (f) => {
       if (col === "carpool") return f.carpool_number;
-      if (col === "parents") return f.parent_names || "";
+      if (col === "parents") return familyDisplayName(f);
       if (col === "contact") return f.contact_info || "";
       if (col === "students") return (byFamily.get(f.id) || []).length;
       return 0;
@@ -318,7 +522,7 @@
         const students = byFamily.get(f.id) || [];
         return `<tr>
           <td>${escapeHtml(String(f.carpool_number))}</td>
-          <td>${escapeHtml(f.parent_names || "")}</td>
+          <td>${escapeHtml(familyDisplayName(f))}</td>
           <td>${escapeHtml(f.contact_info || "")}</td>
           <td>${escapeHtml(students.join(", "))}</td>
           <td>
@@ -414,7 +618,7 @@
     const valFn = (s) => {
       if (col === "name") return `${s.last_name} ${s.first_name}`;
       if (col === "class") return s.classes ? s.classes.name : "";
-      if (col === "family") return s.families ? s.families.parent_names : "";
+      if (col === "family") return s.families ? familyDisplayName(s.families) : "";
       if (col === "carpool") return s.families ? s.families.carpool_number : 0;
       return "";
     };
@@ -425,7 +629,7 @@
         return `<tr>
           <td>${escapeHtml(studentLabel(s))}</td>
           <td>${escapeHtml(s.classes ? s.classes.name : "")}</td>
-          <td>${escapeHtml(s.families ? s.families.parent_names : "")}</td>
+          <td>${escapeHtml(s.families ? familyDisplayName(s.families) : "")}</td>
           <td>${escapeHtml(s.families ? String(s.families.carpool_number) : "")}</td>
           <td>
             <div class="permissions-actions">
@@ -460,7 +664,7 @@
       if (col === "time") return rec.called_at || "";
       if (col === "student") return stu ? `${stu.last_name} ${stu.first_name}` : "";
       if (col === "class") return stu && stu.classes ? stu.classes.name : "";
-      if (col === "family") return stu && stu.families ? stu.families.parent_names : "";
+      if (col === "family") return stu && stu.families ? familyDisplayName(stu.families) : "";
       if (col === "carpool") return stu && stu.families ? stu.families.carpool_number : 0;
       if (col === "status") return rec.status || "";
       if (col === "source") return rec.called_by || "";
@@ -476,7 +680,7 @@
           <td>${escapeHtml(time)}</td>
           <td>${escapeHtml(stu ? studentLabel(stu) : "Unknown student")}</td>
           <td>${escapeHtml(stu && stu.classes ? stu.classes.name : "")}</td>
-          <td>${escapeHtml(stu && stu.families ? stu.families.parent_names : "")}</td>
+          <td>${escapeHtml(stu && stu.families ? familyDisplayName(stu.families) : "")}</td>
           <td>${escapeHtml(stu && stu.families ? String(stu.families.carpool_number) : "")}</td>
           <td><span class="${statusClass}${stu ? " is-toggle" : ""}" ${stu ? `data-today-student-id="${escapeHtml(stu.id)}"` : ""}>${escapeHtml(rec.status)}</span></td>
           <td>${escapeHtml(rec.called_by || "-")}</td>
@@ -524,6 +728,7 @@
     renderClasses();
     renderStudents();
     renderPermissions();
+    renderImportPreview();
   }
 
   function renderPermissions() {
@@ -590,8 +795,8 @@
             </td>`;
 
         return `<tr>
-          <td>${escapeHtml(granting ? `#${granting.carpool_number} - ${granting.parent_names}` : "Unknown")}</td>
-          <td>${escapeHtml(receiving ? `#${receiving.carpool_number} - ${receiving.parent_names}` : "Unknown")}</td>
+          <td>${escapeHtml(granting ? familyLabel(granting) : "Unknown")}</td>
+          <td>${escapeHtml(receiving ? familyLabel(receiving) : "Unknown")}</td>
           <td>${escapeHtml(students)}</td>
           <td>${escapeHtml(formatDateLabel(auth.starts_on || ""))}</td>
           <td>${escapeHtml(formatDateLabel(auth.ends_on || ""))}</td>
@@ -627,7 +832,7 @@
           .join(", ");
 
         return `<tr>
-          <td>${escapeHtml(owner ? `#${owner.carpool_number} - ${owner.parent_names}` : "Unknown")}</td>
+          <td>${escapeHtml(owner ? familyLabel(owner) : "Unknown")}</td>
           <td>${escapeHtml(preset.name || "")}</td>
           <td>${escapeHtml(students || "No students")}</td>
           <td>
@@ -656,8 +861,8 @@
         return `<tr>
           <td>${escapeHtml(timestamp)}</td>
           <td>${escapeHtml(audit.action || "")}</td>
-          <td>${escapeHtml(granting ? `#${granting.carpool_number} - ${granting.parent_names}` : "Unknown")}</td>
-          <td>${escapeHtml(receiving ? `#${receiving.carpool_number} - ${receiving.parent_names}` : "Unknown")}</td>
+          <td>${escapeHtml(granting ? familyLabel(granting) : "Unknown")}</td>
+          <td>${escapeHtml(receiving ? familyLabel(receiving) : "Unknown")}</td>
           <td>${escapeHtml(names)}</td>
           <td>${escapeHtml(formatDateLabel(audit.starts_on || ""))} to ${escapeHtml(formatDateLabel(audit.ends_on || ""))}</td>
           <td>${escapeHtml(audit.actor_type || "")}</td>
@@ -708,7 +913,7 @@
 
     return options.map(({ student, sourceFamily, sourceLabel }) => {
       const checked = selectedIds.includes(student.id) ? "checked" : "";
-      const familyText = sourceFamily ? `#${sourceFamily.carpool_number} - ${sourceFamily.parent_names}` : "Unknown family";
+      const familyText = sourceFamily ? familyLabel(sourceFamily) : "Unknown family";
       const className = student.classes ? student.classes.name : "";
       return `<label class="checkbox-option">
         <input type="checkbox" data-preset-student value="${escapeHtml(student.id)}" ${checked} />
@@ -771,8 +976,28 @@
           <input id="modal-family-number" type="number" value="${escapeHtml(String(data?.carpool_number || ""))}" required />
         </div>
         <div class="form-row">
-          <label for="modal-family-parents">Parent names</label>
-          <input id="modal-family-parents" type="text" value="${escapeHtml(data?.parent_names || "")}" required />
+          <label for="modal-parent-one-title">Parent 1 Title</label>
+          <input id="modal-parent-one-title" type="text" value="${escapeHtml(data?.parent_one_title || "")}" />
+        </div>
+        <div class="form-row">
+          <label for="modal-parent-one-first">Parent 1 First Name</label>
+          <input id="modal-parent-one-first" type="text" value="${escapeHtml(data?.parent_one_first_name || "")}" />
+        </div>
+        <div class="form-row">
+          <label for="modal-parent-one-last">Parent 1 Last Name</label>
+          <input id="modal-parent-one-last" type="text" value="${escapeHtml(data?.parent_one_last_name || "")}" />
+        </div>
+        <div class="form-row">
+          <label for="modal-parent-two-title">Parent 2 Title</label>
+          <input id="modal-parent-two-title" type="text" value="${escapeHtml(data?.parent_two_title || "")}" />
+        </div>
+        <div class="form-row">
+          <label for="modal-parent-two-first">Parent 2 First Name</label>
+          <input id="modal-parent-two-first" type="text" value="${escapeHtml(data?.parent_two_first_name || "")}" />
+        </div>
+        <div class="form-row">
+          <label for="modal-parent-two-last">Parent 2 Last Name</label>
+          <input id="modal-parent-two-last" type="text" value="${escapeHtml(data?.parent_two_last_name || "")}" />
         </div>
         <div class="form-row">
           <label for="modal-family-contact">Contact info (optional)</label>
@@ -913,16 +1138,6 @@
       `;
     }
 
-    if (kind === "import") {
-      return `
-        <div class="form-row">
-          <label for="modal-csv-file">CSV file</label>
-          <input id="modal-csv-file" type="file" accept=".csv,text/csv" required />
-        </div>
-        <p class="muted" style="margin: 0">Columns: <code>student_first_name,student_last_name,class_name,carpool_number,parent_names</code></p>
-      `;
-    }
-
     return "";
   }
 
@@ -1003,10 +1218,6 @@
       title = "Edit Student";
       submitLabel = "Save Changes";
       body = modalFieldTemplate("student", student);
-    } else if (mode === "import-csv") {
-      title = "Import CSV";
-      submitLabel = "Run Import";
-      body = modalFieldTemplate("import");
     } else if (mode === "add-permission") {
       title = "Add Pickup Permission";
       submitLabel = "Save Permission";
@@ -1062,17 +1273,32 @@
   async function saveFamily(isEdit) {
     const client = mustClient();
     const carpool = Number(el("modal-family-number").value);
-    const parents = el("modal-family-parents").value.trim();
     const contact = el("modal-family-contact").value.trim() || null;
+    const payload = familyPayloadFromValues({
+      carpool_number: carpool,
+      contact_info: contact,
+      parent_one_title: el("modal-parent-one-title").value,
+      parent_one_first_name: el("modal-parent-one-first").value,
+      parent_one_last_name: el("modal-parent-one-last").value,
+      parent_two_title: el("modal-parent-two-title").value,
+      parent_two_first_name: el("modal-parent-two-first").value,
+      parent_two_last_name: el("modal-parent-two-last").value
+    });
+    const hasAnyParentName = [
+      payload.parent_one_first_name,
+      payload.parent_one_last_name,
+      payload.parent_two_first_name,
+      payload.parent_two_last_name
+    ].some(Boolean);
 
-    if (!carpool || !parents) {
-      setNodeMessage("admin-modal-msg", "Carpool number and parent names are required.", "error");
+    if (!carpool || !hasAnyParentName) {
+      setNodeMessage("admin-modal-msg", "Carpool number and at least one parent name are required.", "error");
       return;
     }
 
     const query = isEdit
-      ? client.from("families").update({ carpool_number: carpool, parent_names: parents, contact_info: contact }).eq("id", state.modal.entityId)
-      : client.from("families").insert({ carpool_number: carpool, parent_names: parents, contact_info: contact });
+      ? client.from("families").update(payload).eq("id", state.modal.entityId)
+      : client.from("families").insert(payload);
 
     const { error } = await query;
     if (error) {
@@ -1224,82 +1450,478 @@
     closeModal();
   }
 
-  async function importCsvFromModal() {
-    const fileInput = el("modal-csv-file");
-    const file = fileInput.files && fileInput.files[0];
-    if (!file) {
-      setNodeMessage("admin-modal-msg", "Choose a CSV file first.", "error");
+  function parseClassOrderHints(rawRows, headerRowIndex) {
+    if (headerRowIndex < 1) return [];
+    const banner = cleanValue(rawRows[headerRowIndex - 1]?.[0]);
+    if (!banner || !banner.includes("/")) return [];
+    return banner.split("/").map((value) => normalizedClassName(value)).filter(Boolean);
+  }
+
+  function detectHeaderRow(rawRows) {
+    let bestIndex = 0;
+    let bestScore = -1;
+    const maxRows = Math.min(rawRows.length, 10);
+    for (let idx = 0; idx < maxRows; idx += 1) {
+      const score = (rawRows[idx] || []).reduce((total, cell) => {
+        const mapped = IMPORT_HEADER_ALIASES[importKey(cell)];
+        return total + (mapped ? 1 : 0);
+      }, 0);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = idx;
+      }
+    }
+    return bestIndex;
+  }
+
+  function normalizedRowsFromMatrix(rawRows) {
+    if (!rawRows.length) return { rows: [], headerIssues: [], classOrderHints: [] };
+
+    const headerRowIndex = detectHeaderRow(rawRows);
+    const headerRow = rawRows[headerRowIndex] || [];
+    const headerMap = new Map();
+
+    headerRow.forEach((cell, index) => {
+      const mapped = IMPORT_HEADER_ALIASES[importKey(cell)];
+      if (mapped && !headerMap.has(mapped)) {
+        headerMap.set(mapped, index);
+      }
+    });
+
+    const headerIssues = REQUIRED_IMPORT_FIELDS
+      .filter((field) => !headerMap.has(field))
+      .map((field) => `Missing column in upload: ${expectedHeader(field)}. Added as editable blank cells in preview.`);
+
+    const rows = rawRows
+      .slice(headerRowIndex + 1)
+      .map((cells, offset) => {
+        const values = {};
+        [...headerMap.keys(), ...REQUIRED_IMPORT_FIELDS].forEach((field) => {
+          const sourceIndex = headerMap.get(field);
+          values[field] = sourceIndex == null ? "" : cells[sourceIndex];
+        });
+        return canonicalImportRow(headerRowIndex + offset + 2, values);
+      })
+      .filter((row) => IMPORT_EDITABLE_FIELDS.some((field) => cleanValue(row[field])) || cleanValue(row.grade));
+
+    return {
+      rows,
+      headerIssues,
+      classOrderHints: parseClassOrderHints(rawRows, headerRowIndex)
+    };
+  }
+
+  async function rawRowsFromFile(file) {
+    const name = cleanValue(file?.name).toLowerCase();
+    if (name.endsWith(".csv")) {
+      return csvToArrays(await file.text());
+    }
+
+    if (!window.XLSX) {
+      throw new Error("Excel parser is unavailable on this page.");
+    }
+
+    const workbook = window.XLSX.read(await file.arrayBuffer(), { type: "array" });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    return window.XLSX.utils.sheet_to_json(firstSheet, {
+      header: 1,
+      raw: false,
+      defval: "",
+      blankrows: false
+    });
+  }
+
+  function importSummaryCounts(rows) {
+    const activeRows = rows.filter((row) => !row.skipped);
+    return {
+      total: rows.length,
+      active: activeRows.length,
+      skipped: rows.length - activeRows.length,
+      invalid: activeRows.filter((row) => row.errors.length).length,
+      ready: activeRows.filter((row) => !row.errors.length).length
+    };
+  }
+
+  function recomputeImportPreview() {
+    const rows = state.importPreview.rows;
+    const existingClasses = new Map(state.classes.map((cls) => [normalizeText(cls.name), cls]));
+    const existingFamilies = new Map(state.families.map((family) => [String(family.carpool_number), family]));
+    const existingStudents = new Map();
+
+    state.students.forEach((student) => {
+      const key = `${student.family_id}::${normalizedStudentName(student.first_name)}::${normalizedStudentName(student.last_name)}`;
+      const list = existingStudents.get(key) || [];
+      list.push(student);
+      existingStudents.set(key, list);
+    });
+
+    const familyConflicts = new Map();
+    const familySnapshots = new Map();
+    const batchStudentKeys = new Map();
+
+    rows.forEach((row) => {
+      row.errors = [];
+      row.planned_action = "";
+      if (row.skipped) return;
+
+      REQUIRED_IMPORT_FIELDS.forEach((field) => {
+        if (!cleanValue(row[field])) {
+          row.errors.push(`${expectedHeader(field)} is required.`);
+        }
+      });
+
+      const carpoolText = canonicalCarpool(row.carpool_number);
+      if (carpoolText && !/^\d+$/.test(carpoolText)) {
+        row.errors.push("Carpool number must be a whole number.");
+      }
+
+      const className = normalizedClassName(row.class_name);
+      if (cleanValue(row.class_name) && !className) {
+        row.errors.push("Class name is invalid.");
+      }
+
+      const carpoolKey = carpoolText;
+      if (carpoolKey) {
+        const snapshot = familyFieldsFromRow(row);
+        const existingSnapshot = familySnapshots.get(carpoolKey);
+        if (!existingSnapshot) {
+          familySnapshots.set(carpoolKey, snapshot);
+        } else if (!sameFamilyData(existingSnapshot, snapshot)) {
+          familyConflicts.set(carpoolKey, true);
+        }
+      }
+
+      const batchKey = `${carpoolText}::${normalizedStudentName(row.student_first_name)}::${normalizedStudentName(row.student_last_name)}`;
+      if (carpoolText && normalizedStudentName(row.student_first_name) && normalizedStudentName(row.student_last_name)) {
+        const list = batchStudentKeys.get(batchKey) || [];
+        list.push(row.row_number);
+        batchStudentKeys.set(batchKey, list);
+      }
+    });
+
+    rows.forEach((row) => {
+      if (row.skipped) return;
+
+      const carpoolText = canonicalCarpool(row.carpool_number);
+      if (carpoolText && familyConflicts.get(carpoolText)) {
+        row.errors.push("This import has conflicting parent data for the same carpool number.");
+      }
+
+      const batchKey = `${carpoolText}::${normalizedStudentName(row.student_first_name)}::${normalizedStudentName(row.student_last_name)}`;
+      if (batchStudentKeys.get(batchKey)?.length > 1) {
+        row.errors.push("This student appears more than once in the current import batch.");
+      }
+
+      if (row.errors.length) {
+        row.planned_action = "Fix row";
+        return;
+      }
+
+      const actions = [];
+      const classExists = existingClasses.has(normalizeText(row.class_name));
+      if (!classExists) actions.push("Create class");
+
+      const family = existingFamilies.get(carpoolText);
+      if (!family) {
+        actions.push("Create family");
+      } else if (!sameFamilyData(family, familyFieldsFromRow(row))) {
+        actions.push("Update family");
+      }
+
+      if (family) {
+        const key = `${family.id}::${normalizedStudentName(row.student_first_name)}::${normalizedStudentName(row.student_last_name)}`;
+        const matches = existingStudents.get(key) || [];
+        if (matches.length > 1) {
+          row.errors.push("This student matches multiple existing students in the database.");
+          row.planned_action = "Fix row";
+          return;
+        }
+        if (!matches.length) {
+          actions.push("Create student");
+        } else if (matches[0].class_id !== existingClasses.get(normalizeText(row.class_name))?.id || matches[0].first_name !== row.student_first_name || matches[0].last_name !== row.student_last_name) {
+          actions.push("Update student");
+        } else if (!actions.length) {
+          actions.push("No change");
+        }
+      } else {
+        actions.push("Create student");
+      }
+
+      row.planned_action = actions.join(", ");
+    });
+  }
+
+  function renderImportResultsHtml(result) {
+    const lines = [
+      `Students created: ${result.students_created}`,
+      `Students updated: ${result.students_updated}`,
+      `Families created: ${result.families_created}`,
+      `Families updated: ${result.families_updated}`,
+      `Classes created: ${result.classes_created}`,
+      `Rows skipped: ${result.rows_skipped}`,
+      `Rows failed: ${result.errors.length}`
+    ];
+    return `
+      <p class="success">${escapeHtml(lines.join(" | "))}</p>
+      ${result.errors.length ? `<ul>${result.errors.map((err) => `<li class="error">${escapeHtml(err)}</li>`).join("")}</ul>` : ""}
+    `;
+  }
+
+  function renderImportPreview() {
+    const emptyState = el("imports-empty-state");
+    const reviewState = el("imports-review-state");
+    const status = el("imports-status");
+    const summary = el("imports-preview-summary");
+    const tbody = el("imports-preview-tbody");
+    const confirmBtn = el("imports-confirm-btn");
+    if (!emptyState || !reviewState || !status || !summary || !tbody || !confirmBtn) return;
+
+    const hasRows = state.importPreview.rows.length > 0;
+    emptyState.classList.toggle("hidden", hasRows);
+    reviewState.classList.toggle("hidden", !hasRows);
+
+    if (!hasRows) {
+      status.innerHTML = [
+        state.importPreview.parseError ? `<p class="error">${escapeHtml(state.importPreview.parseError)}</p>` : "",
+        state.importPreview.resultHtml || '<p class="muted">No import run in this session.</p>'
+      ].join("");
       return;
     }
 
-    const text = await file.text();
-    const rows = csvToRows(text);
-    if (!rows.length) {
-      setNodeMessage("admin-modal-msg", "CSV is empty.", "error");
-      return;
+    const counts = importSummaryCounts(state.importPreview.rows);
+    const issues = state.importPreview.headerIssues.map((issue) => `<li>${escapeHtml(issue)}</li>`).join("");
+    status.innerHTML = `
+      <p class="muted"><strong>${escapeHtml(state.importPreview.fileName)}</strong></p>
+      <p class="muted">${escapeHtml(`${counts.ready} ready, ${counts.invalid} invalid, ${counts.skipped} skipped.`)}</p>
+      ${issues ? `<ul class="import-issues">${issues}</ul>` : ""}
+      ${state.importPreview.parseError ? `<p class="error">${escapeHtml(state.importPreview.parseError)}</p>` : ""}
+      ${state.importPreview.resultHtml ? `<div class="import-result-copy">${state.importPreview.resultHtml}</div>` : ""}
+    `;
+
+    summary.textContent = `Review ${counts.total} row${counts.total === 1 ? "" : "s"} before importing.`;
+    confirmBtn.disabled = counts.invalid > 0 || counts.ready === 0;
+
+    tbody.innerHTML = state.importPreview.rows.map((row, index) => {
+      const rowClass = row.skipped ? "import-row skipped" : row.errors.length ? "import-row invalid" : "import-row ready";
+      const errorText = row.errors.length ? row.errors.join(" ") : row.skipped ? "Skipped" : "Ready";
+      const editableCells = IMPORT_EDITABLE_FIELDS.map((field) => `
+        <td>
+          <input
+            type="${field === "carpool_number" ? "number" : "text"}"
+            class="import-cell-input"
+            data-import-row="${escapeHtml(String(index))}"
+            data-import-field="${escapeHtml(field)}"
+            value="${escapeHtml(row[field] || "")}"
+            ${row.skipped ? "disabled" : ""}
+          />
+        </td>
+      `).join("");
+
+      return `
+        <tr class="${rowClass}">
+          <td>
+            <label class="import-keep-toggle">
+              <input type="checkbox" data-import-skip="${escapeHtml(String(index))}" ${row.skipped ? "" : "checked"} />
+              <span>${row.skipped ? "Skipped" : "Keep"}</span>
+            </label>
+          </td>
+          <td>${escapeHtml(String(row.row_number))}</td>
+          <td>${escapeHtml(row.planned_action || "Review")}</td>
+          <td class="${row.errors.length ? "error" : row.skipped ? "muted" : "success"}">${escapeHtml(errorText)}</td>
+          ${editableCells}
+          <td>${escapeHtml(row.grade || "")}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  function clearImportPreviewRows() {
+    state.importPreview.rows = [];
+    state.importPreview.headerIssues = [];
+    state.importPreview.classOrderHints = [];
+    state.importPreview.parseError = "";
+    state.importPreview.fileName = "";
+    renderImportPreview();
+  }
+
+  async function stageImportFile(file) {
+    try {
+      const rawRows = await rawRowsFromFile(file);
+      if (!rawRows.length) throw new Error("The selected file is empty.");
+      const normalized = normalizedRowsFromMatrix(rawRows);
+      if (!normalized.rows.length) {
+        throw new Error("No importable rows were found in this file.");
+      }
+      state.importPreview = {
+        fileName: file.name,
+        rows: normalized.rows,
+        headerIssues: normalized.headerIssues,
+        classOrderHints: normalized.classOrderHints,
+        parseError: "",
+        resultHtml: ""
+      };
+      recomputeImportPreview();
+      renderImportPreview();
+      setTab("imports");
+    } catch (error) {
+      state.importPreview = {
+        ...state.importPreview,
+        fileName: file?.name || "",
+        rows: [],
+        headerIssues: [],
+        classOrderHints: [],
+        parseError: error.message || "Unable to parse this file."
+      };
+      renderImportPreview();
+      setTab("imports");
     }
+  }
+
+  function classDisplayOrderForName(name) {
+    const hints = state.importPreview.classOrderHints || [];
+    const hintIndex = hints.findIndex((hint) => normalizeText(hint) === normalizeText(name));
+    if (hintIndex >= 0) return hintIndex + 1;
+    return state.classes.length + 1;
+  }
+
+  async function confirmImportPreview() {
+    recomputeImportPreview();
+    renderImportPreview();
+
+    const rows = state.importPreview.rows.filter((row) => !row.skipped && !row.errors.length);
+    if (!rows.length) return;
 
     const client = mustClient();
     const results = {
       students_created: 0,
+      students_updated: 0,
       families_created: 0,
+      families_updated: 0,
       classes_created: 0,
+      rows_skipped: state.importPreview.rows.filter((row) => row.skipped).length,
       errors: []
     };
 
+    const classMap = new Map(state.classes.map((cls) => [normalizeText(cls.name), cls]));
+    const familyMap = new Map(state.families.map((family) => [String(family.carpool_number), family]));
+    const studentMap = new Map();
+    state.students.forEach((student) => {
+      const key = `${student.family_id}::${normalizedStudentName(student.first_name)}::${normalizedStudentName(student.last_name)}`;
+      const list = studentMap.get(key) || [];
+      list.push(student);
+      studentMap.set(key, list);
+    });
+
     for (const row of rows) {
       try {
-        const className = (row.class_name || "").trim();
-        const carpoolNum = Number(row.carpool_number);
-        const parentNames = (row.parent_names || "").trim();
-        const first = (row.student_first_name || "").trim();
-        const last = (row.student_last_name || "").trim();
-
-        if (!className || !carpoolNum || !parentNames || !first || !last) {
-          throw new Error("Missing required columns");
-        }
-
-        let classRow = state.classes.find((c) => c.name === className);
+        const classKey = normalizeText(row.class_name);
+        let classRow = classMap.get(classKey);
         if (!classRow) {
-          const ins = await client.from("classes").insert({ name: className, display_order: state.classes.length + 1 }).select("id,name,display_order").single();
-          if (ins.error) throw ins.error;
-          classRow = ins.data;
+          const classInsert = await client
+            .from("classes")
+            .insert({ name: normalizedClassName(row.class_name), display_order: classDisplayOrderForName(row.class_name) })
+            .select("id,name,display_order")
+            .single();
+          if (classInsert.error) throw classInsert.error;
+          classRow = classInsert.data;
+          classMap.set(classKey, classRow);
           state.classes.push(classRow);
           results.classes_created += 1;
         }
 
-        let familyRow = state.families.find((f) => f.carpool_number === carpoolNum);
+        const familyKey = canonicalCarpool(row.carpool_number);
+        let familyRow = familyMap.get(familyKey);
+        const familyPayload = familyPayloadFromValues({
+          carpool_number: row.carpool_number,
+          ...familyFieldsFromRow(row)
+        });
+
         if (!familyRow) {
-          const ins = await client
+          const familyInsert = await client
             .from("families")
-            .insert({ carpool_number: carpoolNum, parent_names: parentNames })
-            .select("id,carpool_number,parent_names,contact_info")
+            .insert(familyPayload)
+            .select("id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name,contact_info")
             .single();
-          if (ins.error) throw ins.error;
-          familyRow = ins.data;
+          if (familyInsert.error) throw familyInsert.error;
+          familyRow = hydrateFamily(familyInsert.data);
+          familyMap.set(familyKey, familyRow);
           state.families.push(familyRow);
           results.families_created += 1;
+        } else if (!sameFamilyData(familyRow, familyFieldsFromRow(row))) {
+          const familyUpdate = await client
+            .from("families")
+            .update(familyPayload)
+            .eq("id", familyRow.id)
+            .select("id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name,contact_info")
+            .single();
+          if (familyUpdate.error) throw familyUpdate.error;
+          familyRow = hydrateFamily(familyUpdate.data);
+          familyMap.set(familyKey, familyRow);
+          state.families = state.families.map((family) => family.id === familyRow.id ? familyRow : family);
+          results.families_updated += 1;
         }
 
-        const stuIns = await client
-          .from("students")
-          .insert({ first_name: first, last_name: last, class_id: classRow.id, family_id: familyRow.id });
+        const studentKey = `${familyRow.id}::${normalizedStudentName(row.student_first_name)}::${normalizedStudentName(row.student_last_name)}`;
+        const matches = studentMap.get(studentKey) || [];
+        if (matches.length > 1) {
+          throw new Error("This student matches multiple existing students.");
+        }
 
-        if (stuIns.error) throw stuIns.error;
-        results.students_created += 1;
+        if (!matches.length) {
+          const studentInsert = await client
+            .from("students")
+            .insert({
+              first_name: row.student_first_name,
+              last_name: row.student_last_name,
+              family_id: familyRow.id,
+              class_id: classRow.id
+            })
+            .select("id,first_name,last_name,class_id,family_id,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)")
+            .single();
+          if (studentInsert.error) throw studentInsert.error;
+          const newStudent = hydrateStudent(studentInsert.data);
+          const list = studentMap.get(studentKey) || [];
+          list.push(newStudent);
+          studentMap.set(studentKey, list);
+          state.students.push(newStudent);
+          results.students_created += 1;
+        } else {
+          const existingStudent = matches[0];
+          if (
+            existingStudent.class_id !== classRow.id ||
+            existingStudent.first_name !== row.student_first_name ||
+            existingStudent.last_name !== row.student_last_name
+          ) {
+            const studentUpdate = await client
+              .from("students")
+              .update({
+                first_name: row.student_first_name,
+                last_name: row.student_last_name,
+                class_id: classRow.id,
+                family_id: familyRow.id
+              })
+              .eq("id", existingStudent.id)
+              .select("id,first_name,last_name,class_id,family_id,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)")
+              .single();
+            if (studentUpdate.error) throw studentUpdate.error;
+            const updatedStudent = hydrateStudent(studentUpdate.data);
+            studentMap.set(studentKey, [updatedStudent]);
+            state.students = state.students.map((student) => student.id === updatedStudent.id ? updatedStudent : student);
+            results.students_updated += 1;
+          }
+        }
       } catch (error) {
-        results.errors.push(`Row ${row.__row_number}: ${error.message}`);
+        results.errors.push(`Row ${row.row_number}: ${error.message || "Import failed"}`);
       }
     }
 
     await refreshAndRender();
-    closeModal();
-
-    const summary = `Imported ${results.students_created} students, created ${results.families_created} families, created ${results.classes_created} classes.${results.errors.length ? ` ${results.errors.length} row(s) failed.` : ""}`;
-    el("last-import-summary").innerHTML = `
-      <p class="success">${escapeHtml(summary)}</p>
-      ${results.errors.length ? `<ul>${results.errors.map((err) => `<li class="error">${escapeHtml(err)}</li>`).join("")}</ul>` : ""}
-    `;
+    state.importPreview.rows = [];
+    state.importPreview.parseError = "";
+    state.importPreview.headerIssues = [];
+    state.importPreview.classOrderHints = [];
+    state.importPreview.resultHtml = renderImportResultsHtml(results);
+    renderImportPreview();
     setTab("imports");
   }
 
@@ -1317,7 +1939,6 @@
     if (mode === "edit-permission") return savePermission(true);
     if (mode === "add-preset") return savePreset(false);
     if (mode === "edit-preset") return savePreset(true);
-    if (mode === "import-csv") return importCsvFromModal();
   }
 
   async function deleteFamily(id) {
@@ -1447,7 +2068,38 @@
     el("open-add-student").addEventListener("click", () => openModal("add-student"));
     el("open-add-permission").addEventListener("click", () => openModal("add-permission"));
     el("open-add-preset").addEventListener("click", () => openModal("add-preset"));
-    el("open-csv-import").addEventListener("click", () => openModal("import-csv"));
+    el("open-csv-import").addEventListener("click", () => {
+      setTab("imports");
+      el("imports-file-input").click();
+    });
+    el("imports-browse-btn").addEventListener("click", () => el("imports-file-input").click());
+    el("imports-file-input").addEventListener("change", async (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      await stageImportFile(file);
+      event.target.value = "";
+    });
+    el("imports-cancel-btn").addEventListener("click", clearImportPreviewRows);
+    el("imports-confirm-btn").addEventListener("click", confirmImportPreview);
+    el("imports-preview-tbody").addEventListener("change", (event) => {
+      const input = event.target.closest("[data-import-field]");
+      if (input) {
+        const row = state.importPreview.rows[Number(input.dataset.importRow)];
+        if (!row) return;
+        row[input.dataset.importField] = cleanValue(input.value);
+        recomputeImportPreview();
+        renderImportPreview();
+        return;
+      }
+
+      const toggle = event.target.closest("[data-import-skip]");
+      if (!toggle) return;
+      const row = state.importPreview.rows[Number(toggle.dataset.importSkip)];
+      if (!row) return;
+      row.skipped = !toggle.checked;
+      recomputeImportPreview();
+      renderImportPreview();
+    });
 
     el("admin-modal-close").addEventListener("click", closeModal);
     el("admin-modal-cancel").addEventListener("click", closeModal);

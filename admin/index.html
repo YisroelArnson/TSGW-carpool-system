@@ -262,6 +262,77 @@
         color: var(--text-muted);
       }
 
+      .imports-empty-state {
+        display: grid;
+        gap: 12px;
+      }
+
+      .imports-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+        margin-bottom: 14px;
+      }
+
+      .imports-table-wrap {
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+      }
+
+      .imports-preview-table {
+        min-width: 1320px;
+      }
+
+      .imports-preview-table th,
+      .imports-preview-table td {
+        vertical-align: top;
+      }
+
+      .import-cell-input {
+        width: 100%;
+        min-width: 120px;
+        padding: 8px 10px;
+        border: 1px solid var(--border-light);
+        border-radius: 9px;
+        background: var(--surface-white);
+        font: inherit;
+      }
+
+      .import-row.invalid {
+        background: rgba(170, 52, 70, 0.06);
+      }
+
+      .import-row.ready {
+        background: rgba(42, 125, 49, 0.05);
+      }
+
+      .import-row.skipped {
+        background: rgba(110, 110, 110, 0.05);
+        opacity: 0.72;
+      }
+
+      .import-keep-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.84rem;
+        font-weight: 600;
+      }
+
+      .import-issues {
+        margin: 10px 0 0;
+        padding-left: 18px;
+        color: var(--text-muted);
+      }
+
+      .import-result-copy ul {
+        margin-top: 10px;
+        padding-left: 18px;
+      }
+
       .status.is-toggle {
         cursor: pointer;
         transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
@@ -698,7 +769,7 @@
         <h1>Admin Sign In</h1>
         <div class="login-field">
           <label for="admin-email">Email</label>
-          <input id="admin-email" type="email" autocomplete="email" placeholder="admin@tsgw.org" />
+          <input id="admin-email" type="email" autocomplete="email" />
         </div>
         <div class="login-field">
           <label for="admin-password">Password</label>
@@ -720,7 +791,7 @@
             <button id="open-add-family" class="btn-action maroon">+ Family</button>
             <button id="open-add-class" class="btn-action maroon">+ Class</button>
             <button id="open-add-student" class="btn-action maroon">+ Student</button>
-            <button id="open-csv-import" class="btn-action gold">Import CSV</button>
+            <button id="open-csv-import" class="btn-action gold">Import Roster</button>
             <button id="admin-logout-btn" class="btn-action ghost">Logout</button>
           </div>
         </div>
@@ -916,13 +987,49 @@
         <!-- ── Imports tab ────────────────────────────────────── -->
         <section id="tab-imports" class="content-card hidden" data-tab-panel="imports">
           <div class="content-card-header">
-            <h2>Imports &amp; Logs</h2>
+            <h2>Imports &amp; Review</h2>
           </div>
           <div class="content-card-body">
-            <p class="muted" style="margin: 0 0 12px;">
-              Columns: <code>student_first_name, student_last_name, class_name, carpool_number, parent_names</code>
-            </p>
-            <div id="last-import-summary" class="muted">No import run in this session.</div>
+            <div id="imports-status" class="muted">No import run in this session.</div>
+            <div id="imports-empty-state" class="imports-empty-state">
+              <p class="muted">Upload a CSV or Excel roster, review the parsed rows, edit anything that needs fixing, then confirm the import.</p>
+              <p class="muted">Supported fields: <code>carpool_number</code>, <code>student_first_name</code>, <code>student_last_name</code>, <code>class_name</code>, parent 1 / parent 2 title + first + last name, and optional <code>grade</code>.</p>
+              <input id="imports-file-input" type="file" accept=".csv,.xlsx,.xls,text/csv" class="hidden" />
+              <button id="imports-browse-btn" class="btn-action gold" type="button">Choose File</button>
+            </div>
+            <div id="imports-review-state" class="hidden">
+              <div class="imports-toolbar">
+                <p id="imports-preview-summary" class="muted" style="margin: 0;"></p>
+                <div class="admin-actions">
+                  <button id="imports-cancel-btn" class="btn-action ghost" type="button">Cancel Review</button>
+                  <button id="imports-confirm-btn" class="btn-action maroon" type="button">Confirm Import</button>
+                </div>
+              </div>
+              <div class="table-wrap imports-table-wrap">
+                <table id="imports-preview-table" class="imports-preview-table">
+                  <thead>
+                    <tr>
+                      <th>Keep</th>
+                      <th>Row</th>
+                      <th>Planned Action</th>
+                      <th>Status</th>
+                      <th>Carpool #</th>
+                      <th>Student First</th>
+                      <th>Student Last</th>
+                      <th>Class</th>
+                      <th>Parent 1 Title</th>
+                      <th>Parent 1 First</th>
+                      <th>Parent 1 Last</th>
+                      <th>Parent 2 Title</th>
+                      <th>Parent 2 First</th>
+                      <th>Parent 2 Last</th>
+                      <th>Grade</th>
+                    </tr>
+                  </thead>
+                  <tbody id="imports-preview-tbody"></tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -948,6 +1055,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="../assets/js/config.js"></script>
     <script src="../assets/js/supabase-client.js"></script>
     <script src="../assets/js/utils.js"></script>

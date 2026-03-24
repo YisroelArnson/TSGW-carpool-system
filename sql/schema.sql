@@ -35,10 +35,24 @@ create table if not exists public.families (
   id uuid primary key default gen_random_uuid(),
   carpool_number integer not null unique,
   parent_names text not null,
+  parent_one_title text,
+  parent_one_first_name text,
+  parent_one_last_name text,
+  parent_two_title text,
+  parent_two_first_name text,
+  parent_two_last_name text,
   contact_info text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table if exists public.families
+  add column if not exists parent_one_title text,
+  add column if not exists parent_one_first_name text,
+  add column if not exists parent_one_last_name text,
+  add column if not exists parent_two_title text,
+  add column if not exists parent_two_first_name text,
+  add column if not exists parent_two_last_name text;
 
 create table if not exists public.classes (
   id uuid primary key default gen_random_uuid(),
@@ -147,6 +161,73 @@ create unique index if not exists idx_carpool_presets_owner_name_ci
 create index if not exists idx_carpool_preset_students_student_id
   on public.carpool_preset_students(student_id);
 
+create or replace function public.family_display_name(
+  p_parent_names text,
+  p_parent_one_title text,
+  p_parent_one_first_name text,
+  p_parent_one_last_name text,
+  p_parent_two_title text,
+  p_parent_two_first_name text,
+  p_parent_two_last_name text
+)
+returns text
+language sql
+immutable
+as $$
+  with parts as (
+    select
+      nullif(btrim(concat_ws(' ', nullif(btrim(p_parent_one_first_name), ''), nullif(btrim(p_parent_one_last_name), ''))), '') as parent_one_name,
+      nullif(btrim(concat_ws(' ', nullif(btrim(p_parent_two_first_name), ''), nullif(btrim(p_parent_two_last_name), ''))), '') as parent_two_name,
+      nullif(btrim(p_parent_names), '') as legacy_name
+  )
+  select coalesce(
+    case
+      when parent_one_name is not null and parent_two_name is not null then parent_one_name || ' & ' || parent_two_name
+      when parent_one_name is not null then parent_one_name
+      when parent_two_name is not null then parent_two_name
+      else legacy_name
+    end,
+    'Family'
+  )
+  from parts;
+$$;
+
+create or replace function public.family_search_text(
+  p_parent_names text,
+  p_parent_one_title text,
+  p_parent_one_first_name text,
+  p_parent_one_last_name text,
+  p_parent_two_title text,
+  p_parent_two_first_name text,
+  p_parent_two_last_name text
+)
+returns text
+language sql
+immutable
+as $$
+  select btrim(
+    concat_ws(
+      ' ',
+      nullif(btrim(p_parent_names), ''),
+      nullif(btrim(p_parent_one_title), ''),
+      nullif(btrim(p_parent_one_first_name), ''),
+      nullif(btrim(p_parent_one_last_name), ''),
+      nullif(btrim(p_parent_two_title), ''),
+      nullif(btrim(p_parent_two_first_name), ''),
+      nullif(btrim(p_parent_two_last_name), ''),
+      public.family_display_name(
+        p_parent_names,
+        p_parent_one_title,
+        p_parent_one_first_name,
+        p_parent_one_last_name,
+        p_parent_two_title,
+        p_parent_two_first_name,
+        p_parent_two_last_name
+      )
+    )
+  );
+$$;
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -157,10 +238,33 @@ begin
 end;
 $$;
 
+create or replace function public.sync_family_parent_names()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.parent_names := public.family_display_name(
+    new.parent_names,
+    new.parent_one_title,
+    new.parent_one_first_name,
+    new.parent_one_last_name,
+    new.parent_two_title,
+    new.parent_two_first_name,
+    new.parent_two_last_name
+  );
+  return new;
+end;
+$$;
+
 drop trigger if exists trg_families_updated_at on public.families;
 create trigger trg_families_updated_at
 before update on public.families
 for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_families_sync_parent_names on public.families;
+create trigger trg_families_sync_parent_names
+before insert or update on public.families
+for each row execute function public.sync_family_parent_names();
 
 drop trigger if exists trg_students_updated_at on public.students;
 create trigger trg_students_updated_at
@@ -269,17 +373,19 @@ set search_path = public
 as $$
   select
     ds.student_id,
-    ds.called_at + interval '2 minutes' as retry_at
+    ds.called_at + interval '3 minutes' as retry_at
   from public.daily_status ds
   where p_called_by = 'parent'
     and ds.date = p_on_date
     and ds.status = 'CALLED'
     and ds.student_id = any(coalesce(p_student_ids, '{}'::uuid[]))
     and ds.called_at is not null
-    and ds.called_at > now() - interval '2 minutes';
+    and ds.called_at > now() - interval '3 minutes';
 $$;
 
-create or replace function public.active_authorized_students_for_receiver(
+drop function if exists public.active_authorized_students_for_receiver(uuid, date);
+
+create function public.active_authorized_students_for_receiver(
   p_receiving_family_id uuid,
   p_on_date date
 )
@@ -400,7 +506,24 @@ declare
   v_authorized_pickups jsonb := '[]'::jsonb;
   v_saved_carpools jsonb := '[]'::jsonb;
 begin
-  select f.id, f.carpool_number, f.parent_names
+  select
+    f.id,
+    f.carpool_number,
+    public.family_display_name(
+      f.parent_names,
+      f.parent_one_title,
+      f.parent_one_first_name,
+      f.parent_one_last_name,
+      f.parent_two_title,
+      f.parent_two_first_name,
+      f.parent_two_last_name
+    ) as display_name,
+    f.parent_one_title,
+    f.parent_one_first_name,
+    f.parent_one_last_name,
+    f.parent_two_title,
+    f.parent_two_first_name,
+    f.parent_two_last_name
   into v_family
   from public.families f
   where f.carpool_number = p_carpool_number
@@ -416,7 +539,8 @@ begin
         'student_id', s.id,
         'first_name', s.first_name,
         'last_name', s.last_name,
-        'class_name', c.name
+        'class_name', c.name,
+        'is_checked_in', coalesce(ds.status = 'CALLED', false)
       )
       order by s.last_name, s.first_name
     ),
@@ -425,6 +549,9 @@ begin
   into v_own_students
   from public.students s
   join public.classes c on c.id = s.class_id
+  left join public.daily_status ds
+    on ds.student_id = s.id
+   and ds.date = v_today
   where s.family_id = v_family.id;
 
   with active_rows as (
@@ -435,7 +562,21 @@ begin
     select
       ar.authorization_id,
       ar.granting_family_id,
-      ar.granting_parent_names,
+      public.family_display_name(
+        gf.parent_names,
+        gf.parent_one_title,
+        gf.parent_one_first_name,
+        gf.parent_one_last_name,
+        gf.parent_two_title,
+        gf.parent_two_first_name,
+        gf.parent_two_last_name
+      ) as granting_display_name,
+      gf.parent_one_title as granting_parent_one_title,
+      gf.parent_one_first_name as granting_parent_one_first_name,
+      gf.parent_one_last_name as granting_parent_one_last_name,
+      gf.parent_two_title as granting_parent_two_title,
+      gf.parent_two_first_name as granting_parent_two_first_name,
+      gf.parent_two_last_name as granting_parent_two_last_name,
       ar.starts_on,
       ar.ends_on,
       jsonb_agg(
@@ -443,30 +584,55 @@ begin
           'student_id', ar.student_id,
           'first_name', ar.first_name,
           'last_name', ar.last_name,
-          'class_name', ar.class_name
+          'class_name', ar.class_name,
+          'is_checked_in', coalesce(ds.status = 'CALLED', false)
         )
         order by ar.last_name, ar.first_name
       ) as students
     from active_rows ar
+    join public.families gf on gf.id = ar.granting_family_id
+    left join public.daily_status ds
+      on ds.student_id = ar.student_id
+     and ds.date = v_today
     group by
       ar.authorization_id,
       ar.granting_family_id,
-      ar.granting_parent_names,
+      gf.parent_names,
+      gf.parent_one_title,
+      gf.parent_one_first_name,
+      gf.parent_one_last_name,
+      gf.parent_two_title,
+      gf.parent_two_first_name,
+      gf.parent_two_last_name,
       ar.starts_on,
       ar.ends_on
-    order by lower(ar.granting_parent_names), ar.authorization_id
+    order by lower(public.family_display_name(
+      gf.parent_names,
+      gf.parent_one_title,
+      gf.parent_one_first_name,
+      gf.parent_one_last_name,
+      gf.parent_two_title,
+      gf.parent_two_first_name,
+      gf.parent_two_last_name
+    )), ar.authorization_id
   )
   select coalesce(
     jsonb_agg(
       jsonb_build_object(
         'authorization_id', fg.authorization_id,
         'family_id', fg.granting_family_id,
-        'parent_names', fg.granting_parent_names,
+        'display_name', fg.granting_display_name,
+        'parent_one_title', fg.granting_parent_one_title,
+        'parent_one_first_name', fg.granting_parent_one_first_name,
+        'parent_one_last_name', fg.granting_parent_one_last_name,
+        'parent_two_title', fg.granting_parent_two_title,
+        'parent_two_first_name', fg.granting_parent_two_first_name,
+        'parent_two_last_name', fg.granting_parent_two_last_name,
         'starts_on', fg.starts_on,
         'ends_on', fg.ends_on,
         'students', fg.students
       )
-      order by lower(fg.granting_parent_names), fg.authorization_id
+      order by lower(fg.granting_display_name), fg.authorization_id
     ),
     '[]'::jsonb
   )
@@ -480,7 +646,21 @@ begin
       cp.id as preset_id,
       cp.name,
       s.family_id,
-      f.parent_names,
+      public.family_display_name(
+        f.parent_names,
+        f.parent_one_title,
+        f.parent_one_first_name,
+        f.parent_one_last_name,
+        f.parent_two_title,
+        f.parent_two_first_name,
+        f.parent_two_last_name
+      ) as display_name,
+      f.parent_one_title,
+      f.parent_one_first_name,
+      f.parent_one_last_name,
+      f.parent_two_title,
+      f.parent_two_first_name,
+      f.parent_two_last_name,
       s.id as student_id,
       s.first_name,
       s.last_name,
@@ -501,7 +681,13 @@ begin
           jsonb_build_object(
             'student_id', pr.student_id,
             'family_id', pr.family_id,
-            'parent_names', pr.parent_names,
+            'display_name', pr.display_name,
+            'parent_one_title', pr.parent_one_title,
+            'parent_one_first_name', pr.parent_one_first_name,
+            'parent_one_last_name', pr.parent_one_last_name,
+            'parent_two_title', pr.parent_two_title,
+            'parent_two_first_name', pr.parent_two_first_name,
+            'parent_two_last_name', pr.parent_two_last_name,
             'first_name', pr.first_name,
             'last_name', pr.last_name,
             'class_name', pr.class_name
@@ -534,7 +720,13 @@ begin
     'requesting_family', jsonb_build_object(
       'family_id', v_family.id,
       'carpool_number', v_family.carpool_number,
-      'parent_names', v_family.parent_names
+      'display_name', v_family.display_name,
+      'parent_one_title', v_family.parent_one_title,
+      'parent_one_first_name', v_family.parent_one_first_name,
+      'parent_one_last_name', v_family.parent_one_last_name,
+      'parent_two_title', v_family.parent_two_title,
+      'parent_two_first_name', v_family.parent_two_first_name,
+      'parent_two_last_name', v_family.parent_two_last_name
     ),
     'own_students', v_own_students,
     'authorized_pickups', v_authorized_pickups,
@@ -644,7 +836,15 @@ begin
     select
       f.id as family_id,
       f.carpool_number,
-      f.parent_names,
+      public.family_display_name(
+        f.parent_names,
+        f.parent_one_title,
+        f.parent_one_first_name,
+        f.parent_one_last_name,
+        f.parent_two_title,
+        f.parent_two_first_name,
+        f.parent_two_last_name
+      ) as display_name,
       s.id as student_id,
       s.first_name,
       s.last_name,
@@ -658,7 +858,15 @@ begin
     select
       f.id as family_id,
       f.carpool_number,
-      f.parent_names,
+      public.family_display_name(
+        f.parent_names,
+        f.parent_one_title,
+        f.parent_one_first_name,
+        f.parent_one_last_name,
+        f.parent_two_title,
+        f.parent_two_first_name,
+        f.parent_two_last_name
+      ) as display_name,
       s.id as student_id,
       s.first_name,
       s.last_name,
@@ -674,7 +882,7 @@ begin
     select
       rr.family_id,
       rr.carpool_number,
-      rr.parent_names,
+      rr.display_name,
       jsonb_agg(
         jsonb_build_object(
           'student_id', rr.student_id,
@@ -685,7 +893,7 @@ begin
         order by rr.last_name, rr.first_name
       ) as students
     from response_rows rr
-    group by rr.family_id, rr.carpool_number, rr.parent_names
+    group by rr.family_id, rr.carpool_number, rr.display_name
     order by rr.carpool_number
   )
   select coalesce(
@@ -693,7 +901,7 @@ begin
       jsonb_build_object(
         'family_id', g.family_id,
         'carpool_number', g.carpool_number,
-        'parent_names', g.parent_names,
+        'display_name', g.display_name,
         'students', g.students
       )
       order by g.carpool_number
@@ -730,7 +938,15 @@ begin
     select
       f.id as family_id,
       f.carpool_number,
-      f.parent_names,
+      public.family_display_name(
+        f.parent_names,
+        f.parent_one_title,
+        f.parent_one_first_name,
+        f.parent_one_last_name,
+        f.parent_two_title,
+        f.parent_two_first_name,
+        f.parent_two_last_name
+      ) as display_name,
       s.id as student_id,
       s.first_name,
       s.last_name,
@@ -747,7 +963,7 @@ begin
       jsonb_build_object(
         'family_id', sr.family_id,
         'carpool_number', sr.carpool_number,
-        'parent_names', sr.parent_names,
+        'display_name', sr.display_name,
         'student_id', sr.student_id,
         'first_name', sr.first_name,
         'last_name', sr.last_name,
@@ -985,7 +1201,15 @@ begin
       s.id as student_id,
       s.family_id,
       f.carpool_number,
-      f.parent_names,
+      public.family_display_name(
+        f.parent_names,
+        f.parent_one_title,
+        f.parent_one_first_name,
+        f.parent_one_last_name,
+        f.parent_two_title,
+        f.parent_two_first_name,
+        f.parent_two_last_name
+      ) as display_name,
       s.first_name,
       s.last_name,
       c.name as class_name
@@ -1013,7 +1237,7 @@ begin
         'student_id', invalid.student_id,
         'family_id', invalid.family_id,
         'carpool_number', invalid.carpool_number,
-        'parent_names', invalid.parent_names,
+        'display_name', invalid.display_name,
         'first_name', invalid.first_name,
         'last_name', invalid.last_name,
         'class_name', invalid.class_name
@@ -1085,7 +1309,15 @@ begin
     select
       f.id as family_id,
       f.carpool_number,
-      f.parent_names,
+      public.family_display_name(
+        f.parent_names,
+        f.parent_one_title,
+        f.parent_one_first_name,
+        f.parent_one_last_name,
+        f.parent_two_title,
+        f.parent_two_first_name,
+        f.parent_two_last_name
+      ) as display_name,
       s.id as student_id,
       s.first_name,
       s.last_name,
@@ -1099,7 +1331,15 @@ begin
     select
       f.id as family_id,
       f.carpool_number,
-      f.parent_names,
+      public.family_display_name(
+        f.parent_names,
+        f.parent_one_title,
+        f.parent_one_first_name,
+        f.parent_one_last_name,
+        f.parent_two_title,
+        f.parent_two_first_name,
+        f.parent_two_last_name
+      ) as display_name,
       s.id as student_id,
       s.first_name,
       s.last_name,
@@ -1115,7 +1355,7 @@ begin
     select
       rr.family_id,
       rr.carpool_number,
-      rr.parent_names,
+      rr.display_name,
       jsonb_agg(
         jsonb_build_object(
           'student_id', rr.student_id,
@@ -1126,7 +1366,7 @@ begin
         order by rr.last_name, rr.first_name
       ) as students
     from response_rows rr
-    group by rr.family_id, rr.carpool_number, rr.parent_names
+    group by rr.family_id, rr.carpool_number, rr.display_name
     order by rr.carpool_number
   )
   select coalesce(
@@ -1134,7 +1374,7 @@ begin
       jsonb_build_object(
         'family_id', g.family_id,
         'carpool_number', g.carpool_number,
-        'parent_names', g.parent_names,
+        'display_name', g.display_name,
         'students', g.students
       )
       order by g.carpool_number
@@ -1164,7 +1404,15 @@ begin
     select
       f.id as family_id,
       f.carpool_number,
-      f.parent_names,
+      public.family_display_name(
+        f.parent_names,
+        f.parent_one_title,
+        f.parent_one_first_name,
+        f.parent_one_last_name,
+        f.parent_two_title,
+        f.parent_two_first_name,
+        f.parent_two_last_name
+      ) as display_name,
       s.id as student_id,
       s.first_name,
       s.last_name,
@@ -1181,7 +1429,7 @@ begin
       jsonb_build_object(
         'family_id', sr.family_id,
         'carpool_number', sr.carpool_number,
-        'parent_names', sr.parent_names,
+        'display_name', sr.display_name,
         'student_id', sr.student_id,
         'first_name', sr.first_name,
         'last_name', sr.last_name,
@@ -1235,7 +1483,21 @@ begin
       pa.revoked_at,
       pa.revoked_by,
       rf.id as receiving_family_id,
-      rf.parent_names as receiving_parent_names,
+      public.family_display_name(
+        rf.parent_names,
+        rf.parent_one_title,
+        rf.parent_one_first_name,
+        rf.parent_one_last_name,
+        rf.parent_two_title,
+        rf.parent_two_first_name,
+        rf.parent_two_last_name
+      ) as receiving_display_name,
+      rf.parent_one_title,
+      rf.parent_one_first_name,
+      rf.parent_one_last_name,
+      rf.parent_two_title,
+      rf.parent_two_first_name,
+      rf.parent_two_last_name,
       case
         when pa.is_revoked then 'Revoked'
         when v_today < pa.starts_on then 'Upcoming'
@@ -1275,7 +1537,13 @@ begin
       ar.revoked_at,
       ar.revoked_by,
       ar.receiving_family_id,
-      ar.receiving_parent_names,
+      ar.receiving_display_name,
+      ar.parent_one_title,
+      ar.parent_one_first_name,
+      ar.parent_one_last_name,
+      ar.parent_two_title,
+      ar.parent_two_first_name,
+      ar.parent_two_last_name,
       ar.status_label
     order by ar.created_at desc
   )
@@ -1293,7 +1561,13 @@ begin
         'revoked_by', aws.revoked_by,
         'receiving_family', jsonb_build_object(
           'family_id', aws.receiving_family_id,
-          'parent_names', aws.receiving_parent_names
+          'display_name', aws.receiving_display_name,
+          'parent_one_title', aws.parent_one_title,
+          'parent_one_first_name', aws.parent_one_first_name,
+          'parent_one_last_name', aws.parent_one_last_name,
+          'parent_two_title', aws.parent_two_title,
+          'parent_two_first_name', aws.parent_two_first_name,
+          'parent_two_last_name', aws.parent_two_last_name
         ),
         'students', aws.students
       )
@@ -1335,9 +1609,15 @@ begin
     jsonb_agg(
       jsonb_build_object(
         'family_id', family_match.id,
-        'parent_names', family_match.parent_names
+        'display_name', family_match.display_name,
+        'parent_one_title', family_match.parent_one_title,
+        'parent_one_first_name', family_match.parent_one_first_name,
+        'parent_one_last_name', family_match.parent_one_last_name,
+        'parent_two_title', family_match.parent_two_title,
+        'parent_two_first_name', family_match.parent_two_first_name,
+        'parent_two_last_name', family_match.parent_two_last_name
       )
-      order by family_match.sort_rank, lower(family_match.parent_names), family_match.id
+      order by family_match.sort_rank, lower(family_match.display_name), family_match.id
     ),
     '[]'::jsonb
   )
@@ -1345,22 +1625,84 @@ begin
   from (
     select
       f.id,
-      f.parent_names,
+      public.family_display_name(
+        f.parent_names,
+        f.parent_one_title,
+        f.parent_one_first_name,
+        f.parent_one_last_name,
+        f.parent_two_title,
+        f.parent_two_first_name,
+        f.parent_two_last_name
+      ) as display_name,
+      f.parent_one_title,
+      f.parent_one_first_name,
+      f.parent_one_last_name,
+      f.parent_two_title,
+      f.parent_two_first_name,
+      f.parent_two_last_name,
       case
-        when lower(f.parent_names) = lower(v_query) then 0
-        when lower(f.parent_names) like lower(v_query) || '%' then 1
+        when lower(public.family_display_name(
+          f.parent_names,
+          f.parent_one_title,
+          f.parent_one_first_name,
+          f.parent_one_last_name,
+          f.parent_two_title,
+          f.parent_two_first_name,
+          f.parent_two_last_name
+        )) = lower(v_query) then 0
+        when lower(public.family_display_name(
+          f.parent_names,
+          f.parent_one_title,
+          f.parent_one_first_name,
+          f.parent_one_last_name,
+          f.parent_two_title,
+          f.parent_two_first_name,
+          f.parent_two_last_name
+        )) like lower(v_query) || '%' then 1
         else 2
       end as sort_rank
     from public.families f
     where f.id <> v_granting_family_id
-      and f.parent_names ilike '%' || v_query || '%'
+      and public.family_search_text(
+        f.parent_names,
+        f.parent_one_title,
+        f.parent_one_first_name,
+        f.parent_one_last_name,
+        f.parent_two_title,
+        f.parent_two_first_name,
+        f.parent_two_last_name
+      ) ilike '%' || v_query || '%'
     order by
       case
-        when lower(f.parent_names) = lower(v_query) then 0
-        when lower(f.parent_names) like lower(v_query) || '%' then 1
+        when lower(public.family_display_name(
+          f.parent_names,
+          f.parent_one_title,
+          f.parent_one_first_name,
+          f.parent_one_last_name,
+          f.parent_two_title,
+          f.parent_two_first_name,
+          f.parent_two_last_name
+        )) = lower(v_query) then 0
+        when lower(public.family_display_name(
+          f.parent_names,
+          f.parent_one_title,
+          f.parent_one_first_name,
+          f.parent_one_last_name,
+          f.parent_two_title,
+          f.parent_two_first_name,
+          f.parent_two_last_name
+        )) like lower(v_query) || '%' then 1
         else 2
       end,
-      lower(f.parent_names),
+      lower(public.family_display_name(
+        f.parent_names,
+        f.parent_one_title,
+        f.parent_one_first_name,
+        f.parent_one_last_name,
+        f.parent_two_title,
+        f.parent_two_first_name,
+        f.parent_two_last_name
+      )),
       f.id
     limit 12
   ) family_match;

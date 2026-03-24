@@ -1,5 +1,5 @@
 (function parentSettingsPage() {
-  const { mustClient, show, escapeHtml } = window.carpoolUtils || {};
+  const { mustClient, show, escapeHtml, familyDisplayName } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const STORAGE_KEY = "tsgw_carpool_number";
@@ -137,7 +137,7 @@
     const family = state.context?.requesting_family;
     if (!family) return;
     el("settings-family-number").textContent = `Carpool #${family.carpool_number}`;
-    el("settings-family-name").textContent = family.parent_names;
+    el("settings-family-name").textContent = familyDisplayName(family);
   }
 
   function setPseudoDisabled(buttonId, isDisabled) {
@@ -196,7 +196,7 @@
       return `
         <article class="item-card">
           <div class="item-row">
-            <h3 class="item-title">${escapeHtml(family.parent_names || "Family")}</h3>
+            <h3 class="item-title">${escapeHtml(familyDisplayName(family))}</h3>
             <span class="item-count">${escapeHtml(pluralize(studentCount, "student"))}</span>
           </div>
           <p class="item-meta">${escapeHtml(students || "No students")}</p>
@@ -228,7 +228,7 @@
       return `
         <article class="item-card">
           <div class="item-row">
-            <h3 class="item-title">${escapeHtml(receiving.parent_names || "Family")}</h3>
+            <h3 class="item-title">${escapeHtml(familyDisplayName(receiving))}</h3>
             <span class="item-count">${escapeHtml(authStatus(auth))}</span>
           </div>
           <p class="item-meta">${escapeHtml(`Can pick up: ${students || "No students selected"}`)}</p>
@@ -272,7 +272,7 @@
     }
 
     if (!query) {
-      node.innerHTML = '<p class="item-meta empty-state">Search by parent name to find a family.</p>';
+      node.innerHTML = '<p class="item-meta empty-state">Search by family name to find a family.</p>';
       return;
     }
 
@@ -287,7 +287,7 @@
     }
 
     if (!state.familySearchResults.length) {
-      node.innerHTML = '<p class="item-meta empty-state">No parent names matched that search.</p>';
+      node.innerHTML = '<p class="item-meta empty-state">No families matched that search.</p>';
       return;
     }
 
@@ -295,7 +295,7 @@
       const selected = state.lookupFamily?.family_id === family.family_id;
       return selectionRowHtml({
         id: family.family_id,
-        name: family.parent_names || "Family",
+        name: familyDisplayName(family),
         meta: selected ? "Selected family" : "Select this family",
         selected,
         dataAttr: "data-select-family"
@@ -310,7 +310,7 @@
     const query = input.value.trim();
     clearAuthorizationSearchState();
 
-    if (state.lookupFamily && query !== (state.lookupFamily.parent_names || "")) {
+    if (state.lookupFamily && query !== familyDisplayName(state.lookupFamily)) {
       state.lookupFamily = null;
       renderAuthorizationLookup();
     }
@@ -394,7 +394,7 @@
     details.innerHTML = `
       <div class="lookup-family-box">
         <p class="entity-kicker">Receiving Family</p>
-        <h3>${escapeHtml(state.lookupFamily.parent_names || "Family")}</h3>
+        <h3>${escapeHtml(familyDisplayName(state.lookupFamily))}</h3>
       </div>
       <div class="picker-group">
         <div class="picker-group-head">
@@ -420,7 +420,7 @@
     clearAuthorizationSearchState();
     el("authorization-editor-title").textContent = "Edit Pickup Permission";
     el("open-authorization-editor").textContent = "Add Permission";
-    el("authorize-family-search").value = auth.receiving_family.parent_names || "";
+    el("authorize-family-search").value = familyDisplayName(auth.receiving_family);
     el("authorization-start-date").value = auth.starts_on || todayIso();
     const isPermanent = auth.ends_on === PERMANENT_END_DATE;
     el("authorization-permanent").checked = isPermanent;
@@ -485,7 +485,7 @@
       groups.push({
         family_id: own.family_id,
         heading: "Your Children",
-        subheading: own.parent_names,
+        subheading: familyDisplayName(own),
         students: state.context?.own_students || []
       });
     }
@@ -494,7 +494,7 @@
       groups.push({
         family_id: family.family_id,
         heading: "Authorized Pickups",
-        subheading: family.parent_names,
+        subheading: familyDisplayName(family),
         students: family.students || []
       });
     });
@@ -567,8 +567,8 @@
   function resetPresetForm() {
     state.presetSelection = new Set();
     state.editingPresetId = null;
-    el("preset-editor-title").textContent = "Create Saved Carpool";
-    el("open-preset-editor").textContent = "Add Saved Carpool";
+    el("preset-editor-title").textContent = "Create Carpool";
+    el("open-preset-editor").textContent = "Add New Carpool";
     el("preset-name").value = "";
     el("preset-submit").textContent = "Save Carpool";
     setMessage("preset-message", "");
@@ -581,7 +581,7 @@
     state.editingPresetId = preset.preset_id;
     state.presetSelection = new Set((preset.students || []).map((student) => String(student.student_id)));
     el("preset-editor-title").textContent = "Edit Saved Carpool";
-    el("open-preset-editor").textContent = "Add Saved Carpool";
+    el("open-preset-editor").textContent = "Add New Carpool";
     el("preset-name").value = preset.name || "";
     el("preset-submit").textContent = "Save Carpool";
     renderPresetPicker();
@@ -591,7 +591,7 @@
   async function savePreset() {
     const name = el("preset-name").value.trim();
     if (!name) {
-      setMessage("preset-message", "Enter a saved carpool name.", "error");
+      setMessage("preset-message", "Enter a carpool name.", "error");
       return;
     }
     if (!state.presetSelection.size) {
@@ -684,7 +684,7 @@
       setMessage("preset-message", "");
       state.presetSelection = new Set();
       state.editingPresetId = null;
-      el("preset-editor-title").textContent = "Create Saved Carpool";
+      el("preset-editor-title").textContent = "Create Carpool";
       el("preset-name").value = "";
       el("preset-submit").textContent = "Save Carpool";
       openPresetEditor();
@@ -722,7 +722,7 @@
       const family = state.familySearchResults.find((item) => item.family_id === btn.dataset.selectFamily);
       if (!family) return;
       state.lookupFamily = family;
-      el("authorize-family-search").value = family.parent_names || "";
+      el("authorize-family-search").value = familyDisplayName(family);
       renderAuthorizationFamilyResults();
       renderAuthorizationLookup();
     });
@@ -733,7 +733,7 @@
       if (!firstMatch) return;
       event.preventDefault();
       state.lookupFamily = firstMatch;
-      el("authorize-family-search").value = firstMatch.parent_names || "";
+      el("authorize-family-search").value = familyDisplayName(firstMatch);
       renderAuthorizationFamilyResults();
       renderAuthorizationLookup();
     });
@@ -771,7 +771,7 @@
       const auth = state.authorizations.find((item) => item.authorization_id === removeBtn.dataset.removeAuth);
       if (!auth) return;
       const receiving = auth.receiving_family || {};
-      if (!window.confirm(`Remove pickup permission for ${receiving.parent_names || "this family"}?`)) return;
+      if (!window.confirm(`Remove pickup permission for ${familyDisplayName(receiving) || "this family"}?`)) return;
 
       try {
         await revokeAuthorization(auth.authorization_id);

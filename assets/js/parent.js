@@ -1,9 +1,9 @@
 (function parentPage() {
-  const { mustClient, show, escapeHtml } = window.carpoolUtils || {};
+  const { mustClient, show, escapeHtml, familyDisplayName } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const STORAGE_KEY = "tsgw_carpool_number";
-  const REPING_COOLDOWN_MS = 2 * 60 * 1000;
+  const REPING_COOLDOWN_MS = 3 * 60 * 1000;
   const state = {
     number: null,
     context: null,
@@ -126,7 +126,7 @@
     const ownFamily = state.context.requesting_family;
     const cards = [{
       family_id: ownFamily.family_id,
-      parent_names: ownFamily.parent_names,
+      display_name: familyDisplayName(ownFamily),
       students: state.context.own_students || [],
       label: "Your Family",
       note: ""
@@ -135,7 +135,7 @@
     (state.context.authorized_pickups || []).forEach((family) => {
       cards.push({
         family_id: family.family_id,
-        parent_names: family.parent_names,
+        display_name: familyDisplayName(family),
         students: family.students || [],
         label: "Students You're Going To Pick Up",
         note: `Approved from ${family.starts_on} to ${family.ends_on}`
@@ -151,6 +151,19 @@
       count += ids.size;
     });
     return count;
+  }
+
+  function isStudentCheckedIn(student) {
+    return Boolean(student?.is_checked_in);
+  }
+
+  function checkedInStudentIds() {
+    return new Set(
+      familyCards()
+        .flatMap((family) => family.students || [])
+        .filter((student) => isStudentCheckedIn(student))
+        .map((student) => String(student.student_id))
+    );
   }
 
   function manualSelectedCount() {
@@ -175,14 +188,16 @@
 
   function rebuildSelections() {
     const merged = new Map();
+    const lockedStudentIds = checkedInStudentIds();
 
     state.manualSelectedByFamily.forEach((ids, familyId) => {
-      merged.set(familyId, new Set(ids));
+      merged.set(familyId, new Set(Array.from(ids).filter((studentId) => !lockedStudentIds.has(String(studentId)))));
     });
 
     (state.context?.saved_carpools || []).forEach((preset) => {
       if (!state.activePresetIds.has(preset.preset_id)) return;
       (preset.students || []).forEach((student) => {
+        if (lockedStudentIds.has(String(student.student_id))) return;
         const familyId = student.family_id;
         if (!merged.has(familyId)) merged.set(familyId, new Set());
         merged.get(familyId).add(String(student.student_id));
@@ -214,6 +229,11 @@
   }
 
   function toggleStudentSelection(familyId, studentId) {
+    const student = familyCards()
+      .flatMap((family) => family.students || [])
+      .find((entry) => String(entry.student_id) === String(studentId));
+    if (isStudentCheckedIn(student)) return;
+
     const wasSelected = (state.selectedByFamily.get(familyId) || new Set()).has(studentId);
     clearActivePresets();
     const selected = state.manualSelectedByFamily.get(familyId) || new Set();
@@ -227,7 +247,9 @@
   function selectEntireFamily(familyId) {
     clearActivePresets();
     const card = familyCards().find((item) => item.family_id === familyId);
-    const allStudentIds = (card?.students || []).map((student) => String(student.student_id));
+    const allStudentIds = (card?.students || [])
+      .filter((student) => !isStudentCheckedIn(student))
+      .map((student) => String(student.student_id));
     const current = state.selectedByFamily.get(familyId) || new Set();
     const hasAllSelected = allStudentIds.length > 0 && allStudentIds.every((studentId) => current.has(studentId));
     const next = hasAllSelected ? new Set() : new Set(allStudentIds);
@@ -295,7 +317,9 @@
     const label = el("select-all-children-label");
     if (!button || !icon || !label) return;
 
-    const studentIds = (card?.students || []).map((student) => String(student.student_id));
+    const studentIds = (card?.students || [])
+      .filter((student) => !isStudentCheckedIn(student))
+      .map((student) => String(student.student_id));
     const selected = card ? (state.selectedByFamily.get(card.family_id) || new Set()) : new Set();
     const hasChildren = studentIds.length > 0;
     const hasAllSelected = hasChildren && studentIds.every((studentId) => selected.has(studentId));
@@ -321,19 +345,23 @@
     const studentsHtml = (card.students || []).map((student) => {
       const studentId = String(student.student_id);
       const isSelected = selected.has(studentId);
+      const isCheckedIn = isStudentCheckedIn(student);
       return `
         <button
           type="button"
-          class="selection-row student-pick${isSelected ? " selected" : ""}"
+          class="selection-row student-pick${isSelected ? " selected" : ""}${isCheckedIn ? " checked-in" : ""}"
           data-family-id="${escapeHtml(card.family_id)}"
           data-student-id="${escapeHtml(studentId)}"
           aria-pressed="${isSelected ? "true" : "false"}"
+          aria-disabled="${isCheckedIn ? "true" : "false"}"
+          ${isCheckedIn ? "disabled" : ""}
         >
           <span class="selection-row-main">
-            <span class="selection-row-toggle">${isSelected ? "✓" : "+"}</span>
+            <span class="selection-row-toggle">${isCheckedIn || isSelected ? "✓" : "+"}</span>
             <span class="student-pick-content">
               <span class="student-pick-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
               <small class="student-pick-grade">${escapeHtml(student.class_name || "")}</small>
+              ${isCheckedIn ? '<small class="student-pick-status">Already checked in</small>' : ""}
             </span>
           </span>
         </button>
@@ -344,7 +372,7 @@
       <article class="family-card">
         <div class="family-card-head">
           <div class="family-card-hero">
-            ${card.label === "Your Family" ? "" : `<h3>${escapeHtml(card.parent_names)}</h3>`}
+            ${card.label === "Your Family" ? "" : `<h3>${escapeHtml(card.display_name || "Family")}</h3>`}
           </div>
         </div>
         <div class="family-students">${studentsHtml}</div>
@@ -423,7 +451,8 @@
 
   function setDoneState(message, note) {
     el("done-message").textContent = message;
-    el("done-note").textContent = note || "The classroom has been notified to send your child out.";
+    el("done-note").textContent = note || "";
+    show("done-note", Boolean(note));
     hideAllSections();
     show("entry-card", false);
     show("done-card", true);
@@ -488,7 +517,7 @@
         const existing = familyMap.get(family.family_id) || {
           family_id: family.family_id,
           carpool_number: family.carpool_number,
-          parent_names: family.parent_names,
+          display_name: family.display_name || familyDisplayName(family),
           students: []
         };
         existing.students.push(...(family.students || []));
@@ -555,33 +584,21 @@
   }
 
   function buildDoneCopy(result, defaultNote) {
-    const called = formatCalledStudents(result);
-    const skipped = formatSkippedStudents(result);
+    const requestedStudents = [...new Set([
+      ...formatCalledStudents(result),
+      ...formatSkippedStudents(result)
+    ])];
 
-    if (called.length && skipped.length) {
+    if (requestedStudents.length) {
       return {
-        message: `Pickup request sent for ${called.join(", ")}.`,
-        note: `Already active for ${skipped.join(", ")}. The classroom has already been asked to send them out.`
-      };
-    }
-
-    if (called.length) {
-      return {
-        message: `Pickup request sent for ${called.join(", ")}.`,
-        note: defaultNote || "The classroom has been notified to send your child out."
-      };
-    }
-
-    if (skipped.length) {
-      return {
-        message: `Pickup request is already active for ${skipped.join(", ")}.`,
-        note: "The classroom has already been asked to send them out."
+        message: `Pickup request sent for ${requestedStudents.join(", ")}.`,
+        note: ""
       };
     }
 
     return {
       message: "No students were updated.",
-      note: defaultNote || "Please try again."
+      note: defaultNote || ""
     };
   }
 
@@ -591,13 +608,6 @@
     node.className = `done-reping-status${klass ? ` ${klass}` : ""}`;
     node.textContent = message || "";
     show("done-reping-status", Boolean(message));
-  }
-
-  function formatRepingCountdown(msRemaining) {
-    const totalSeconds = Math.max(0, Math.ceil(msRemaining / 1000));
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = String(totalSeconds % 60).padStart(2, "0");
-    return `${minutes}:${seconds}`;
   }
 
   function renderDoneRepingActions() {
@@ -616,38 +626,29 @@
       const msRemaining = student.cooldownUntil - Date.now();
       const isBusy = state.repingBusyIds.has(student.student_id);
       const isCoolingDown = msRemaining > 0;
-      const buttonText = isBusy ? `Sending reminder for ${fullName}...` : `Reping ${fullName}`;
       const metaParts = [];
       if (student.class_name) {
         metaParts.push(`<span class="done-reping-meta">${escapeHtml(student.class_name)}</span>`);
       }
-      if (isCoolingDown) {
-        metaParts.push(`
-          <span class="done-reping-cooldown">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M11 5 6 9H3v6h3l5 4z"></path>
-              <path d="M15 9a5 5 0 0 1 0 6"></path>
-              <path d="M18.5 6.5a9 9 0 0 1 0 11"></path>
-              <path d="M4 4l16 16"></path>
-            </svg>
-            ${escapeHtml(formatRepingCountdown(msRemaining))}
-          </span>
-        `);
-      }
       const meta = metaParts.length ? `<span class="done-reping-meta-row">${metaParts.join("")}</span>` : "";
+      const buttonLabel = isBusy ? "Calling..." : "Call Again";
 
       return `
-        <button
-          type="button"
-          class="selection-row done-reping-btn"
-          data-reping-student="${escapeHtml(student.student_id)}"
-          ${isBusy || isCoolingDown ? "disabled" : ""}
-        >
+        <div class="selection-row done-reping-row${isCoolingDown ? " is-cooling-down" : ""}">
           <span class="selection-row-copy">
-            <span class="selection-row-name">${escapeHtml(buttonText)}</span>
+            <span class="selection-row-name">${escapeHtml(fullName)}</span>
             ${meta}
           </span>
-        </button>
+          <button
+            type="button"
+            class="done-reping-btn${isCoolingDown ? " is-cooling-down" : ""}"
+            data-reping-student="${escapeHtml(student.student_id)}"
+            aria-disabled="${isBusy || isCoolingDown ? "true" : "false"}"
+            ${isBusy || isCoolingDown ? "disabled" : ""}
+          >
+            ${escapeHtml(buttonLabel)}
+          </button>
+        </div>
       `;
     }).join("");
 
@@ -751,6 +752,20 @@
     showNumberStep(true);
   }
 
+  async function returnToStudentCheckin() {
+    if (!state.number) {
+      showNumberStep(true);
+      return;
+    }
+
+    await loadFamily(state.number);
+    hideAllSections();
+    show("entry-card", false);
+    show("students-section", true);
+    setStudentsActive(true);
+    renderStickyBar();
+  }
+
   function bindEvents() {
     el("find-family").addEventListener("click", () => continueWithNumber(el("carpool-number").value.trim()));
     el("carpool-number").addEventListener("keydown", (event) => {
@@ -761,18 +776,7 @@
     });
 
     el("parent-logout-btn").addEventListener("click", clearParentSession);
-    el("done-btn").addEventListener("click", async () => {
-      if (!state.number) {
-        showNumberStep(true);
-        return;
-      }
-      await loadFamily(state.number);
-      hideAllSections();
-      show("entry-card", false);
-      show("students-section", true);
-      setStudentsActive(true);
-      renderStickyBar();
-    });
+    el("done-back-btn").addEventListener("click", returnToStudentCheckin);
 
     el("done-reping-list").addEventListener("click", (event) => {
       const repingBtn = event.target.closest("[data-reping-student]");

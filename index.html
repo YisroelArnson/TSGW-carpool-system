@@ -567,6 +567,13 @@
         box-shadow: 0 8px 22px rgba(71, 132, 83, 0.09);
       }
 
+      .selection-row.checked-in {
+        background: #eef8f0;
+        border-color: rgba(71, 132, 83, 0.48);
+        box-shadow: inset 0 0 0 1px rgba(71, 132, 83, 0.12);
+        cursor: default;
+      }
+
       .selection-row-main {
         display: flex;
         align-items: center;
@@ -589,6 +596,12 @@
       }
 
       .selection-row.selected .selection-row-toggle {
+        background: #478453;
+        color: #fff;
+        border-color: #478453;
+      }
+
+      .selection-row.checked-in .selection-row-toggle {
         background: #478453;
         color: #fff;
         border-color: #478453;
@@ -741,6 +754,19 @@
         color: var(--text-muted);
         font-size: 0.82rem;
         line-height: 1.35;
+      }
+
+      .student-pick-status {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(71, 132, 83, 0.12);
+        color: #2f6a39;
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
       }
 
       .authorization-grid {
@@ -953,6 +979,41 @@
         text-align: center;
       }
 
+      .done-back-row {
+        width: 100%;
+        display: flex;
+        justify-content: flex-start;
+        margin-bottom: 8px;
+      }
+
+      .done-back-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: none;
+        background: transparent;
+        color: var(--brand-maroon);
+        font-family: "Open Sans", sans-serif;
+        font-size: 0.9rem;
+        font-weight: 700;
+        padding: 4px 0;
+        cursor: pointer;
+      }
+
+      .done-back-btn:hover {
+        color: #7a3469;
+      }
+
+      .done-back-btn svg {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
+        stroke-width: 2.2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
       .check-ring {
         width: 72px;
         height: 72px;
@@ -1018,12 +1079,50 @@
         gap: 10px;
       }
 
+      .done-reping-row {
+        cursor: default;
+      }
+
+      .done-reping-row:hover {
+        border-color: var(--border-light);
+      }
+
+      .done-reping-row.is-cooling-down {
+        background: #f8f4ef;
+      }
+
       .done-reping-btn {
-        justify-content: flex-start;
+        border: none;
+        border-radius: 999px;
+        padding: 10px 16px;
+        background: var(--brand-maroon);
+        color: #fff;
+        font-family: "Open Sans", sans-serif;
+        font-size: 0.84rem;
+        font-weight: 700;
+        white-space: nowrap;
+        transition: background 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+      }
+
+      .done-reping-btn:not(:disabled) {
+        cursor: pointer;
+      }
+
+      .done-reping-btn:not(:disabled):hover {
+        background: #7b3d69;
+      }
+
+      .done-reping-btn:not(:disabled):active {
+        transform: translateY(1px);
+      }
+
+      .done-reping-btn.is-cooling-down {
+        background: rgba(107, 45, 91, 0.18);
+        color: rgba(107, 45, 91, 0.74);
       }
 
       .done-reping-btn:disabled {
-        opacity: 0.58;
+        opacity: 0.62;
         cursor: not-allowed;
       }
 
@@ -1038,27 +1137,6 @@
         align-items: center;
         gap: 8px;
         flex-wrap: wrap;
-      }
-
-      .done-reping-cooldown {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        color: var(--text-muted);
-        font-size: 0.78rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-      }
-
-      .done-reping-cooldown svg {
-        width: 14px;
-        height: 14px;
-        stroke: currentColor;
-        stroke-width: 2;
-        fill: none;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        flex: none;
       }
 
       .done-reping-status {
@@ -1262,19 +1340,26 @@
         <!-- ── Done ─────────────────────────────────────────── -->
         <section id="done-section" class="c-body hidden">
           <div class="done-inner">
+            <div class="done-back-row">
+              <button id="done-back-btn" type="button" class="done-back-btn" aria-label="Back to student check-in">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M15 18l-6-6 6-6"></path>
+                </svg>
+                <span>Back to check-in</span>
+              </button>
+            </div>
             <div class="check-ring" aria-hidden="true">
               <svg viewBox="0 0 24 24">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
             <p id="done-message"></p>
-            <p id="done-note" class="done-note">The school has been notified.</p>
+            <p id="done-note" class="done-note hidden"></p>
             <section id="done-reping-section" class="done-reping-section hidden">
-              <p class="done-reping-kicker">Need to remind the classroom to send someone out again?</p>
+              <p class="done-reping-kicker">You can remind the classroom to send someone out again every 3 min.</p>
               <div id="done-reping-list" class="done-reping-list"></div>
               <p id="done-reping-status" class="done-reping-status hidden"></p>
             </section>
-            <button id="done-btn" class="btn-w btn-maroon">Done</button>
           </div>
         </section>
       </div>

@@ -49,7 +49,48 @@
       .replaceAll("'", "&#39;");
   }
 
-  function csvToRows(csvText) {
+  function normalizeText(value) {
+    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function cleanedText(value) {
+    const text = String(value || "").trim();
+    return text ? text : "";
+  }
+
+  function buildPersonName(firstName, lastName) {
+    return [cleanedText(firstName), cleanedText(lastName)].filter(Boolean).join(" ");
+  }
+
+  function familyDisplayName(family) {
+    const direct = cleanedText(family?.display_name);
+    if (direct) return direct;
+
+    const parentOne = buildPersonName(family?.parent_one_first_name, family?.parent_one_last_name);
+    const parentTwo = buildPersonName(family?.parent_two_first_name, family?.parent_two_last_name);
+
+    if (parentOne && parentTwo) return `${parentOne} & ${parentTwo}`;
+    if (parentOne) return parentOne;
+    if (parentTwo) return parentTwo;
+
+    const legacy = cleanedText(family?.parent_names);
+    return legacy || "Family";
+  }
+
+  function familySearchText(family) {
+    return normalizeText([
+      familyDisplayName(family),
+      family?.parent_names,
+      family?.parent_one_title,
+      family?.parent_one_first_name,
+      family?.parent_one_last_name,
+      family?.parent_two_title,
+      family?.parent_two_first_name,
+      family?.parent_two_last_name
+    ].filter(Boolean).join(" "));
+  }
+
+  function csvToArrays(csvText) {
     const rows = [];
     let row = [];
     let current = "";
@@ -83,9 +124,14 @@
       if (row.some((cell) => cell.length > 0)) rows.push(row);
     }
 
+    return rows;
+  }
+
+  function csvToRows(csvText) {
+    const rows = csvToArrays(csvText);
     if (!rows.length) return [];
 
-    const headers = rows[0].map((h) => h.trim());
+    const headers = rows[0].map((h) => cleanedText(h));
     return rows.slice(1).map((vals, idx) => {
       const obj = { __row_number: idx + 2 };
       headers.forEach((h, i) => {
@@ -125,6 +171,10 @@
     setText,
     show,
     escapeHtml,
+    normalizeText,
+    familyDisplayName,
+    familySearchText,
+    csvToArrays,
     csvToRows,
     requireAuth
   };

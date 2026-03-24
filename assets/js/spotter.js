@@ -1,5 +1,5 @@
 (function spotterPage() {
-  const { mustClient, show, requireAuth, schoolTodayISO, fetchSchoolToday, escapeHtml } = window.carpoolUtils || {};
+  const { mustClient, show, requireAuth, schoolTodayISO, fetchSchoolToday, escapeHtml, familyDisplayName, familySearchText, normalizeText } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const state = {
@@ -10,7 +10,8 @@
     channel: null,
     context: null,
     lookupFamily: null,
-    selectedByFamily: new Map()
+    selectedByFamily: new Map(),
+    messageTimer: null
   };
 
   function el(id) {
@@ -19,9 +20,35 @@
 
   function setMessage(text, klass) {
     const node = el("spotter-checkin-message");
-    node.className = klass || "";
+    if (!node) return;
+
+    if (state.messageTimer) {
+      window.clearTimeout(state.messageTimer);
+      state.messageTimer = null;
+    }
+
+    node.classList.remove("success", "error", "visible");
+
+    if (!text) {
+      node.textContent = "";
+      node.classList.add("hidden");
+      return;
+    }
+
     node.textContent = text;
-    show("spotter-checkin-message", Boolean(text));
+    node.classList.remove("hidden");
+    if (klass) node.classList.add(klass);
+    window.requestAnimationFrame(() => node.classList.add("visible"));
+
+    const duration = klass === "error" ? 3200 : 2200;
+    state.messageTimer = window.setTimeout(() => {
+      node.classList.remove("visible");
+      window.setTimeout(() => {
+        node.classList.add("hidden");
+        node.textContent = "";
+      }, 180);
+      state.messageTimer = null;
+    }, duration);
   }
 
   function familyMeta(familyId) {
@@ -34,7 +61,7 @@
     const cards = [{
       family_id: own.family_id,
       carpool_number: own.carpool_number,
-      parent_names: own.parent_names,
+      display_name: familyDisplayName(own),
       label: "Your Family",
       note: "",
       students: state.context.own_students || []
@@ -45,7 +72,7 @@
       cards.push({
         family_id: family.family_id,
         carpool_number: meta?.carpool_number || "",
-        parent_names: family.parent_names,
+        display_name: familyDisplayName(family),
         label: "Authorized Kids",
         note: `Approved from ${family.starts_on} to ${family.ends_on}`,
         students: family.students || []
@@ -79,24 +106,55 @@
     return "partial";
   }
 
-  function normalizedText(value) {
-    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
-  }
-
-  function familyLastName(parentNames) {
-    const text = String(parentNames || "").trim();
+  function familyLastName(displayName) {
+    const text = String(displayName || "").trim();
     if (!text) return "Family";
     const parts = text.split(/\s+/);
     return parts[parts.length - 1];
   }
 
+  function parentInitial(firstName) {
+    return String(firstName || "").trim().charAt(0).toUpperCase();
+  }
+
+  function familySharedLastName(family) {
+    const parentOneLast = String(family?.parent_one_last_name || "").trim();
+    const parentTwoLast = String(family?.parent_two_last_name || "").trim();
+
+    if (parentOneLast && parentTwoLast && normalizeText(parentOneLast) === normalizeText(parentTwoLast)) {
+      return parentOneLast;
+    }
+
+    if (parentOneLast && !parentTwoLast) return parentOneLast;
+    if (parentTwoLast && !parentOneLast) return parentTwoLast;
+
+    return familyLastName(familyDisplayName(family));
+  }
+
+  function familyQuickLabel(family) {
+    const lastName = familySharedLastName(family);
+    const duplicateCount = state.families.filter((entry) =>
+      normalizeText(familySharedLastName(entry)) === normalizeText(lastName)
+    ).length;
+
+    if (duplicateCount < 2) return familyLastName(familyDisplayName(family));
+
+    const initials = [
+      parentInitial(family?.parent_one_first_name),
+      parentInitial(family?.parent_two_first_name)
+    ].filter(Boolean);
+
+    if (!initials.length) return lastName || "Family";
+    return `${initials.join(" & ")} ${lastName}`;
+  }
+
   function filteredQuickCarpools() {
-    const query = normalizedText(el("spotter-carpool-input").value);
+    const query = normalizeText(el("spotter-carpool-input").value);
     const families = [...state.families].sort((a, b) => Number(a.carpool_number) - Number(b.carpool_number));
     if (!query) return families;
     return families.filter((family) =>
       String(family.carpool_number).includes(query) ||
-      normalizedText(family.parent_names).includes(query)
+      familySearchText(family).includes(query)
     );
   }
 
@@ -107,11 +165,22 @@
     const exactNumber = state.families.find((family) => String(family.carpool_number) === query);
     if (exactNumber) return exactNumber;
 
-    const normalizedQuery = normalizedText(query);
-    const exactName = state.families.find((family) => normalizedText(family.parent_names) === normalizedQuery);
+    const normalizedQuery = normalizeText(query);
+    const exactName = state.families.find((family) => familySearchText(family) === normalizedQuery);
     if (exactName) return exactName;
 
     return filteredQuickCarpools()[0] || null;
+  }
+
+  function clearLookup() {
+    state.lookupFamily = null;
+    state.context = null;
+    resetTopSelections();
+    el("spotter-carpool-input").value = "";
+    renderQuickCarpools();
+    renderContextPanel();
+    setMessage("");
+    el("spotter-carpool-input").focus();
   }
 
   function renderQuickCarpools() {
@@ -131,10 +200,10 @@
         type="button"
         class="spotter-quick-carpool${String(family.carpool_number) === activeNumber ? " active" : ""}"
         data-quick-carpool="${escapeHtml(String(family.carpool_number))}"
-        aria-label="Open carpool ${escapeHtml(String(family.carpool_number))} for ${escapeHtml(family.parent_names)}"
+        aria-label="Open carpool ${escapeHtml(String(family.carpool_number))} for ${escapeHtml(familyDisplayName(family))}"
       >
         <span class="spotter-quick-carpool-number">${escapeHtml(String(family.carpool_number))}</span>
-        <span class="spotter-quick-carpool-name">${escapeHtml(familyLastName(family.parent_names))}</span>
+        <span class="spotter-quick-carpool-name">${escapeHtml(familyQuickLabel(family))}</span>
       </button>
     `).join("");
   }
@@ -342,7 +411,7 @@
       (card.students || []).map((student) => ({
         ...student,
         family_id: card.family_id,
-        parent_names: card.parent_names,
+        display_name: card.display_name,
         carpool_number: card.carpool_number
       }))
     );
@@ -404,7 +473,7 @@
         >
           <span class="spotter-student-copy">
             <span class="spotter-student-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
-            <small>${escapeHtml(student.class_name || "")} · ${escapeHtml(student.parent_names)}${student.carpool_number ? ` · Carpool #${escapeHtml(String(student.carpool_number))}` : ""}</small>
+            <small>${escapeHtml(student.class_name || "")} · ${escapeHtml(student.display_name || "Family")}${student.carpool_number ? ` · Carpool #${escapeHtml(String(student.carpool_number))}` : ""}</small>
           </span>
           <span class="spotter-student-pick-toggle">${isSelected ? "✓" : "+"}</span>
         </button>
@@ -415,7 +484,7 @@
       <div class="spotter-context-shell">
         <div class="spotter-context-head">
           <p class="spotter-context-kicker">Family Found</p>
-          <h3>#${escapeHtml(String(state.context.requesting_family.carpool_number))} ${escapeHtml(state.context.requesting_family.parent_names)}</h3>
+          <h3>#${escapeHtml(String(state.context.requesting_family.carpool_number))} ${escapeHtml(familyDisplayName(state.context.requesting_family))}</h3>
           <p class="spotter-context-copy">Saved carpools are at the top, then spotter can tap own kids or any currently authorized pickup kids below.</p>
         </div>
         ${(state.context.saved_carpools || []).length ? `
@@ -486,7 +555,7 @@
     } catch (error) {
       state.context = null;
       renderContextPanel();
-      setMessage(error.message || `Unable to open ${lookupFamily.parent_names}`, "error");
+      setMessage(error.message || `Unable to open ${familyDisplayName(lookupFamily)}`, "error");
     }
   }
 
@@ -537,7 +606,7 @@
     const [studentsRes, statusRes] = await Promise.all([
       client
         .from("students")
-        .select("id,first_name,last_name,class_id,family_id,classes(name),families(id,carpool_number,parent_names)"),
+        .select("id,first_name,last_name,class_id,family_id,classes(name),families(id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)"),
       client.from("daily_status").select("student_id,status").eq("date", state.today)
     ]);
 
@@ -551,7 +620,14 @@
       familyMap.set(family.id, {
         id: family.id,
         carpool_number: family.carpool_number,
-        parent_names: family.parent_names || ""
+        parent_names: family.parent_names || "",
+        parent_one_title: family.parent_one_title || "",
+        parent_one_first_name: family.parent_one_first_name || "",
+        parent_one_last_name: family.parent_one_last_name || "",
+        parent_two_title: family.parent_two_title || "",
+        parent_two_first_name: family.parent_two_first_name || "",
+        parent_two_last_name: family.parent_two_last_name || "",
+        display_name: familyDisplayName(family)
       });
     });
     state.families = Array.from(familyMap.values());
@@ -584,7 +660,7 @@
   }
 
   function bindUI() {
-    el("spotter-checkin-btn").addEventListener("click", lookupCarpool);
+    el("spotter-checkin-btn").addEventListener("click", clearLookup);
     el("spotter-carpool-input").addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -593,7 +669,11 @@
     });
     el("spotter-carpool-input").addEventListener("input", () => {
       state.lookupFamily = null;
+      state.context = null;
+      resetTopSelections();
       renderQuickCarpools();
+      renderContextPanel();
+      setMessage("");
     });
 
     el("spotter-quick-carpools").addEventListener("click", (event) => {
@@ -633,6 +713,7 @@
 
     el("spotter-search").addEventListener("input", renderTable);
     el("spotter-sort").addEventListener("change", renderTable);
+    el("spotter-checkin-message").addEventListener("click", () => setMessage(""));
 
     el("spotter-logout-btn").addEventListener("click", async () => {
       const client = mustClient();
