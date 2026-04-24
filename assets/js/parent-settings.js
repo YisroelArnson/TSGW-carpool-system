@@ -1,5 +1,13 @@
 (function parentSettingsPage() {
-  const { mustClient, show, escapeHtml, familyDisplayName } = window.carpoolUtils || {};
+  const {
+    mustClient,
+    show,
+    escapeHtml,
+    familyDisplayName,
+    CARPOOL_WEEKDAYS,
+    normalizeWeekdays,
+    formatWeekdays
+  } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const STORAGE_KEY = "tsgw_carpool_number";
@@ -17,6 +25,7 @@
     manageSelection: new Set(),
     editingAuthorizationId: null,
     presetSelection: new Set(),
+    presetWeekdays: new Set(),
     editingPresetId: null
   };
 
@@ -164,6 +173,30 @@
         </span>
       </button>
     `;
+  }
+
+  function weekdayPickerHtml(selectedDays) {
+    return (CARPOOL_WEEKDAYS || []).map((day) => {
+      const selected = selectedDays.has(day.key);
+      return `
+        <button
+          type="button"
+          class="weekday-option${selected ? " selected" : ""}"
+          data-preset-weekday="${escapeHtml(day.key)}"
+          aria-pressed="${selected ? "true" : "false"}"
+        >
+          <span class="weekday-option-main">${escapeHtml(day.label)}</span>
+          <span class="weekday-option-short">${escapeHtml(day.short)}</span>
+        </button>
+      `;
+    }).join("");
+  }
+
+  function syncPresetSubmitState() {
+    setPseudoDisabled(
+      "preset-submit",
+      !state.presetSelection.size || !state.presetWeekdays.size || !el("preset-name").value.trim()
+    );
   }
 
   function openPresetEditor() {
@@ -535,7 +568,7 @@
       `;
     }).join("");
 
-    setPseudoDisabled("preset-submit", !state.presetSelection.size || !el("preset-name").value.trim());
+    syncPresetSubmitState();
   }
 
   function renderPresetList() {
@@ -554,6 +587,7 @@
             <h3 class="item-title">${escapeHtml(preset.name || "Saved Carpool")}</h3>
             <span class="item-count">${escapeHtml(pluralize(Number(preset.student_count || 0), "student"))}</span>
           </div>
+          <p class="item-meta">${escapeHtml(`Days: ${formatWeekdays(preset.weekdays || [], true)}`)}</p>
           <p class="item-meta">${escapeHtml(`Includes: ${students || "No students"}`)}</p>
           <div class="item-actions">
             <button type="button" class="action-link primary" data-edit-preset="${escapeHtml(preset.preset_id)}">Edit</button>
@@ -566,24 +600,30 @@
 
   function resetPresetForm() {
     state.presetSelection = new Set();
+    state.presetWeekdays = new Set();
     state.editingPresetId = null;
     el("preset-editor-title").textContent = "Create Carpool";
     el("open-preset-editor").textContent = "Add New Carpool";
     el("preset-name").value = "";
     el("preset-submit").textContent = "Save Carpool";
     setMessage("preset-message", "");
+    if (el("preset-weekday-picker")) {
+      el("preset-weekday-picker").innerHTML = weekdayPickerHtml(state.presetWeekdays);
+    }
     renderPresetPicker();
-    setPseudoDisabled("preset-submit", true);
+    syncPresetSubmitState();
     closePresetEditor();
   }
 
   function loadPresetIntoForm(preset) {
     state.editingPresetId = preset.preset_id;
     state.presetSelection = new Set((preset.students || []).map((student) => String(student.student_id)));
+    state.presetWeekdays = new Set(normalizeWeekdays(preset.weekdays || []));
     el("preset-editor-title").textContent = "Edit Saved Carpool";
     el("open-preset-editor").textContent = "Add New Carpool";
     el("preset-name").value = preset.name || "";
     el("preset-submit").textContent = "Save Carpool";
+    el("preset-weekday-picker").innerHTML = weekdayPickerHtml(state.presetWeekdays);
     renderPresetPicker();
     openPresetEditor();
   }
@@ -598,11 +638,16 @@
       setMessage("preset-message", "Choose at least one student.", "error");
       return;
     }
+    if (!state.presetWeekdays.size) {
+      setMessage("preset-message", "Choose at least one day.", "error");
+      return;
+    }
 
     const payload = {
       p_owner_carpool_number: Number(state.number),
       p_name: name,
-      p_student_ids: Array.from(state.presetSelection)
+      p_student_ids: Array.from(state.presetSelection),
+      p_weekdays: normalizeWeekdays(Array.from(state.presetWeekdays))
     };
 
     try {
@@ -687,9 +732,11 @@
       el("preset-editor-title").textContent = "Create Carpool";
       el("preset-name").value = "";
       el("preset-submit").textContent = "Save Carpool";
+      state.presetWeekdays = new Set();
+      el("preset-weekday-picker").innerHTML = weekdayPickerHtml(state.presetWeekdays);
       openPresetEditor();
       renderPresetPicker();
-      setPseudoDisabled("preset-submit", true);
+      syncPresetSubmitState();
     });
 
     el("open-authorization-editor").addEventListener("click", () => {
@@ -783,6 +830,15 @@
     });
 
     el("preset-name").addEventListener("input", renderPresetPicker);
+    el("preset-weekday-picker").addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-preset-weekday]");
+      if (!btn) return;
+      const day = btn.dataset.presetWeekday;
+      if (state.presetWeekdays.has(day)) state.presetWeekdays.delete(day);
+      else state.presetWeekdays.add(day);
+      el("preset-weekday-picker").innerHTML = weekdayPickerHtml(state.presetWeekdays);
+      syncPresetSubmitState();
+    });
     el("preset-student-picker").addEventListener("click", (event) => {
       const btn = event.target.closest("[data-preset-student]");
       if (!btn) return;

@@ -210,6 +210,11 @@
       }
 
       .hub-students-card {
+        --fit-grid-gap: 10px;
+        --fit-card-height: auto;
+        --fit-card-padding: 12px 10px;
+        --fit-card-radius: 14px;
+        --fit-card-font-size: 1rem;
         margin-top: 8px;
         padding: 20px;
         border-radius: 16px;
@@ -220,9 +225,17 @@
       .hub-students-head {
         display: flex;
         justify-content: space-between;
-        align-items: baseline;
+        align-items: center;
         gap: 12px;
         margin-bottom: 14px;
+        flex-wrap: wrap;
+      }
+
+      .hub-students-title {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        flex-wrap: wrap;
       }
 
       .hub-students-head h2 {
@@ -236,9 +249,90 @@
         font-size: 0.84rem;
       }
 
+      .hub-students-count {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        font-weight: 600;
+      }
+
+      .hub-students-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .hub-students-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: var(--text-dark);
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .hub-students-toggle input {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        accent-color: var(--brand-maroon);
+      }
+
+      .hub-students-fullscreen-btn {
+        border: 1px solid var(--border-light);
+        border-radius: 999px;
+        background: var(--surface-white);
+        color: var(--text-dark);
+        font-size: 0.78rem;
+        font-weight: 800;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+
+      .hub-students-fullscreen-btn:hover {
+        border-color: rgba(107, 45, 91, 0.32);
+        box-shadow: 0 6px 14px rgba(107, 45, 91, 0.08);
+      }
+
+      body.grid-fullscreen-active {
+        overflow: hidden;
+      }
+
+      .hub-students-card.is-fullscreen {
+        position: fixed;
+        inset: 0;
+        z-index: 95;
+        margin: 0;
+        border-radius: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 18px;
+        background: var(--surface-ivory);
+      }
+
+      .hub-students-card.is-fullscreen .hub-students-head {
+        flex: 0 0 auto;
+      }
+
+      .hub-students-card.is-fullscreen #hub-student-grid {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+
       #hub-student-grid {
         grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important;
         gap: 10px !important;
+      }
+
+      #hub-student-grid.is-fitting {
+        width: 100%;
+        height: 100%;
+        grid-template-columns: var(--fit-grid-columns) !important;
+        gap: var(--fit-grid-gap) !important;
+        align-content: stretch;
+        grid-auto-rows: var(--fit-card-height);
       }
 
       .hub-student-card {
@@ -252,6 +346,34 @@
         justify-content: center;
         gap: 6px;
         text-align: center;
+      }
+
+      #hub-student-grid.is-fitting .hub-student-card {
+        min-height: 0;
+        height: var(--fit-card-height);
+        border-radius: var(--fit-card-radius);
+        padding: var(--fit-card-padding);
+        font-size: var(--fit-card-font-size);
+        line-height: 1.05;
+        overflow: hidden;
+      }
+
+      #hub-student-grid.is-fitting .hub-student-name-line {
+        width: 100%;
+        gap: 3px;
+        min-width: 0;
+      }
+
+      #hub-student-grid.is-fitting .student-name,
+      #hub-student-grid.is-fitting .student-class {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #hub-student-grid.is-fitting .student-class {
+        font-size: 0.66em;
       }
 
       .hub-student-name-line {
@@ -603,10 +725,22 @@
           </div>
         </div>
         <div id="hub-grid" class="grid grid-classes"></div>
-        <section class="hub-students-card">
+        <section id="hub-students-card" class="hub-students-card">
           <div class="hub-students-head">
-            <h2>All Students</h2>
-            <p>Live grid of every student across all classrooms</p>
+            <div>
+              <div class="hub-students-title">
+                <h2>All Students</h2>
+                <span id="hub-student-grid-count" class="hub-students-count"></span>
+              </div>
+              <p>Live grid of every student across all classrooms</p>
+            </div>
+            <div class="hub-students-controls">
+              <label class="hub-students-toggle" for="hub-waiting-only-toggle">
+                <input id="hub-waiting-only-toggle" type="checkbox" />
+                Waiting only
+              </label>
+              <button id="hub-students-fullscreen-btn" class="hub-students-fullscreen-btn" type="button" aria-pressed="false">Full Screen</button>
+            </div>
           </div>
           <div id="hub-student-grid" class="grid student-grid"></div>
         </section>

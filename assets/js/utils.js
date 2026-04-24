@@ -53,6 +53,44 @@
     return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
   }
 
+  const CARPOOL_WEEKDAYS = [
+    { key: "sunday", label: "Sunday", short: "Sun" },
+    { key: "monday", label: "Monday", short: "Mon" },
+    { key: "tuesday", label: "Tuesday", short: "Tue" },
+    { key: "wednesday", label: "Wednesday", short: "Wed" },
+    { key: "thursday", label: "Thursday", short: "Thu" },
+    { key: "friday", label: "Friday", short: "Fri" }
+  ];
+
+  function normalizeWeekdays(values) {
+    const submitted = new Set((values || []).map((value) => normalizeText(value)));
+    return CARPOOL_WEEKDAYS
+      .map((day) => day.key)
+      .filter((key) => submitted.has(key));
+  }
+
+  function weekdayLabel(key, useShort) {
+    const day = CARPOOL_WEEKDAYS.find((entry) => entry.key === normalizeText(key));
+    if (!day) return "";
+    return useShort ? day.short : day.label;
+  }
+
+  function formatWeekdays(values, useShort) {
+    const days = normalizeWeekdays(values).map((key) => weekdayLabel(key, useShort));
+    return days.length ? days.join(", ") : "No days selected";
+  }
+
+  function weekdayKeyForISO(value) {
+    const [year, month, day] = String(value || "").split("-").map(Number);
+    if (!year || !month || !day) return "";
+    const weekday = new Date(year, month - 1, day).getDay();
+    return ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"][weekday] || "";
+  }
+
+  function schoolTodayWeekday() {
+    return weekdayKeyForISO(schoolTodayISO());
+  }
+
   function cleanedText(value) {
     const text = String(value || "").trim();
     return text ? text : "";
@@ -172,6 +210,12 @@
     show,
     escapeHtml,
     normalizeText,
+    CARPOOL_WEEKDAYS,
+    normalizeWeekdays,
+    weekdayLabel,
+    formatWeekdays,
+    weekdayKeyForISO,
+    schoolTodayWeekday,
     familyDisplayName,
     familySearchText,
     csvToArrays,

@@ -1,5 +1,5 @@
 (function parentPage() {
-  const { mustClient, show, escapeHtml, familyDisplayName } = window.carpoolUtils || {};
+  const { mustClient, show, escapeHtml, familyDisplayName, formatWeekdays } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const STORAGE_KEY = "tsgw_carpool_number";
@@ -11,6 +11,7 @@
     manualSelectedByFamily: new Map(),
     activePresetIds: new Set(),
     loading: false,
+    checkinNotice: null,
     lastSubmittedStudents: [],
     repingBusyIds: new Set(),
     repingTimer: null
@@ -62,6 +63,11 @@
     return new Date().toISOString().slice(0, 10);
   }
 
+  function selectedCheckInActor() {
+    const family = state.context?.requesting_family;
+    return family ? familyDisplayName(family) : "";
+  }
+
   async function getCheckinContext(number) {
     const client = mustClient();
     const { data, error } = await client.rpc("get_parent_checkin_context", {
@@ -76,7 +82,8 @@
     const { data, error } = await client.rpc("submit_check_in_request", {
       p_requesting_carpool_number: Number(state.number),
       p_targets: targets,
-      p_called_by: "parent"
+      p_called_by: "parent",
+      p_checked_in_by: selectedCheckInActor()
     });
     if (error) throw error;
     return data;
@@ -87,7 +94,8 @@
     const { data, error } = await client.rpc("submit_carpool_preset_check_in", {
       p_preset_id: presetId,
       p_owner_carpool_number: Number(state.number),
-      p_called_by: "parent"
+      p_called_by: "parent",
+      p_checked_in_by: selectedCheckInActor()
     });
     if (error) throw error;
     return data;
@@ -155,6 +163,34 @@
 
   function isStudentCheckedIn(student) {
     return Boolean(student?.is_checked_in);
+  }
+
+  function studentCooldownUntil(student) {
+    if (!student) return 0;
+    if (student.retry_at) return new Date(student.retry_at).getTime();
+    if (student.called_at) return new Date(student.called_at).getTime() + REPING_COOLDOWN_MS;
+    return 0;
+  }
+
+  function isStudentCoolingDown(student) {
+    return studentCooldownUntil(student) > Date.now();
+  }
+
+  function formatCooldown(ms) {
+    const totalSeconds = Math.max(1, Math.ceil(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes <= 0) return `${seconds}s`;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  function allCheckinStudents() {
+    return familyCards().flatMap((family) =>
+      (family.students || []).map((student) => ({
+        ...student,
+        family_id: family.family_id
+      }))
+    );
   }
 
   function checkedInStudentIds() {
@@ -276,6 +312,7 @@
       const preview = (preset.students || [])
         .map((student) => `${student.first_name} ${student.last_name}`)
         .join(", ");
+      const dayText = formatWeekdays(preset.weekdays || [], true);
       const count = Number(preset.student_count || 0);
 
       return `
@@ -289,7 +326,7 @@
             <span class="selection-row-toggle">${isActive ? "✓" : "+"}</span>
             <span class="selection-row-copy">
               <span class="selection-row-name">${escapeHtml(preset.name || "Quick Pick")}</span>
-              <span class="selection-row-meta">${escapeHtml(preview || "No children")}</span>
+              <span class="selection-row-meta">${escapeHtml(`${dayText} | ${preview || "No children"}`)}</span>
             </span>
           </span>
           <span class="selection-row-count">${escapeHtml(String(count))} ${count === 1 ? "child" : "children"}</span>
@@ -340,30 +377,68 @@
     label.textContent = hasAllSelected ? "Clear All" : "Select All";
   }
 
+  function studentStatusText(student) {
+    const msRemaining = studentCooldownUntil(student) - Date.now();
+    if (msRemaining > 0) return `Sent to classroom. Call again in ${formatCooldown(msRemaining)}.`;
+    return "Sent to classroom. You can call again if needed.";
+  }
+
+  function studentRecallButtonHtml(student, familyId) {
+    const studentId = String(student.student_id);
+    const isBusy = state.repingBusyIds.has(studentId);
+    const isCoolingDown = isStudentCoolingDown(student);
+    const buttonLabel = isBusy ? "Calling..." : (isCoolingDown ? `Wait ${formatCooldown(studentCooldownUntil(student) - Date.now())}` : "Call Again");
+
+    return `
+      <button
+        type="button"
+        class="student-recall-btn"
+        data-reping-student="${escapeHtml(studentId)}"
+        data-reping-family="${escapeHtml(familyId)}"
+        aria-disabled="${isBusy || isCoolingDown ? "true" : "false"}"
+        ${isBusy || isCoolingDown ? "disabled" : ""}
+      >
+        ${escapeHtml(buttonLabel)}
+      </button>
+    `;
+  }
+
   function familyCardHtml(card) {
     const selected = state.selectedByFamily.get(card.family_id) || new Set();
     const studentsHtml = (card.students || []).map((student) => {
       const studentId = String(student.student_id);
       const isSelected = selected.has(studentId);
       const isCheckedIn = isStudentCheckedIn(student);
+      const studentName = `${student.first_name} ${student.last_name}`;
+      const studentCopy = `
+        <span class="selection-row-main">
+          <span class="selection-row-toggle">${isCheckedIn || isSelected ? "✓" : "+"}</span>
+          <span class="student-pick-content">
+            <span class="student-pick-name">${escapeHtml(studentName)}</span>
+            <small class="student-pick-grade">${escapeHtml(student.class_name || "")}</small>
+            ${isCheckedIn ? `<small class="student-pick-status">${escapeHtml(studentStatusText(student))}</small>` : ""}
+          </span>
+        </span>
+      `;
+
+      if (isCheckedIn) {
+        return `
+          <div class="selection-row student-pick checked-in" data-family-id="${escapeHtml(card.family_id)}">
+            ${studentCopy}
+            ${studentRecallButtonHtml(student, card.family_id)}
+          </div>
+        `;
+      }
+
       return `
         <button
           type="button"
-          class="selection-row student-pick${isSelected ? " selected" : ""}${isCheckedIn ? " checked-in" : ""}"
+          class="selection-row student-pick${isSelected ? " selected" : ""}"
           data-family-id="${escapeHtml(card.family_id)}"
           data-student-id="${escapeHtml(studentId)}"
           aria-pressed="${isSelected ? "true" : "false"}"
-          aria-disabled="${isCheckedIn ? "true" : "false"}"
-          ${isCheckedIn ? "disabled" : ""}
         >
-          <span class="selection-row-main">
-            <span class="selection-row-toggle">${isCheckedIn || isSelected ? "✓" : "+"}</span>
-            <span class="student-pick-content">
-              <span class="student-pick-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
-              <small class="student-pick-grade">${escapeHtml(student.class_name || "")}</small>
-              ${isCheckedIn ? '<small class="student-pick-status">Already checked in</small>' : ""}
-            </span>
-          </span>
+          ${studentCopy}
         </button>
       `;
     }).join("");
@@ -393,7 +468,26 @@
     show("sticky-checkin-bar", isStudentsStepActive && state.number && Boolean(state.context));
   }
 
+  function renderCheckinNotice() {
+    const notice = el("checkin-notice");
+    const title = el("checkin-notice-title");
+    const copy = el("checkin-notice-copy");
+    if (!notice || !title || !copy) return;
+
+    if (!state.checkinNotice?.message) {
+      title.textContent = "";
+      copy.textContent = "";
+      show("checkin-notice", false);
+      return;
+    }
+
+    title.textContent = state.checkinNotice.message;
+    copy.textContent = state.checkinNotice.note || "The school has been notified.";
+    show("checkin-notice", true);
+  }
+
   function renderCheckinPage() {
+    renderCheckinNotice();
     renderPresetCards();
     renderFamilyGroups();
     renderStickyBar();
@@ -420,6 +514,7 @@
   async function continueWithNumber(number) {
     clearError("number-error");
     clearError("students-error");
+    state.checkinNotice = null;
 
     if (!number) {
       showError("number-error", "Please enter your carpool number.");
@@ -542,6 +637,7 @@
 
     return {
       called_by: "parent",
+      checked_in_by: selectedCheckInActor(),
       families,
       skipped_students: skippedStudents
     };
@@ -655,17 +751,20 @@
     show("done-reping-section", true);
   }
 
-  async function repingLastSubmittedStudent(studentId) {
-    const target = state.lastSubmittedStudents.find((student) => student.student_id === studentId);
+  async function repingLastSubmittedStudent(studentId, familyId) {
+    const target = state.lastSubmittedStudents.find((student) => student.student_id === studentId)
+      || allCheckinStudents().find((student) => String(student.student_id) === String(studentId));
     if (!target || !state.number || state.repingBusyIds.has(studentId)) return;
 
     state.repingBusyIds.add(studentId);
     setDoneRepingStatus("");
+    clearError("students-error");
+    renderCheckinPage();
     renderDoneRepingActions();
 
     try {
       const result = await submitCheckInRequest([{
-        family_id: target.family_id,
+        family_id: familyId || target.family_id,
         student_ids: [target.student_id]
       }]);
       rememberLastSubmittedStudents({
@@ -676,15 +775,25 @@
       const calledNames = formatCalledStudents(result);
       const skippedNames = formatSkippedStudents(result);
       if (calledNames.length) {
+        state.checkinNotice = {
+          message: `${calledNames.join(", ")} is showing again in the classroom.`,
+          note: "The school has been notified."
+        };
         setDoneRepingStatus(`${calledNames.join(", ")} is showing again in the classroom.`, "success");
       } else if (skippedNames.length) {
+        state.checkinNotice = {
+          message: `${skippedNames.join(", ")} is already active for the classroom.`,
+          note: "You can call again after the cooldown ends."
+        };
         setDoneRepingStatus(`${skippedNames.join(", ")} is already active for the classroom.`, "success");
       }
       await loadFamily(state.number);
     } catch (error) {
+      showError("students-error", error.message || "Unable to call again right now. Please try again.");
       setDoneRepingStatus(error.message || "Unable to reping right now. Please try again.", "error");
     } finally {
       state.repingBusyIds.delete(studentId);
+      renderCheckinPage();
       renderDoneRepingActions();
     }
   }
@@ -728,7 +837,7 @@
 
       rememberLastSubmittedStudents(result);
       const doneCopy = buildDoneCopy(result, note);
-      setDoneState(doneCopy.message, doneCopy.note);
+      state.checkinNotice = doneCopy;
       await loadFamily(state.number);
     } catch (error) {
       showError("students-error", error.message || "Unable to check in right now. Please try again.");
@@ -742,6 +851,7 @@
     localStorage.removeItem(STORAGE_KEY);
     state.number = null;
     state.context = null;
+    state.checkinNotice = null;
     state.lastSubmittedStudents = [];
     state.repingBusyIds = new Set();
     resetSelections();
@@ -792,6 +902,12 @@
 
     ["your-students-list", "authorized-students-list"].forEach((id) => {
       el(id).addEventListener("click", (event) => {
+        const repingBtn = event.target.closest("[data-reping-student]");
+        if (repingBtn) {
+          repingLastSubmittedStudent(repingBtn.dataset.repingStudent, repingBtn.dataset.repingFamily);
+          return;
+        }
+
         const studentBtn = event.target.closest("[data-student-id]");
         if (studentBtn) {
           toggleStudentSelection(studentBtn.dataset.familyId, studentBtn.dataset.studentId);
@@ -842,9 +958,13 @@
 
     state.repingTimer = window.setInterval(() => {
       const doneSection = el("done-section");
-      if (!doneSection || doneSection.classList.contains("hidden")) return;
-      if (!state.lastSubmittedStudents.length) return;
-      renderDoneRepingActions();
+      const studentsSection = el("students-section");
+      if (doneSection && !doneSection.classList.contains("hidden") && state.lastSubmittedStudents.length) {
+        renderDoneRepingActions();
+      }
+      if (studentsSection && !studentsSection.classList.contains("hidden") && allCheckinStudents().some(isStudentCheckedIn)) {
+        renderCheckinPage();
+      }
     }, 1000);
   }
 

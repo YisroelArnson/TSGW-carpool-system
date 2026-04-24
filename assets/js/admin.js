@@ -8,7 +8,10 @@
     schoolTodayISO,
     fetchSchoolToday,
     familyDisplayName,
-    normalizeText
+    normalizeText,
+    CARPOOL_WEEKDAYS,
+    normalizeWeekdays,
+    formatWeekdays
   } = window.carpoolUtils || {};
   if (!mustClient) return;
 
@@ -73,6 +76,10 @@
     currentTab: "today",
     channel: null,
     refreshTimer: null,
+    todayAttemptSearch: "",
+    todayGridWaitingOnly: false,
+    todayGridFullscreen: false,
+    todayGridFitTimer: null,
     importPreview: {
       fileName: "",
       rows: [],
@@ -118,6 +125,44 @@
 
   function studentLabel(student) {
     return `${student.last_name}, ${student.first_name}`;
+  }
+
+  function weekdayCheckboxesHtml(selectedDays) {
+    const selected = new Set(normalizeWeekdays(selectedDays || []));
+    return (CARPOOL_WEEKDAYS || []).map((day) => {
+      const checked = selected.has(day.key) ? "checked" : "";
+      return `<label class="checkbox-option">
+        <input type="checkbox" data-preset-weekday value="${escapeHtml(day.key)}" ${checked} />
+        <span class="checkbox-option-row">
+          <span class="checkbox-option-main">
+            <span class="checkbox-option-toggle" aria-hidden="true"></span>
+            <span class="checkbox-option-copy">
+              <span class="checkbox-option-name">${escapeHtml(day.label)}</span>
+              <span class="checkbox-option-meta">${escapeHtml(day.short)}</span>
+            </span>
+          </span>
+        </span>
+      </label>`;
+    }).join("");
+  }
+
+  async function currentActorLabel(client, fallback) {
+    try {
+      const { data } = await client.auth.getUser();
+      return data?.user?.email || fallback;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  function checkInSourceLabel(record) {
+    const source = record?.called_by || "";
+    const actor = record?.checked_in_by || "";
+    const sourceLabel = source ? source.charAt(0).toUpperCase() + source.slice(1) : "";
+    if (!source && !actor) return "-";
+    if (!actor || actor.toLowerCase() === source.toLowerCase()) return sourceLabel || actor;
+    if (!source) return actor;
+    return `${sourceLabel}: ${actor}`;
   }
 
   function cleanValue(value) {
@@ -379,27 +424,119 @@
     return new Map(state.dailyStatus.map((row) => [row.student_id, row]));
   }
 
+  function fitStudentGrid(panel, grid, cardSelector) {
+    if (!panel || !grid) return;
+
+    const cards = Array.from(grid.querySelectorAll(cardSelector));
+    if (!panel.classList.contains("is-fullscreen") || !cards.length) {
+      grid.classList.remove("is-fitting");
+      panel.style.removeProperty("--fit-grid-columns");
+      panel.style.removeProperty("--fit-grid-gap");
+      panel.style.removeProperty("--fit-card-height");
+      panel.style.removeProperty("--fit-card-padding");
+      panel.style.removeProperty("--fit-card-radius");
+      panel.style.removeProperty("--fit-card-font-size");
+      panel.style.removeProperty("--fit-panel-padding");
+      return;
+    }
+
+    const rect = grid.getBoundingClientRect();
+    const width = Math.max(1, rect.width);
+    const height = Math.max(1, rect.height);
+    const count = cards.length;
+    let best = { columns: 1, rows: count, cardWidth: width, cardHeight: height / count, score: 0 };
+
+    for (let columns = 1; columns <= count; columns += 1) {
+      const rows = Math.ceil(count / columns);
+      const gap = Math.max(4, Math.min(12, Math.min(width, height) * 0.012));
+      const cardWidth = (width - gap * (columns - 1)) / columns;
+      const cardHeight = (height - gap * (rows - 1)) / rows;
+      const score = Math.min(cardWidth / 2.8, cardHeight);
+      if (cardWidth > 34 && cardHeight > 24 && score > best.score) {
+        best = { columns, rows, cardWidth, cardHeight, gap, score };
+      }
+    }
+
+    const sizeBase = Math.min(best.cardHeight * 0.34, best.cardWidth / 11);
+    const fontSize = Math.max(0.54, Math.min(1.18, sizeBase / 16));
+    const paddingY = Math.max(2, Math.min(10, best.cardHeight * 0.1));
+    const paddingX = Math.max(3, Math.min(12, best.cardWidth * 0.06));
+    const radius = Math.max(5, Math.min(14, Math.min(best.cardHeight, best.cardWidth) * 0.08));
+
+    panel.style.setProperty("--fit-grid-columns", `repeat(${best.columns}, minmax(0, 1fr))`);
+    panel.style.setProperty("--fit-grid-gap", `${best.gap}px`);
+    panel.style.setProperty("--fit-card-height", `${Math.max(24, best.cardHeight)}px`);
+    panel.style.setProperty("--fit-card-padding", `${paddingY}px ${paddingX}px`);
+    panel.style.setProperty("--fit-card-radius", `${radius}px`);
+    panel.style.setProperty("--fit-card-font-size", `${fontSize}rem`);
+    panel.style.setProperty("--fit-panel-padding", `${Math.max(8, Math.min(16, best.gap * 1.25))}px`);
+    grid.classList.add("is-fitting");
+  }
+
+  function scheduleTodayGridFit() {
+    if (state.todayGridFitTimer) window.cancelAnimationFrame(state.todayGridFitTimer);
+    state.todayGridFitTimer = window.requestAnimationFrame(() => {
+      state.todayGridFitTimer = null;
+      fitStudentGrid(el("today-student-grid-card"), el("today-student-grid"), ".all-students-card");
+    });
+  }
+
+  function setTodayGridFullscreen(enabled, options = {}) {
+    const panel = el("today-student-grid-card");
+    const button = el("today-grid-fullscreen-btn");
+    if (!panel) return;
+
+    state.todayGridFullscreen = enabled;
+    panel.classList.toggle("is-fullscreen", enabled);
+    document.body.classList.toggle("grid-fullscreen-active", enabled);
+
+    if (button) {
+      button.textContent = enabled ? "Exit Full Screen" : "Full Screen";
+      button.setAttribute("aria-pressed", String(enabled));
+    }
+
+    if (enabled) {
+      if (!options.skipNative && panel.requestFullscreen && document.fullscreenElement !== panel) {
+        panel.requestFullscreen().catch(() => {});
+      }
+      scheduleTodayGridFit();
+      window.setTimeout(scheduleTodayGridFit, 80);
+      return;
+    }
+
+    if (!options.skipNative && document.fullscreenElement === panel && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+    scheduleTodayGridFit();
+  }
+
   async function setTodayStudentStatus(studentId, status) {
     const client = mustClient();
+    const isCalled = status === "CALLED";
+    const checkedInBy = isCalled ? await currentActorLabel(client, "Admin") : null;
     const payload = [{
       student_id: studentId,
       date: state.today,
       status,
-      called_at: new Date().toISOString(),
-      called_by: "admin"
+      called_at: isCalled ? new Date().toISOString() : null,
+      called_by: isCalled ? "admin" : null,
+      checked_in_by: checkedInBy
     }];
 
     const { error } = await client.from("daily_status").upsert(payload, { onConflict: "student_id,date" });
     if (error) throw error;
+    return checkedInBy;
   }
 
-  function applyTodayStatusLocally(studentId, status) {
+  function applyTodayStatusLocally(studentId, status, checkedInBy) {
+    const isCalled = status === "CALLED";
     const nextRecord = {
       student_id: studentId,
       date: state.today,
       status,
-      called_at: new Date().toISOString(),
-      called_by: "admin"
+      called_at: isCalled ? new Date().toISOString() : null,
+      called_by: isCalled ? "admin" : null,
+      checked_in_by: isCalled ? (checkedInBy || "Admin") : null
     };
     const existingIndex = state.dailyStatus.findIndex((row) => row.student_id === studentId && row.date === state.today);
     if (existingIndex >= 0) {
@@ -415,15 +552,38 @@
   async function toggleTodayStudentStatus(studentId) {
     const current = dailyStatusMap().get(studentId);
     const nextStatus = current && current.status === "CALLED" ? "WAITING" : "CALLED";
-    await setTodayStudentStatus(studentId, nextStatus);
-    applyTodayStatusLocally(studentId, nextStatus);
+    const checkedInBy = await setTodayStudentStatus(studentId, nextStatus);
+    applyTodayStatusLocally(studentId, nextStatus, checkedInBy);
     renderToday();
   }
 
   async function repingTodayStudent(studentId) {
-    await setTodayStudentStatus(studentId, "CALLED");
-    applyTodayStatusLocally(studentId, "CALLED");
+    const checkedInBy = await setTodayStudentStatus(studentId, "CALLED");
+    applyTodayStatusLocally(studentId, "CALLED", checkedInBy);
     renderToday();
+  }
+
+  function formatAttemptTime(value) {
+    return value ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-";
+  }
+
+  function todayAttemptMatchesSearch({ rec, stu }) {
+    const query = normalizeText(state.todayAttemptSearch);
+    if (!query) return true;
+
+    const family = stu && stu.families ? stu.families : null;
+    const haystack = normalizeText([
+      formatAttemptTime(rec.called_at),
+      stu ? studentLabel(stu) : "Unknown student",
+      stu ? `${stu.first_name} ${stu.last_name}` : "",
+      stu && stu.classes ? stu.classes.name : "",
+      family ? familyDisplayName(family) : "",
+      family ? family.carpool_number : "",
+      rec.status,
+      checkInSourceLabel(rec)
+    ].join(" "));
+
+    return query.split(" ").every((term) => haystack.includes(term));
   }
 
   function applySortHeaders(tableId, col, dir) {
@@ -451,7 +611,7 @@
         .order("last_name", { ascending: true }),
       client
         .from("daily_status")
-        .select("id,student_id,status,called_at,called_by,date")
+        .select("id,student_id,status,called_at,called_by,checked_in_by,date")
         .eq("date", state.today)
         .order("called_at", { ascending: false })
     ]);
@@ -667,14 +827,22 @@
       if (col === "family") return stu && stu.families ? familyDisplayName(stu.families) : "";
       if (col === "carpool") return stu && stu.families ? stu.families.carpool_number : 0;
       if (col === "status") return rec.status || "";
-      if (col === "source") return rec.called_by || "";
+      if (col === "source") return checkInSourceLabel(rec);
       return "";
     };
-    const sorted = sortedBy(enriched, col, dir, valFn);
+    const visible = enriched.filter(todayAttemptMatchesSearch);
+    const sorted = sortedBy(visible, col, dir, valFn);
+    const visibleCount = el("today-attempts-visible-count");
+    if (visibleCount) {
+      const searchActive = Boolean(normalizeText(state.todayAttemptSearch));
+      visibleCount.textContent = searchActive
+        ? `${visible.length} of ${enriched.length} shown`
+        : `${enriched.length} shown`;
+    }
 
     const rows = sorted
       .map(({ rec, stu }) => {
-        const time = rec.called_at ? new Date(rec.called_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-";
+        const time = formatAttemptTime(rec.called_at);
         const statusClass = rec.status === "CALLED" ? "status status-called" : "status status-waiting";
         return `<tr>
           <td>${escapeHtml(time)}</td>
@@ -683,13 +851,16 @@
           <td>${escapeHtml(stu && stu.families ? familyDisplayName(stu.families) : "")}</td>
           <td>${escapeHtml(stu && stu.families ? String(stu.families.carpool_number) : "")}</td>
           <td><span class="${statusClass}${stu ? " is-toggle" : ""}" ${stu ? `data-today-student-id="${escapeHtml(stu.id)}"` : ""}>${escapeHtml(rec.status)}</span></td>
-          <td>${escapeHtml(rec.called_by || "-")}</td>
+          <td>${escapeHtml(checkInSourceLabel(rec))}</td>
           <td>${stu ? bellActionButton("data-reping-student", stu.id, rec.status === "CALLED" ? "Reping student" : "Call student") : "-"}</td>
         </tr>`;
       })
       .join("");
 
-    el("today-attempts-tbody").innerHTML = rows || '<tr><td colspan="8" class="muted">No dismissal attempts yet today.</td></tr>';
+    const emptyMessage = state.dailyStatus.length
+      ? "No attempts match your search."
+      : "No dismissal attempts yet today.";
+    el("today-attempts-tbody").innerHTML = rows || `<tr><td colspan="8" class="muted">${emptyMessage}</td></tr>`;
     applySortHeaders("today-table", col, dir);
     renderTodayStudentGrid();
   }
@@ -703,8 +874,20 @@
       const lastCmp = a.last_name.localeCompare(b.last_name);
       return lastCmp !== 0 ? lastCmp : a.first_name.localeCompare(b.first_name);
     });
+    const visibleStudents = state.todayGridWaitingOnly
+      ? students.filter((student) => {
+        const rec = statusByStudent.get(student.id);
+        return !rec || rec.status !== "CALLED";
+      })
+      : students;
+    const count = el("today-student-grid-count");
+    if (count) {
+      count.textContent = state.todayGridWaitingOnly
+        ? `${visibleStudents.length} waiting of ${students.length}`
+        : `${students.length} students`;
+    }
 
-    const html = students
+    const html = visibleStudents
       .map((student) => {
         const rec = statusByStudent.get(student.id);
         const status = rec ? rec.status : "WAITING";
@@ -719,7 +902,8 @@
       })
       .join("");
 
-    el("today-student-grid").innerHTML = html || '<p class="muted">No students yet.</p>';
+    el("today-student-grid").innerHTML = html || `<p class="muted">${state.todayGridWaitingOnly ? "Everyone has been called." : "No students yet."}</p>`;
+    scheduleTodayGridFit();
   }
 
   function renderAll() {
@@ -819,6 +1003,7 @@
 
       if (presetsCol === "owner") return owner ? familyLabel(owner) : "";
       if (presetsCol === "name") return preset.name || "";
+      if (presetsCol === "days") return formatWeekdays(preset.weekdays || []);
       if (presetsCol === "students") return students;
       return "";
     });
@@ -834,6 +1019,7 @@
         return `<tr>
           <td>${escapeHtml(owner ? familyLabel(owner) : "Unknown")}</td>
           <td>${escapeHtml(preset.name || "")}</td>
+          <td>${escapeHtml(formatWeekdays(preset.weekdays || [], true))}</td>
           <td>${escapeHtml(students || "No students")}</td>
           <td>
             <div class="permissions-actions">
@@ -845,7 +1031,7 @@
       })
       .join("");
 
-    el("presets-tbody").innerHTML = presetRows || '<tr><td colspan="4" class="muted">No saved carpools yet.</td></tr>';
+    el("presets-tbody").innerHTML = presetRows || '<tr><td colspan="5" class="muted">No saved carpools yet.</td></tr>';
     applySortHeaders("presets-table", presetsCol, presetsDir);
 
     const auditRows = state.pickupAuthorizationAudit
@@ -1132,6 +1318,10 @@
           <input id="modal-preset-name" type="text" value="${escapeHtml(data?.name || "")}" required />
         </div>
         <div class="form-row">
+          <label>Days of the Week</label>
+          <div class="checkbox-list weekday-checkbox-list">${weekdayCheckboxesHtml(data?.weekdays || [])}</div>
+        </div>
+        <div class="form-row">
           <label>Students</label>
           <div id="modal-preset-students" class="checkbox-list">${presetStudentPickerHtml(data?.owner_family_id || "", data?.student_ids || [])}</div>
         </div>
@@ -1251,6 +1441,7 @@
         preset_id: preset.id,
         owner_family_id: preset.owner_family_id,
         name: preset.name,
+        weekdays: preset.weekdays || [],
         student_ids: presetStudentIds(preset.id)
       };
       body = modalFieldTemplate("preset", modalData);
@@ -1420,9 +1611,10 @@
     const ownerFamilyId = el("modal-preset-owner").value;
     const name = el("modal-preset-name").value.trim();
     const studentIds = Array.from(document.querySelectorAll("[data-preset-student]:checked")).map((input) => input.value);
+    const weekdays = normalizeWeekdays(Array.from(document.querySelectorAll("[data-preset-weekday]:checked")).map((input) => input.value));
 
-    if (!ownerFamilyId || !name || !studentIds.length) {
-      setNodeMessage("admin-modal-msg", "Choose an owner family, a name, and at least one student.", "error");
+    if (!ownerFamilyId || !name || !studentIds.length || !weekdays.length) {
+      setNodeMessage("admin-modal-msg", "Choose an owner family, a name, at least one day, and at least one student.", "error");
       return;
     }
 
@@ -1432,12 +1624,14 @@
           p_preset_id: state.modal.entityId,
           p_owner_family_id: ownerFamilyId,
           p_name: name,
-          p_student_ids: studentIds
+          p_student_ids: studentIds,
+          p_weekdays: weekdays
         }
       : {
           p_owner_family_id: ownerFamilyId,
           p_name: name,
-          p_student_ids: studentIds
+          p_student_ids: studentIds,
+          p_weekdays: weekdays
         };
 
     const { error } = await client.rpc(rpcName, params);
@@ -2138,22 +2332,48 @@
       }
     });
 
+    el("today-attempts-search")?.addEventListener("input", (event) => {
+      state.todayAttemptSearch = event.target.value;
+      renderToday();
+    });
+
     el("today-student-grid").addEventListener("click", async (event) => {
       const card = event.target.closest("[data-today-grid-student-id]");
       if (!card) return;
       const studentId = card.dataset.todayGridStudentId;
       if (!studentId) return;
       try {
-        const current = dailyStatusMap().get(studentId);
-        if (current && current.status === "CALLED") {
-          await repingTodayStudent(studentId);
-        } else {
-          await toggleTodayStudentStatus(studentId);
-        }
+        await toggleTodayStudentStatus(studentId);
       } catch (error) {
         alert(error.message || "Unable to update student status.");
       }
     });
+
+    el("today-waiting-only-toggle")?.addEventListener("change", (event) => {
+      state.todayGridWaitingOnly = event.target.checked;
+      renderTodayStudentGrid();
+    });
+
+    el("today-grid-fullscreen-btn")?.addEventListener("click", () => {
+      setTodayGridFullscreen(!state.todayGridFullscreen);
+    });
+
+    document.addEventListener("fullscreenchange", () => {
+      const panel = el("today-student-grid-card");
+      if (state.todayGridFullscreen && document.fullscreenElement !== panel) {
+        setTodayGridFullscreen(false, { skipNative: true });
+      } else if (state.todayGridFullscreen) {
+        scheduleTodayGridFit();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && state.todayGridFullscreen) {
+        setTodayGridFullscreen(false);
+      }
+    });
+
+    window.addEventListener("resize", scheduleTodayGridFit);
 
     el("families-tbody").addEventListener("click", (event) => {
       const editBtn = event.target.closest("[data-edit-family]");
@@ -2257,6 +2477,7 @@
 
   window.addEventListener("beforeunload", () => {
     if (state.refreshTimer) clearTimeout(state.refreshTimer);
+    if (state.todayGridFitTimer) window.cancelAnimationFrame(state.todayGridFitTimer);
     if (state.channel && window.carpoolClient) {
       window.carpoolClient.removeChannel(state.channel);
     }

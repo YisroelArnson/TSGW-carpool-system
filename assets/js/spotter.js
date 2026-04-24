@@ -1,5 +1,18 @@
 (function spotterPage() {
-  const { mustClient, show, requireAuth, schoolTodayISO, fetchSchoolToday, escapeHtml, familyDisplayName, familySearchText, normalizeText } = window.carpoolUtils || {};
+  const {
+    mustClient,
+    show,
+    requireAuth,
+    schoolTodayISO,
+    fetchSchoolToday,
+    escapeHtml,
+    familyDisplayName,
+    familySearchText,
+    normalizeText,
+    normalizeWeekdays,
+    formatWeekdays,
+    weekdayKeyForISO
+  } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const state = {
@@ -16,6 +29,15 @@
 
   function el(id) {
     return document.getElementById(id);
+  }
+
+  async function currentActorLabel(client, fallback) {
+    try {
+      const { data } = await client.auth.getUser();
+      return data?.user?.email || fallback;
+    } catch (error) {
+      return fallback;
+    }
   }
 
   function setMessage(text, klass) {
@@ -318,12 +340,15 @@
 
   async function setStatus(studentId, status, calledBy) {
     const client = mustClient();
+    const isCalled = status === "CALLED";
+    const checkedInBy = isCalled ? await currentActorLabel(client, calledBy === "spotter" ? "Spotter" : "Staff") : null;
     const payload = [{
       student_id: studentId,
       date: state.today,
       status,
-      called_at: new Date().toISOString(),
-      called_by: calledBy
+      called_at: isCalled ? new Date().toISOString() : null,
+      called_by: isCalled ? calledBy : null,
+      checked_in_by: checkedInBy
     }];
 
     const { error } = await client.from("daily_status").upsert(payload, { onConflict: "student_id,date" });
@@ -341,10 +366,12 @@
 
   async function submitCheckInRequest(number, targets) {
     const client = mustClient();
+    const checkedInBy = await currentActorLabel(client, "Spotter");
     const { data, error } = await client.rpc("submit_check_in_request", {
       p_requesting_carpool_number: Number(number),
       p_targets: targets,
-      p_called_by: "spotter"
+      p_called_by: "spotter",
+      p_checked_in_by: checkedInBy
     });
     if (error) throw error;
     return data;
@@ -417,22 +444,26 @@
     );
     const totalSelected = selectedCount();
     const ownSelected = ownCard ? familySelectionState(ownCard) === "full" : false;
+    const todayWeekday = weekdayKeyForISO(state.today);
     const presetButtons = (state.context.saved_carpools || []).map((preset) => {
       const count = Number(preset.student_count || 0);
       const active = isPresetSelected(preset);
       const preview = (preset.students || []).map((student) => student.first_name).join(", ");
+      const days = normalizeWeekdays(preset.weekdays || []);
+      const isTodayPreset = todayWeekday && days.includes(todayWeekday);
+      const dayText = formatWeekdays(days, true);
       return `
         <button
           type="button"
-          class="spotter-preset-pick${active ? " selected" : ""}"
+          class="spotter-preset-pick${active ? " selected" : ""}${isTodayPreset ? " today" : ""}"
           data-preset-id="${escapeHtml(preset.preset_id)}"
           aria-pressed="${active ? "true" : "false"}"
         >
           <span class="spotter-preset-pick-icon">${active ? "✓" : "+"}</span>
           <span class="spotter-preset-pick-copy">
-            <span class="spotter-preset-pick-kicker">Saved Carpool</span>
+            <span class="spotter-preset-pick-kicker">${isTodayPreset ? "Today" : "Saved Carpool"}</span>
             <span class="spotter-preset-pick-name">${escapeHtml(preset.name || "Quick Pick")}</span>
-            <span class="spotter-preset-pick-meta">${escapeHtml(preview || `${count} students`)}</span>
+            <span class="spotter-preset-pick-meta">${escapeHtml(`${dayText} | ${preview || `${count} students`}`)}</span>
           </span>
         </button>
       `;

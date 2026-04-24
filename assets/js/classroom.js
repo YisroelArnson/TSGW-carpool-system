@@ -17,6 +17,9 @@
     classTotals: new Map(),
     classCalled: new Map(),
     selectedHubClassIds: new Set(),
+    hubStudentsWaitingOnly: false,
+    hubStudentsFullscreen: false,
+    hubStudentsFitTimer: null,
     channel: null,
     syncInterval: null,
     alertTimer: null,
@@ -159,6 +162,90 @@
       });
   }
 
+  function fitStudentGrid(panel, grid, cardSelector) {
+    if (!panel || !grid) return;
+
+    const cards = Array.from(grid.querySelectorAll(cardSelector));
+    if (!panel.classList.contains("is-fullscreen") || !cards.length) {
+      grid.classList.remove("is-fitting");
+      panel.style.removeProperty("--fit-grid-columns");
+      panel.style.removeProperty("--fit-grid-gap");
+      panel.style.removeProperty("--fit-card-height");
+      panel.style.removeProperty("--fit-card-padding");
+      panel.style.removeProperty("--fit-card-radius");
+      panel.style.removeProperty("--fit-card-font-size");
+      return;
+    }
+
+    const rect = grid.getBoundingClientRect();
+    const width = Math.max(1, rect.width);
+    const height = Math.max(1, rect.height);
+    const count = cards.length;
+    let best = { columns: 1, rows: count, cardWidth: width, cardHeight: height / count, score: 0, gap: 8 };
+
+    for (let columns = 1; columns <= count; columns += 1) {
+      const rows = Math.ceil(count / columns);
+      const gap = Math.max(4, Math.min(12, Math.min(width, height) * 0.012));
+      const cardWidth = (width - gap * (columns - 1)) / columns;
+      const cardHeight = (height - gap * (rows - 1)) / rows;
+      const score = Math.min(cardWidth / 2.8, cardHeight);
+      if (cardWidth > 34 && cardHeight > 24 && score > best.score) {
+        best = { columns, rows, cardWidth, cardHeight, gap, score };
+      }
+    }
+
+    const sizeBase = Math.min(best.cardHeight * 0.34, best.cardWidth / 11);
+    const fontSize = Math.max(0.54, Math.min(1.18, sizeBase / 16));
+    const paddingY = Math.max(2, Math.min(10, best.cardHeight * 0.1));
+    const paddingX = Math.max(3, Math.min(12, best.cardWidth * 0.06));
+    const radius = Math.max(5, Math.min(14, Math.min(best.cardHeight, best.cardWidth) * 0.08));
+
+    panel.style.setProperty("--fit-grid-columns", `repeat(${best.columns}, minmax(0, 1fr))`);
+    panel.style.setProperty("--fit-grid-gap", `${best.gap}px`);
+    panel.style.setProperty("--fit-card-height", `${Math.max(24, best.cardHeight)}px`);
+    panel.style.setProperty("--fit-card-padding", `${paddingY}px ${paddingX}px`);
+    panel.style.setProperty("--fit-card-radius", `${radius}px`);
+    panel.style.setProperty("--fit-card-font-size", `${fontSize}rem`);
+    grid.classList.add("is-fitting");
+  }
+
+  function scheduleHubStudentsFit() {
+    if (state.hubStudentsFitTimer) window.cancelAnimationFrame(state.hubStudentsFitTimer);
+    state.hubStudentsFitTimer = window.requestAnimationFrame(() => {
+      state.hubStudentsFitTimer = null;
+      fitStudentGrid(el("hub-students-card"), el("hub-student-grid"), ".hub-student-card");
+    });
+  }
+
+  function setHubStudentsFullscreen(enabled, options = {}) {
+    const panel = el("hub-students-card");
+    const button = el("hub-students-fullscreen-btn");
+    if (!panel) return;
+
+    state.hubStudentsFullscreen = enabled;
+    panel.classList.toggle("is-fullscreen", enabled);
+    document.body.classList.toggle("grid-fullscreen-active", enabled);
+
+    if (button) {
+      button.textContent = enabled ? "Exit Full Screen" : "Full Screen";
+      button.setAttribute("aria-pressed", String(enabled));
+    }
+
+    if (enabled) {
+      if (!options.skipNative && panel.requestFullscreen && document.fullscreenElement !== panel) {
+        panel.requestFullscreen().catch(() => {});
+      }
+      scheduleHubStudentsFit();
+      window.setTimeout(scheduleHubStudentsFit, 80);
+      return;
+    }
+
+    if (!options.skipNative && document.fullscreenElement === panel && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+    scheduleHubStudentsFit();
+  }
+
   function hubCardHtml(cls) {
     const total = state.classTotals.get(cls.id) || 0;
     const called = state.classCalled.get(cls.id) || 0;
@@ -192,6 +279,27 @@
     </div>`;
   }
 
+  function renderHubStudentGrid() {
+    const students = getSortedStudents();
+    const visibleStudents = state.hubStudentsWaitingOnly
+      ? students.filter((student) => (state.statusesByStudent.get(student.id) || "WAITING") !== "CALLED")
+      : students;
+    const count = el("hub-student-grid-count");
+    const grid = el("hub-student-grid");
+
+    if (count) {
+      count.textContent = state.hubStudentsWaitingOnly
+        ? `${visibleStudents.length} waiting of ${students.length}`
+        : `${students.length} students`;
+    }
+
+    if (grid) {
+      grid.innerHTML = visibleStudents.map(hubStudentCardHtml).join("") || `<p class="muted">${state.hubStudentsWaitingOnly ? "Everyone has been called." : "No students yet."}</p>`;
+    }
+
+    scheduleHubStudentsFit();
+  }
+
   function updateHubSelectionUi() {
     const count = state.selectedHubClassIds.size;
     const openCombined = el("hub-open-combined");
@@ -218,8 +326,7 @@
     const grid = el("hub-grid");
     grid.innerHTML = state.classes.map(hubCardHtml).join("");
 
-    const hubStudents = el("hub-student-grid");
-    hubStudents.innerHTML = getSortedStudents().map(hubStudentCardHtml).join("");
+    renderHubStudentGrid();
 
     updateHubSelectionUi();
   }
@@ -269,13 +376,18 @@
   }
 
   function updateHubStudentCard(studentId) {
+    if (state.hubStudentsWaitingOnly) {
+      renderHubStudentGrid();
+      return;
+    }
+
     const node = document.querySelector(`[data-hub-student-id="${studentId}"]`);
     if (!node) return;
 
     const status = state.statusesByStudent.get(studentId) || "WAITING";
     node.classList.toggle("called", status === "CALLED");
     node.classList.toggle("waiting", status !== "CALLED");
-
+    scheduleHubStudentsFit();
   }
 
   function updateDisplayStudent(studentId) {
@@ -347,24 +459,62 @@
     if (!ctx) return;
 
     const start = ctx.currentTime + 0.01;
-    const notes = [
-      { frequency: 659.25, peak: 0.16, duration: 0.18 },
-      { frequency: 880.0, peak: 0.22, duration: 0.28 }
+    const honks = [
+      { startOffset: 0, duration: 0.24, peak: 0.26 },
+      { startOffset: 0.34, duration: 0.24, peak: 0.28 },
+      { startOffset: 0.68, duration: 0.3, peak: 0.3 }
     ];
 
-    notes.forEach((note, index) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const noteStart = start + (index * 0.17);
-      osc.type = "sine";
-      osc.frequency.value = note.frequency;
-      gain.gain.setValueAtTime(0.0001, noteStart);
-      gain.gain.exponentialRampToValueAtTime(note.peak, noteStart + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + note.duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(noteStart);
-      osc.stop(noteStart + note.duration + 0.03);
+    honks.forEach((honk) => {
+      const honkStart = start + honk.startOffset;
+      const honkEnd = honkStart + honk.duration;
+      const master = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+      const compressor = ctx.createDynamicsCompressor();
+      const tones = [
+        { frequency: 392, type: "sawtooth", gain: 0.62 },
+        { frequency: 466.16, type: "square", gain: 0.38 }
+      ];
+
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(720, honkStart);
+      filter.frequency.exponentialRampToValueAtTime(520, honkEnd);
+      filter.Q.value = 1.1;
+
+      compressor.threshold.value = -22;
+      compressor.knee.value = 18;
+      compressor.ratio.value = 4;
+      compressor.attack.value = 0.004;
+      compressor.release.value = 0.14;
+
+      master.gain.setValueAtTime(0.0001, honkStart);
+      master.gain.exponentialRampToValueAtTime(honk.peak, honkStart + 0.025);
+      master.gain.setTargetAtTime(honk.peak * 0.86, honkStart + 0.08, 0.12);
+      master.gain.exponentialRampToValueAtTime(0.0001, honkEnd);
+
+      tones.forEach((tone, index) => {
+        const osc = ctx.createOscillator();
+        const toneGain = ctx.createGain();
+        osc.type = tone.type;
+        osc.frequency.setValueAtTime(tone.frequency, honkStart);
+        osc.detune.setValueAtTime(index === 0 ? -4 : 5, honkStart);
+        osc.frequency.exponentialRampToValueAtTime(tone.frequency * 0.985, honkEnd);
+        toneGain.gain.value = tone.gain;
+        osc.connect(toneGain);
+        toneGain.connect(filter);
+        osc.start(honkStart);
+        osc.stop(honkEnd + 0.04);
+      });
+
+      filter.connect(master);
+      master.connect(compressor);
+      compressor.connect(ctx.destination);
+
+      window.setTimeout(() => {
+        filter.disconnect();
+        master.disconnect();
+        compressor.disconnect();
+      }, Math.ceil((honk.startOffset + honk.duration + 0.2) * 1000));
     });
   }
 
@@ -548,6 +698,32 @@
       renderHub();
     });
 
+    el("hub-waiting-only-toggle")?.addEventListener("change", (event) => {
+      state.hubStudentsWaitingOnly = event.target.checked;
+      renderHubStudentGrid();
+    });
+
+    el("hub-students-fullscreen-btn")?.addEventListener("click", () => {
+      setHubStudentsFullscreen(!state.hubStudentsFullscreen);
+    });
+
+    document.addEventListener("fullscreenchange", () => {
+      const panel = el("hub-students-card");
+      if (state.hubStudentsFullscreen && document.fullscreenElement !== panel) {
+        setHubStudentsFullscreen(false, { skipNative: true });
+      } else if (state.hubStudentsFullscreen) {
+        scheduleHubStudentsFit();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && state.hubStudentsFullscreen) {
+        setHubStudentsFullscreen(false);
+      }
+    });
+
+    window.addEventListener("resize", scheduleHubStudentsFit);
+
     el("display-audio-button")?.addEventListener("click", async () => {
       const ctx = await ensureAudioContext();
       if (!ctx) {
@@ -591,6 +767,7 @@
   window.addEventListener("beforeunload", () => {
     if (state.syncInterval) clearInterval(state.syncInterval);
     if (state.alertTimer) clearTimeout(state.alertTimer);
+    if (state.hubStudentsFitTimer) window.cancelAnimationFrame(state.hubStudentsFitTimer);
     if (state.channel && window.carpoolClient) {
       window.carpoolClient.removeChannel(state.channel);
     }

@@ -78,9 +78,13 @@ create table if not exists public.daily_status (
   status public.status_enum not null,
   called_at timestamptz,
   called_by text,
+  checked_in_by text,
   created_at timestamptz not null default now(),
   unique (student_id, date)
 );
+
+alter table public.daily_status
+  add column if not exists checked_in_by text;
 
 create table if not exists public.app_users (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -127,9 +131,13 @@ create table if not exists public.carpool_presets (
   id uuid primary key default gen_random_uuid(),
   owner_family_id uuid not null references public.families(id) on delete cascade,
   name text not null,
+  weekdays text[] not null default '{}'::text[],
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.carpool_presets
+  add column if not exists weekdays text[] not null default '{}'::text[];
 
 create table if not exists public.carpool_preset_students (
   preset_id uuid not null references public.carpool_presets(id) on delete cascade,
@@ -290,6 +298,29 @@ as $$
 $$;
 
 grant execute on function public.school_today() to anon, authenticated;
+
+create or replace function public.normalize_carpool_preset_weekdays(p_weekdays text[])
+returns text[]
+language sql
+immutable
+as $$
+  with allowed(day_name, sort_order) as (
+    values
+      ('sunday', 1),
+      ('monday', 2),
+      ('tuesday', 3),
+      ('wednesday', 4),
+      ('thursday', 5),
+      ('friday', 6)
+  ),
+  submitted as (
+    select distinct lower(btrim(day_name)) as day_name
+    from unnest(coalesce(p_weekdays, '{}'::text[])) as days(day_name)
+  )
+  select coalesce(array_agg(a.day_name order by a.sort_order), '{}'::text[])
+  from allowed a
+  join submitted s on s.day_name = a.day_name;
+$$;
 
 create or replace function public.is_admin()
 returns boolean
@@ -540,7 +571,13 @@ begin
         'first_name', s.first_name,
         'last_name', s.last_name,
         'class_name', c.name,
-        'is_checked_in', coalesce(ds.status = 'CALLED', false)
+        'is_checked_in', coalesce(ds.status = 'CALLED', false),
+        'called_at', ds.called_at,
+        'called_by', ds.called_by,
+        'retry_at', case
+          when ds.status = 'CALLED' and ds.called_at is not null then ds.called_at + interval '3 minutes'
+          else null
+        end
       )
       order by s.last_name, s.first_name
     ),
@@ -585,7 +622,13 @@ begin
           'first_name', ar.first_name,
           'last_name', ar.last_name,
           'class_name', ar.class_name,
-          'is_checked_in', coalesce(ds.status = 'CALLED', false)
+          'is_checked_in', coalesce(ds.status = 'CALLED', false),
+          'called_at', ds.called_at,
+          'called_by', ds.called_by,
+          'retry_at', case
+            when ds.status = 'CALLED' and ds.called_at is not null then ds.called_at + interval '3 minutes'
+            else null
+          end
         )
         order by ar.last_name, ar.first_name
       ) as students
@@ -645,6 +688,7 @@ begin
     select
       cp.id as preset_id,
       cp.name,
+      cp.weekdays,
       s.family_id,
       public.family_display_name(
         f.parent_names,
@@ -676,6 +720,7 @@ begin
     select
       pr.preset_id,
       pr.name,
+      pr.weekdays,
       coalesce(
         jsonb_agg(
           jsonb_build_object(
@@ -698,7 +743,7 @@ begin
       ) as students,
       count(pr.student_id) as student_count
     from preset_rows pr
-    group by pr.preset_id, pr.name
+    group by pr.preset_id, pr.name, pr.weekdays
     order by lower(pr.name), pr.preset_id
   )
   select coalesce(
@@ -706,6 +751,7 @@ begin
       jsonb_build_object(
         'preset_id', g.preset_id,
         'name', g.name,
+        'weekdays', to_jsonb(g.weekdays),
         'students', g.students,
         'student_count', g.student_count
       )
@@ -738,7 +784,8 @@ $$;
 create or replace function public.submit_check_in_request(
   p_requesting_carpool_number integer,
   p_targets jsonb,
-  p_called_by text
+  p_called_by text,
+  p_checked_in_by text default null
 )
 returns jsonb
 language plpgsql
@@ -751,6 +798,7 @@ declare
   v_bad_count integer;
   v_called jsonb := '[]'::jsonb;
   v_skipped jsonb := '[]'::jsonb;
+  v_checked_in_by text := nullif(btrim(p_checked_in_by), '');
 begin
   if p_called_by not in ('parent', 'spotter') then
     raise exception 'Invalid caller';
@@ -822,14 +870,21 @@ begin
     where cds.student_id is null
   ),
   upserted as (
-    insert into public.daily_status (student_id, date, status, called_at, called_by)
-    select es.student_id, v_today, 'CALLED', now(), p_called_by
+    insert into public.daily_status (student_id, date, status, called_at, called_by, checked_in_by)
+    select
+      es.student_id,
+      v_today,
+      'CALLED',
+      now(),
+      p_called_by,
+      coalesce(v_checked_in_by, initcap(p_called_by))
     from eligible_students es
     on conflict (student_id, date)
     do update set
       status = excluded.status,
       called_at = excluded.called_at,
-      called_by = excluded.called_by
+      called_by = excluded.called_by,
+      checked_in_by = excluded.checked_in_by
     returning student_id
   ),
   response_rows as (
@@ -979,16 +1034,19 @@ begin
 
   return jsonb_build_object(
     'called_by', p_called_by,
+    'checked_in_by', coalesce(v_checked_in_by, initcap(p_called_by)),
     'families', v_called,
     'skipped_students', v_skipped
   );
 end;
 $$;
 
+drop function if exists public.create_carpool_preset(integer, text, uuid[]);
 create or replace function public.create_carpool_preset(
   p_owner_carpool_number integer,
   p_name text,
-  p_student_ids uuid[]
+  p_student_ids uuid[],
+  p_weekdays text[]
 )
 returns jsonb
 language plpgsql
@@ -1001,9 +1059,15 @@ declare
   v_preset_id uuid;
   v_invalid_count integer;
   v_name text := btrim(coalesce(p_name, ''));
+  v_weekdays text[];
 begin
   if v_name = '' then
     raise exception 'Name is required';
+  end if;
+
+  v_weekdays := public.normalize_carpool_preset_weekdays(p_weekdays);
+  if coalesce(array_length(v_weekdays, 1), 0) = 0 then
+    raise exception 'Select at least one day';
   end if;
 
   v_owner_family_id := public.family_id_for_carpool(p_owner_carpool_number);
@@ -1029,8 +1093,8 @@ begin
     raise exception 'Saved carpools can only include students you are currently allowed to pick up';
   end if;
 
-  insert into public.carpool_presets (owner_family_id, name)
-  values (v_owner_family_id, v_name)
+  insert into public.carpool_presets (owner_family_id, name, weekdays)
+  values (v_owner_family_id, v_name, v_weekdays)
   returning id into v_preset_id;
 
   insert into public.carpool_preset_students (preset_id, student_id)
@@ -1047,11 +1111,13 @@ exception
 end;
 $$;
 
+drop function if exists public.update_carpool_preset(uuid, integer, text, uuid[]);
 create or replace function public.update_carpool_preset(
   p_preset_id uuid,
   p_owner_carpool_number integer,
   p_name text,
-  p_student_ids uuid[]
+  p_student_ids uuid[],
+  p_weekdays text[]
 )
 returns jsonb
 language plpgsql
@@ -1064,9 +1130,15 @@ declare
   v_existing_owner uuid;
   v_invalid_count integer;
   v_name text := btrim(coalesce(p_name, ''));
+  v_weekdays text[];
 begin
   if v_name = '' then
     raise exception 'Name is required';
+  end if;
+
+  v_weekdays := public.normalize_carpool_preset_weekdays(p_weekdays);
+  if coalesce(array_length(v_weekdays, 1), 0) = 0 then
+    raise exception 'Select at least one day';
   end if;
 
   v_owner_family_id := public.family_id_for_carpool(p_owner_carpool_number);
@@ -1102,7 +1174,8 @@ begin
   end if;
 
   update public.carpool_presets
-  set name = v_name
+  set name = v_name,
+      weekdays = v_weekdays
   where id = p_preset_id;
 
   delete from public.carpool_preset_students
@@ -1157,7 +1230,8 @@ $$;
 create or replace function public.submit_carpool_preset_check_in(
   p_preset_id uuid,
   p_owner_carpool_number integer,
-  p_called_by text
+  p_called_by text,
+  p_checked_in_by text default null
 )
 returns jsonb
 language plpgsql
@@ -1172,6 +1246,7 @@ declare
   v_removed jsonb := '[]'::jsonb;
   v_remaining_count integer := 0;
   v_skipped jsonb := '[]'::jsonb;
+  v_checked_in_by text := nullif(btrim(p_checked_in_by), '');
 begin
   if p_called_by not in ('parent', 'spotter') then
     raise exception 'Invalid caller';
@@ -1295,14 +1370,21 @@ begin
     where cds.student_id is null
   ),
   upserted as (
-    insert into public.daily_status (student_id, date, status, called_at, called_by)
-    select es.student_id, v_today, 'CALLED', now(), p_called_by
+    insert into public.daily_status (student_id, date, status, called_at, called_by, checked_in_by)
+    select
+      es.student_id,
+      v_today,
+      'CALLED',
+      now(),
+      p_called_by,
+      coalesce(v_checked_in_by, initcap(p_called_by))
     from eligible_students es
     on conflict (student_id, date)
     do update set
       status = excluded.status,
       called_at = excluded.called_at,
-      called_by = excluded.called_by
+      called_by = excluded.called_by,
+      checked_in_by = excluded.checked_in_by
     returning student_id
   ),
   response_rows as (
@@ -1444,6 +1526,8 @@ begin
   from skipped_rows sr;
 
   return jsonb_build_object(
+    'called_by', p_called_by,
+    'checked_in_by', coalesce(v_checked_in_by, initcap(p_called_by)),
     'families', v_called,
     'skipped_students', v_skipped,
     'removed_students', v_removed,
@@ -2259,10 +2343,12 @@ begin
 end;
 $$;
 
+drop function if exists public.admin_create_carpool_preset(uuid, text, uuid[]);
 create or replace function public.admin_create_carpool_preset(
   p_owner_family_id uuid,
   p_name text,
-  p_student_ids uuid[]
+  p_student_ids uuid[],
+  p_weekdays text[]
 )
 returns jsonb
 language plpgsql
@@ -2274,6 +2360,7 @@ declare
   v_preset_id uuid;
   v_invalid_count integer;
   v_name text := btrim(coalesce(p_name, ''));
+  v_weekdays text[];
 begin
   if not public.is_admin() then
     raise exception 'Admin access required';
@@ -2281,6 +2368,11 @@ begin
 
   if v_name = '' then
     raise exception 'Name is required';
+  end if;
+
+  v_weekdays := public.normalize_carpool_preset_weekdays(p_weekdays);
+  if coalesce(array_length(v_weekdays, 1), 0) = 0 then
+    raise exception 'Select at least one day';
   end if;
 
   if p_owner_family_id is null then
@@ -2305,8 +2397,8 @@ begin
     raise exception 'Saved carpools can only include students the family is currently allowed to pick up';
   end if;
 
-  insert into public.carpool_presets (owner_family_id, name)
-  values (p_owner_family_id, v_name)
+  insert into public.carpool_presets (owner_family_id, name, weekdays)
+  values (p_owner_family_id, v_name, v_weekdays)
   returning id into v_preset_id;
 
   insert into public.carpool_preset_students (preset_id, student_id)
@@ -2323,11 +2415,13 @@ exception
 end;
 $$;
 
+drop function if exists public.admin_update_carpool_preset(uuid, uuid, text, uuid[]);
 create or replace function public.admin_update_carpool_preset(
   p_preset_id uuid,
   p_owner_family_id uuid,
   p_name text,
-  p_student_ids uuid[]
+  p_student_ids uuid[],
+  p_weekdays text[]
 )
 returns jsonb
 language plpgsql
@@ -2339,6 +2433,7 @@ declare
   v_existing_owner uuid;
   v_invalid_count integer;
   v_name text := btrim(coalesce(p_name, ''));
+  v_weekdays text[];
 begin
   if not public.is_admin() then
     raise exception 'Admin access required';
@@ -2346,6 +2441,11 @@ begin
 
   if v_name = '' then
     raise exception 'Name is required';
+  end if;
+
+  v_weekdays := public.normalize_carpool_preset_weekdays(p_weekdays);
+  if coalesce(array_length(v_weekdays, 1), 0) = 0 then
+    raise exception 'Select at least one day';
   end if;
 
   select cp.owner_family_id
@@ -2376,7 +2476,8 @@ begin
   end if;
 
   update public.carpool_presets
-  set name = v_name
+  set name = v_name,
+      weekdays = v_weekdays
   where id = p_preset_id;
 
   delete from public.carpool_preset_students
@@ -2425,26 +2526,27 @@ end;
 $$;
 
 grant execute on function public.family_id_for_carpool(integer) to anon, authenticated;
+grant execute on function public.normalize_carpool_preset_weekdays(text[]) to anon, authenticated;
 grant execute on function public.allowed_students_for_family(uuid, date) to authenticated;
 grant execute on function public.active_authorized_students_for_receiver(uuid, date) to authenticated;
 grant execute on function public.prune_invalid_carpool_preset_students(uuid, date) to authenticated;
 grant execute on function public.get_parent_checkin_context(integer) to anon, authenticated;
-grant execute on function public.submit_check_in_request(integer, jsonb, text) to anon, authenticated;
+grant execute on function public.submit_check_in_request(integer, jsonb, text, text) to anon, authenticated;
 grant execute on function public.get_family_authorizations(integer) to anon, authenticated;
 grant execute on function public.search_receiving_families(integer, text) to anon, authenticated;
 grant execute on function public.create_pickup_authorization_for_family(integer, uuid, uuid[], date, date) to anon, authenticated;
 grant execute on function public.create_pickup_authorization(integer, integer, uuid[], date, date) to anon, authenticated;
 grant execute on function public.update_pickup_authorization(uuid, integer, uuid[], date, date) to anon, authenticated;
 grant execute on function public.revoke_pickup_authorization(uuid, integer) to anon, authenticated;
-grant execute on function public.create_carpool_preset(integer, text, uuid[]) to anon, authenticated;
-grant execute on function public.update_carpool_preset(uuid, integer, text, uuid[]) to anon, authenticated;
+grant execute on function public.create_carpool_preset(integer, text, uuid[], text[]) to anon, authenticated;
+grant execute on function public.update_carpool_preset(uuid, integer, text, uuid[], text[]) to anon, authenticated;
 grant execute on function public.delete_carpool_preset(uuid, integer) to anon, authenticated;
-grant execute on function public.submit_carpool_preset_check_in(uuid, integer, text) to anon, authenticated;
+grant execute on function public.submit_carpool_preset_check_in(uuid, integer, text, text) to anon, authenticated;
 grant execute on function public.admin_create_pickup_authorization(uuid, uuid, uuid[], date, date) to authenticated;
 grant execute on function public.admin_update_pickup_authorization(uuid, uuid, uuid[], date, date) to authenticated;
 grant execute on function public.admin_revoke_pickup_authorization(uuid) to authenticated;
-grant execute on function public.admin_create_carpool_preset(uuid, text, uuid[]) to authenticated;
-grant execute on function public.admin_update_carpool_preset(uuid, uuid, text, uuid[]) to authenticated;
+grant execute on function public.admin_create_carpool_preset(uuid, text, uuid[], text[]) to authenticated;
+grant execute on function public.admin_update_carpool_preset(uuid, uuid, text, uuid[], text[]) to authenticated;
 grant execute on function public.admin_delete_carpool_preset(uuid) to authenticated;
 
 alter table public.daily_status replica identity full;

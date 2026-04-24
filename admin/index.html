@@ -205,14 +205,163 @@
         font-size: 1.05rem;
         color: var(--text-dark);
       }
+      .recent-attempts-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      .recent-attempts-tools {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .recent-attempts-count {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        font-weight: 600;
+        font-family: "Open Sans", sans-serif;
+        white-space: nowrap;
+      }
+      .recent-attempts-search {
+        width: min(280px, 100%);
+        border: 1.5px solid var(--border-light);
+        border-radius: 10px;
+        padding: 9px 12px;
+        font-size: 0.9rem;
+        font-family: "Open Sans", sans-serif;
+        background: var(--surface-ivory);
+        color: var(--text-dark);
+        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+      }
+      .recent-attempts-search:focus {
+        outline: none;
+        border-color: var(--brand-maroon);
+        box-shadow: 0 0 0 3px rgba(107, 45, 91, 0.1);
+        background: #fff;
+      }
       .content-card-body {
         padding: 18px 22px;
+      }
+
+      .student-grid-card {
+        --fit-grid-gap: 12px;
+        --fit-card-height: auto;
+        --fit-card-padding: 12px 10px;
+        --fit-card-radius: 14px;
+        --fit-card-font-size: 1rem;
+      }
+
+      .grid-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+
+      .grid-card-title {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .grid-card-count {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        font-weight: 600;
+      }
+
+      .student-grid-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .student-grid-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: var(--text-dark);
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .student-grid-toggle input {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        accent-color: var(--brand-maroon);
+      }
+
+      .student-grid-fullscreen-btn {
+        border: 1px solid var(--border-light);
+        border-radius: 999px;
+        background: var(--surface-white);
+        color: var(--text-dark);
+        font-size: 0.78rem;
+        font-weight: 800;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+
+      .student-grid-fullscreen-btn:hover {
+        border-color: rgba(107, 45, 91, 0.32);
+        box-shadow: 0 6px 14px rgba(107, 45, 91, 0.08);
+      }
+
+      body.grid-fullscreen-active {
+        overflow: hidden;
+      }
+
+      .student-grid-card.is-fullscreen {
+        position: fixed;
+        inset: 0;
+        z-index: 95;
+        margin: 0 !important;
+        border-radius: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--surface-ivory);
+      }
+
+      .student-grid-card.is-fullscreen .content-card-header {
+        flex: 0 0 auto;
+        background: var(--surface-white);
+      }
+
+      .student-grid-card.is-fullscreen .content-card-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        padding: var(--fit-panel-padding, 14px);
+        overflow: hidden;
+        display: flex;
+      }
+
+      .student-grid-card.is-fullscreen .all-students-grid {
+        flex: 1 1 auto;
+        min-height: 0;
       }
 
       .all-students-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
         gap: 12px;
+      }
+
+      .all-students-grid.is-fitting {
+        width: 100%;
+        height: 100%;
+        grid-template-columns: var(--fit-grid-columns) !important;
+        gap: var(--fit-grid-gap);
+        align-content: stretch;
+        grid-auto-rows: var(--fit-card-height);
       }
 
       .all-students-card {
@@ -229,6 +378,34 @@
         gap: 6px;
         cursor: pointer;
         transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+      }
+
+      .all-students-grid.is-fitting .all-students-card {
+        min-height: 0;
+        height: var(--fit-card-height);
+        border-radius: var(--fit-card-radius);
+        padding: var(--fit-card-padding);
+        font-size: var(--fit-card-font-size);
+        line-height: 1.05;
+        overflow: hidden;
+      }
+
+      .all-students-grid.is-fitting .all-students-name-line {
+        width: 100%;
+        gap: 3px;
+        min-width: 0;
+      }
+
+      .all-students-grid.is-fitting .all-students-name,
+      .all-students-grid.is-fitting .all-students-meta {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .all-students-grid.is-fitting .all-students-meta {
+        font-size: 0.66em;
       }
 
       .all-students-card:hover {
@@ -537,6 +714,10 @@
         gap: 8px;
       }
 
+      .weekday-checkbox-list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
       .checkbox-option {
         display: block;
         cursor: pointer;
@@ -827,8 +1008,18 @@
             </div>
           </div>
           <div class="content-card">
-            <div class="content-card-header">
+            <div class="content-card-header recent-attempts-header">
               <h2>Recent Attempts</h2>
+              <div class="recent-attempts-tools">
+                <span id="today-attempts-visible-count" class="recent-attempts-count"></span>
+                <input
+                  id="today-attempts-search"
+                  class="recent-attempts-search"
+                  type="search"
+                  placeholder="Search attempts"
+                  aria-label="Search recent attempts"
+                />
+              </div>
             </div>
             <div class="table-wrap">
               <table id="today-table">
@@ -840,7 +1031,7 @@
                     <th data-sort="family">Family</th>
                     <th data-sort="carpool">Carpool #</th>
                     <th data-sort="status">Status</th>
-                    <th data-sort="source">Source</th>
+                    <th data-sort="source">Checked In By</th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -848,9 +1039,19 @@
               </table>
             </div>
           </div>
-          <div class="content-card" style="margin-top: 16px;">
-            <div class="content-card-header">
-              <h2>All Students Live Grid</h2>
+          <div id="today-student-grid-card" class="content-card student-grid-card" style="margin-top: 16px;">
+            <div class="content-card-header grid-card-header">
+              <div class="grid-card-title">
+                <h2>All Students Live Grid</h2>
+                <span id="today-student-grid-count" class="grid-card-count"></span>
+              </div>
+              <div class="student-grid-actions">
+                <label class="student-grid-toggle" for="today-waiting-only-toggle">
+                  <input id="today-waiting-only-toggle" type="checkbox" />
+                  Waiting only
+                </label>
+                <button id="today-grid-fullscreen-btn" class="student-grid-fullscreen-btn" type="button" aria-pressed="false">Full Screen</button>
+              </div>
             </div>
             <div class="content-card-body">
               <div id="today-student-grid" class="all-students-grid"></div>
@@ -893,6 +1094,7 @@
                 <tr>
                   <th data-sort="owner">Owner Family</th>
                   <th data-sort="name">Name</th>
+                  <th data-sort="days">Days</th>
                   <th data-sort="students">Students</th>
                   <th>Actions</th>
                 </tr>

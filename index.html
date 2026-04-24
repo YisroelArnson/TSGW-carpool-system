@@ -757,9 +757,9 @@
       }
 
       .student-pick-status {
-        display: inline-flex;
-        align-items: center;
+        display: inline-block;
         width: fit-content;
+        max-width: 100%;
         padding: 4px 8px;
         border-radius: 999px;
         background: rgba(71, 132, 83, 0.12);
@@ -767,6 +767,60 @@
         font-size: 0.74rem;
         font-weight: 700;
         letter-spacing: 0.02em;
+      }
+
+      .student-recall-btn {
+        border: none;
+        border-radius: 999px;
+        padding: 10px 14px;
+        background: var(--brand-maroon);
+        color: #fff;
+        font-family: "Open Sans", sans-serif;
+        font-size: 0.78rem;
+        font-weight: 700;
+        white-space: nowrap;
+        transition: background 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+      }
+
+      .student-recall-btn:not(:disabled) {
+        cursor: pointer;
+      }
+
+      .student-recall-btn:not(:disabled):hover {
+        background: #7b3d69;
+      }
+
+      .student-recall-btn:not(:disabled):active {
+        transform: translateY(1px);
+      }
+
+      .student-recall-btn:disabled {
+        background: rgba(107, 45, 91, 0.18);
+        color: rgba(107, 45, 91, 0.74);
+        cursor: not-allowed;
+      }
+
+      .checkin-notice {
+        display: grid;
+        gap: 4px;
+        margin: 0 0 18px;
+        padding: 14px 16px;
+        border: 1px solid rgba(71, 132, 83, 0.32);
+        border-radius: 14px;
+        background: #eef8f0;
+        text-align: left;
+      }
+
+      .checkin-notice-title {
+        color: #1e6a23;
+        font-weight: 800;
+        line-height: 1.25;
+      }
+
+      .checkin-notice-copy {
+        color: #2f6a39;
+        font-size: 0.84rem;
+        line-height: 1.45;
       }
 
       .authorization-grid {
@@ -1224,6 +1278,15 @@
           align-items: flex-start;
           flex-direction: column;
         }
+
+        .selection-row.checked-in {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .student-recall-btn {
+          width: 100%;
+        }
       }
 
       /* ─ Config warning ─ */
@@ -1309,6 +1372,10 @@
           <div class="checkin-shell">
             <h2 class="students-heading">Who are you picking up today?</h2>
             <p class="students-subtitle">Tap each child once, then use the button at the bottom to let the school know you are here.</p>
+            <div id="checkin-notice" class="checkin-notice hidden" aria-live="polite">
+              <span id="checkin-notice-title" class="checkin-notice-title"></span>
+              <span id="checkin-notice-copy" class="checkin-notice-copy"></span>
+            </div>
             <div id="students-buttons" class="checkin-stack">
               <section id="saved-carpools-section">
                 <p class="section-kicker">Quick Picks</p>

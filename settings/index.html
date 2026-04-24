@@ -497,6 +497,56 @@
         border-color: #478453;
       }
 
+      .weekday-picker {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .weekday-option {
+        border: 1px solid var(--border-light);
+        border-radius: 14px;
+        background: #fff;
+        padding: 11px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        cursor: pointer;
+        font-family: "Open Sans", sans-serif;
+        transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+      }
+
+      .weekday-option:hover {
+        border-color: rgba(107, 45, 91, 0.28);
+      }
+
+      .weekday-option.selected {
+        background: #eef8f0;
+        border-color: rgba(71, 132, 83, 0.48);
+        box-shadow: 0 8px 22px rgba(71, 132, 83, 0.09);
+      }
+
+      .weekday-option-main {
+        color: var(--text-dark);
+        font-weight: 700;
+        font-size: 0.9rem;
+        min-width: 0;
+      }
+
+      .weekday-option-short {
+        color: var(--text-muted);
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        flex: none;
+      }
+
+      .weekday-option.selected .weekday-option-short {
+        color: #478453;
+      }
+
       .student-row-copy {
         min-width: 0;
         display: grid;
@@ -695,6 +745,10 @@
           grid-template-columns: 1fr;
         }
 
+        .weekday-picker {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
         .picker-group {
           padding: 14px;
         }
@@ -804,6 +858,11 @@
         <div class="form-row">
           <label for="preset-name">Carpool Name</label>
           <input id="preset-name" type="text" placeholder="e.g. Monday Carpool" />
+        </div>
+
+        <div class="form-row">
+          <label>Days of the Week</label>
+          <div id="preset-weekday-picker" class="weekday-picker"></div>
         </div>
 
         <div id="preset-student-picker" class="picker-groups"></div>
