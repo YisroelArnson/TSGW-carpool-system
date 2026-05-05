@@ -245,6 +245,36 @@
     );
   }
 
+  function scheduledStudentIds() {
+    const ids = new Set();
+    if (!state.scheduledPickup || state.scheduledPickup.status !== "pending") return ids;
+
+    (state.scheduledPickup.targets || []).forEach((target) => {
+      (target.student_ids || []).forEach((studentId) => ids.add(String(studentId)));
+    });
+
+    return ids;
+  }
+
+  function scheduledStudents() {
+    const ids = scheduledStudentIds();
+    if (!ids.size) return [];
+    return allCheckinStudents().filter((student) => ids.has(String(student.student_id)));
+  }
+
+  function scheduledStudentNames() {
+    return scheduledStudents().map((student) => `${student.first_name} ${student.last_name}`);
+  }
+
+  function formatScheduledNames(names) {
+    if (!names.length) {
+      const count = Number(state.scheduledPickup?.target_count || 0);
+      return `${count} ${count === 1 ? "child" : "children"}`;
+    }
+    if (names.length <= 2) return names.join(", ");
+    return `${names.slice(0, 2).join(", ")} + ${names.length - 2} more`;
+  }
+
   function checkedInStudentIds() {
     return new Set(
       familyCards()
@@ -435,6 +465,14 @@
     return "Sent to classroom. You can call again if needed.";
   }
 
+  function studentScheduleText() {
+    const sendAt = new Date(state.scheduledPickup?.send_at || "").getTime();
+    if (!sendAt || Number.isNaN(sendAt)) return "Request scheduled.";
+    const remaining = formatScheduleRemaining(sendAt - Date.now());
+    const timeText = formatScheduleTime(state.scheduledPickup.send_at);
+    return timeText ? `Request sending in ${remaining} at ${timeText}.` : `Request sending in ${remaining}.`;
+  }
+
   function studentRecallButtonHtml(student, familyId) {
     const studentId = String(student.student_id);
     const isBusy = state.repingBusyIds.has(studentId);
@@ -457,10 +495,12 @@
 
   function familyCardHtml(card) {
     const selected = state.selectedByFamily.get(card.family_id) || new Set();
+    const pendingStudentIds = scheduledStudentIds();
     const studentsHtml = (card.students || []).map((student) => {
       const studentId = String(student.student_id);
       const isSelected = selected.has(studentId);
       const isCheckedIn = isStudentCheckedIn(student);
+      const isScheduled = !isCheckedIn && pendingStudentIds.has(studentId);
       const studentName = `${student.first_name} ${student.last_name}`;
       const studentCopy = `
         <span class="selection-row-main">
@@ -469,6 +509,7 @@
             <span class="student-pick-name">${escapeHtml(studentName)}</span>
             <small class="student-pick-grade">${escapeHtml(student.class_name || "")}</small>
             ${isCheckedIn ? `<small class="student-pick-status">${escapeHtml(studentStatusText(student))}</small>` : ""}
+            ${isScheduled ? `<small class="student-pick-scheduled">${escapeHtml(studentScheduleText())}</small>` : ""}
           </span>
         </span>
       `;
@@ -485,7 +526,7 @@
       return `
         <button
           type="button"
-          class="selection-row student-pick${isSelected ? " selected" : ""}"
+          class="selection-row student-pick${isSelected ? " selected" : ""}${isScheduled ? " scheduled" : ""}"
           data-family-id="${escapeHtml(card.family_id)}"
           data-student-id="${escapeHtml(studentId)}"
           aria-pressed="${isSelected ? "true" : "false"}"
@@ -564,12 +605,13 @@
 
     const sendAt = new Date(scheduled.send_at).getTime();
     const msRemaining = sendAt - Date.now();
-    if (title) title.textContent = `Sending in ${formatScheduleRemaining(msRemaining)}`;
+    const names = scheduledStudentNames();
+    const namesText = formatScheduledNames(names);
+    const titleName = names.length === 1 ? names[0] : namesText;
+    if (title) title.textContent = `Sending ${titleName} in ${formatScheduleRemaining(msRemaining)}`;
     if (meta) {
-      const count = Number(scheduled.target_count || 0);
-      const childText = `${count} ${count === 1 ? "child" : "children"}`;
       const timeText = formatScheduleTime(scheduled.send_at);
-      meta.textContent = timeText ? `${childText} at ${timeText}` : childText;
+      meta.textContent = timeText ? `Scheduled for ${timeText}` : namesText;
     }
     if (cancel) cancel.disabled = state.scheduleBusy;
     show("sticky-schedule-status", true);
@@ -987,8 +1029,9 @@
     try {
       const sendAt = new Date(Date.now() + state.scheduleMinutes * 60 * 1000).toISOString();
       state.scheduledPickup = await createScheduledPickup(targets, sendAt);
+      const namesText = formatScheduledNames(scheduledStudentNames());
       state.checkinNotice = {
-        message: `Timer set for ${state.scheduledPickup.target_count} ${Number(state.scheduledPickup.target_count) === 1 ? "child" : "children"}.`,
+        message: `Timer set for ${namesText}.`,
         note: `The request will send at ${formatScheduleTime(state.scheduledPickup.send_at)}.`
       };
       closeScheduleModal();
@@ -1180,7 +1223,11 @@
         renderCheckinPage();
       }
       if (state.scheduledPickup) {
-        renderScheduleStatus();
+        if (studentsSection && !studentsSection.classList.contains("hidden")) {
+          renderCheckinPage();
+        } else {
+          renderScheduleStatus();
+        }
         const sendAt = new Date(state.scheduledPickup.send_at).getTime();
         if (sendAt <= Date.now() && state.number && Date.now() > state.scheduleRefreshAt) {
           state.scheduleRefreshAt = Date.now() + 10000;

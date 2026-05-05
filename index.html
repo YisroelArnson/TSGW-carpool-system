@@ -574,6 +574,12 @@
         cursor: default;
       }
 
+      .selection-row.scheduled {
+        background: #fbf8f3;
+        border-color: rgba(191, 161, 74, 0.42);
+        box-shadow: inset 0 0 0 1px rgba(191, 161, 74, 0.1);
+      }
+
       .selection-row-main {
         display: flex;
         align-items: center;
@@ -767,6 +773,19 @@
         font-size: 0.74rem;
         font-weight: 700;
         letter-spacing: 0.02em;
+      }
+
+      .student-pick-scheduled {
+        display: inline-block;
+        width: fit-content;
+        max-width: 100%;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(191, 161, 74, 0.16);
+        color: #725b17;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.01em;
       }
 
       .student-recall-btn {
