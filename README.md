@@ -77,7 +77,8 @@ If your host does not support folder fallback for nested routes, configure rewri
 
 ## Behavior Notes
 
-- Parent flow uses RPC (`get_family_students`, `submit_parent_check_in`) with no custom backend.
+- Parent flow uses RPC (`get_parent_checkin_context`, `submit_check_in_request`) with no custom backend.
+- Parent delayed pickup uses `scheduled_pickup_requests`; the browser creates/cancels rows through RPCs, and a backend job processes due rows.
 - Spotter/admin require Supabase Auth.
 - Spotter session is persisted by Supabase in browser storage (`persistSession: true`).
 - Classroom hub count updates use status transition deltas to prevent overcount drift.
@@ -119,4 +120,39 @@ curl -X POST "https://<project-ref>.supabase.co/functions/v1/send-pickup-permiss
   -H "Content-Type: application/json" \
   -H "x-pickup-alert-secret: <random-shared-secret>" \
   -d '{"queue_id":"<pickup_notification_queue_id>"}'
+```
+
+## Scheduled Parent Pickup Requests
+
+Deploy the processor Edge Function and call it on a frequent schedule, such as once per minute.
+
+1. Deploy the function:
+
+```bash
+supabase functions deploy process-scheduled-pickups
+```
+
+2. Set a shared secret:
+
+```bash
+supabase secrets set SCHEDULED_PICKUP_SECRET="<random-shared-secret>"
+```
+
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase in deployed Edge Functions.
+
+3. Configure a scheduled HTTP call to:
+
+```text
+https://<project-ref>.supabase.co/functions/v1/process-scheduled-pickups
+```
+
+Use method `POST` and include either header `x-scheduled-pickup-secret: <random-shared-secret>` or `Authorization: Bearer <random-shared-secret>`.
+
+4. Manual function test:
+
+```bash
+curl -X POST "https://<project-ref>.supabase.co/functions/v1/process-scheduled-pickups" \
+  -H "Content-Type: application/json" \
+  -H "x-scheduled-pickup-secret: <random-shared-secret>" \
+  -d '{"limit":25}'
 ```

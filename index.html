@@ -979,12 +979,188 @@
 
       .sticky-checkin-actions {
         display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: stretch;
+      }
+
+      .schedule-pickup-btn {
+        width: 48px;
+        min-width: 48px;
+        padding: 0;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .schedule-pickup-btn svg {
+        width: 20px;
+        height: 20px;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .schedule-pickup-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        box-shadow: none !important;
+      }
+
+      .sticky-schedule-status {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(107, 45, 91, 0.18);
+        border-radius: 12px;
+        background: #fbf8f3;
+        color: var(--text-dark);
+      }
+
+      .sticky-schedule-status-copy {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .sticky-schedule-status-title {
+        font-size: 0.86rem;
+        font-weight: 700;
+        line-height: 1.25;
+      }
+
+      .sticky-schedule-status-meta {
+        font-size: 0.76rem;
+        color: var(--text-muted);
+        line-height: 1.25;
+      }
+
+      .sticky-schedule-cancel {
+        border: none;
+        background: transparent;
+        color: var(--brand-maroon);
+        font: 700 0.8rem "Open Sans", sans-serif;
+        padding: 6px 0;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .schedule-modal {
+        z-index: 120;
+        align-items: flex-end;
+      }
+
+      .schedule-modal-card {
+        width: min(420px, 100%);
+        padding: 22px;
+        border-radius: 18px 18px 0 0;
+      }
+
+      .schedule-modal-card h2 {
+        margin: 0 0 8px;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.45rem;
+        line-height: 1.15;
+        color: var(--text-dark);
+      }
+
+      .schedule-modal-card p {
+        margin: 0;
+        color: var(--text-muted);
+        line-height: 1.45;
+        font-size: 0.9rem;
+      }
+
+      .schedule-options {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin: 18px 0 14px;
+      }
+
+      .schedule-option {
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        background: var(--surface-white);
+        color: var(--text-dark);
+        font: 700 0.9rem "Open Sans", sans-serif;
+        padding: 12px 8px;
+        cursor: pointer;
+      }
+
+      .schedule-option.selected {
+        border-color: var(--brand-maroon);
+        background: rgba(107, 45, 91, 0.1);
+        color: var(--brand-maroon);
+      }
+
+      .schedule-stepper {
+        display: grid;
+        grid-template-columns: 44px 1fr 44px;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .schedule-stepper button {
+        width: 44px;
+        height: 44px;
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        background: #fff;
+        color: var(--brand-maroon);
+        font-size: 1.35rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .schedule-minutes-value {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        background: #fff;
+        font-weight: 800;
+        color: var(--text-dark);
+      }
+
+      .schedule-modal-actions {
+        display: grid;
         grid-template-columns: auto 1fr;
         gap: 10px;
       }
 
+      .schedule-modal-card .schedule-modal-error {
+        min-height: 20px;
+        margin: 0 0 12px;
+        color: var(--status-danger);
+        font-size: 0.84rem;
+        font-weight: 600;
+        text-align: center;
+      }
+
+      @media (min-width: 520px) {
+        .schedule-modal {
+          align-items: center;
+        }
+
+        .schedule-modal-card {
+          border-radius: 18px;
+        }
+      }
+
       html.parent-checkin-active body {
-        padding-bottom: 132px;
+        padding-bottom: 178px;
       }
 
       .modal-overlay.hidden {
@@ -1271,7 +1447,7 @@
         }
 
         .sticky-checkin-actions {
-          grid-template-columns: 1fr;
+          grid-template-columns: auto minmax(0, 1fr) auto;
         }
 
         .section-head-row {
@@ -1434,9 +1610,45 @@
 
     <div id="sticky-checkin-bar" class="sticky-checkin-bar hidden">
       <div class="sticky-checkin-shell">
+        <div id="sticky-schedule-status" class="sticky-schedule-status hidden" aria-live="polite">
+          <span class="sticky-schedule-status-copy">
+            <span id="sticky-schedule-title" class="sticky-schedule-status-title"></span>
+            <span id="sticky-schedule-meta" class="sticky-schedule-status-meta"></span>
+          </span>
+          <button type="button" id="sticky-schedule-cancel" class="sticky-schedule-cancel">Cancel</button>
+        </div>
         <div class="sticky-checkin-actions">
           <button id="sticky-clear" type="button" class="btn-w btn-ghost">Clear</button>
           <button type="button" id="students-submit" class="btn-w btn-maroon students-submit">I'm Here For 0 Children</button>
+          <button type="button" id="schedule-pickup-open" class="btn-w btn-maroon schedule-pickup-btn" aria-label="Schedule pickup request">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M12 7v5l3 2"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="schedule-modal" class="modal-overlay schedule-modal hidden" role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title">
+      <div class="modal-card schedule-modal-card">
+        <h2 id="schedule-modal-title">Send request later</h2>
+        <p id="schedule-modal-copy">Choose how long to wait before the school is notified for the selected children.</p>
+        <div class="schedule-options" aria-label="Timer presets">
+          <button type="button" class="schedule-option" data-schedule-minutes="2">2 min</button>
+          <button type="button" class="schedule-option" data-schedule-minutes="5">5 min</button>
+          <button type="button" class="schedule-option" data-schedule-minutes="8">8 min</button>
+          <button type="button" class="schedule-option" data-schedule-minutes="10">10 min</button>
+        </div>
+        <div class="schedule-stepper" aria-label="Custom timer length">
+          <button type="button" id="schedule-minus" aria-label="Decrease timer">-</button>
+          <div id="schedule-minutes-value" class="schedule-minutes-value">5 minutes</div>
+          <button type="button" id="schedule-plus" aria-label="Increase timer">+</button>
+        </div>
+        <p id="schedule-modal-error" class="schedule-modal-error hidden"></p>
+        <div class="schedule-modal-actions">
+          <button type="button" id="schedule-modal-close" class="btn-w btn-ghost">Cancel</button>
+          <button type="button" id="schedule-submit" class="btn-w btn-maroon">Start Timer</button>
         </div>
       </div>
     </div>

@@ -12,6 +12,10 @@
     activePresetIds: new Set(),
     loading: false,
     checkinNotice: null,
+    scheduledPickup: null,
+    scheduleMinutes: 5,
+    scheduleBusy: false,
+    scheduleRefreshAt: 0,
     lastSubmittedStudents: [],
     repingBusyIds: new Set(),
     repingTimer: null
@@ -101,6 +105,37 @@
     return data;
   }
 
+  async function createScheduledPickup(targets, sendAt) {
+    const client = mustClient();
+    const { data, error } = await client.rpc("create_scheduled_pickup_request", {
+      p_requesting_carpool_number: Number(state.number),
+      p_targets: targets,
+      p_send_at: sendAt,
+      p_checked_in_by: selectedCheckInActor()
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function getPendingScheduledPickup() {
+    const client = mustClient();
+    const { data, error } = await client.rpc("get_pending_scheduled_pickup_request", {
+      p_requesting_carpool_number: Number(state.number)
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function cancelScheduledPickupRequest(requestId) {
+    const client = mustClient();
+    const { data, error } = await client.rpc("cancel_scheduled_pickup_request", {
+      p_request_id: requestId,
+      p_requesting_carpool_number: Number(state.number)
+    });
+    if (error) throw error;
+    return data;
+  }
+
   function isRepingCooldownError(error) {
     const message = String(error?.message || "").toLowerCase();
     return message.includes("reping") || message.includes("already active");
@@ -182,6 +217,23 @@
     const seconds = totalSeconds % 60;
     if (minutes <= 0) return `${seconds}s`;
     return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  function formatScheduleRemaining(ms) {
+    if (ms <= 0) return "Sending now";
+    const totalSeconds = Math.ceil(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  function formatScheduleTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit"
+    }).format(date);
   }
 
   function allCheckinStudents() {
@@ -455,16 +507,87 @@
     `;
   }
 
+  function setScheduleError(message) {
+    const node = el("schedule-modal-error");
+    if (!node) return;
+    node.textContent = message || "";
+    show("schedule-modal-error", Boolean(message));
+  }
+
+  function syncScheduleModal() {
+    const minutes = Math.max(1, Math.min(60, Number(state.scheduleMinutes) || 5));
+    state.scheduleMinutes = minutes;
+
+    const value = el("schedule-minutes-value");
+    if (value) value.textContent = `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+
+    document.querySelectorAll("[data-schedule-minutes]").forEach((button) => {
+      button.classList.toggle("selected", Number(button.dataset.scheduleMinutes) === minutes);
+    });
+
+    const submit = el("schedule-submit");
+    if (submit) {
+      submit.disabled = state.scheduleBusy || !selectedCount();
+      submit.textContent = state.scheduledPickup ? "Replace Timer" : "Start Timer";
+    }
+
+    const close = el("schedule-modal-close");
+    if (close) close.textContent = state.scheduledPickup ? "Close" : "Cancel";
+  }
+
+  function openScheduleModal() {
+    if (!state.scheduledPickup && !selectedCount()) {
+      showError("students-error", "Choose at least one child before setting a timer.");
+      return;
+    }
+    clearError("students-error");
+    setScheduleError("");
+    syncScheduleModal();
+    show("schedule-modal", true);
+  }
+
+  function closeScheduleModal() {
+    show("schedule-modal", false);
+    setScheduleError("");
+  }
+
+  function renderScheduleStatus() {
+    const scheduled = state.scheduledPickup;
+    const title = el("sticky-schedule-title");
+    const meta = el("sticky-schedule-meta");
+    const cancel = el("sticky-schedule-cancel");
+
+    if (!scheduled || scheduled.status !== "pending") {
+      show("sticky-schedule-status", false);
+      return;
+    }
+
+    const sendAt = new Date(scheduled.send_at).getTime();
+    const msRemaining = sendAt - Date.now();
+    if (title) title.textContent = `Sending in ${formatScheduleRemaining(msRemaining)}`;
+    if (meta) {
+      const count = Number(scheduled.target_count || 0);
+      const childText = `${count} ${count === 1 ? "child" : "children"}`;
+      const timeText = formatScheduleTime(scheduled.send_at);
+      meta.textContent = timeText ? `${childText} at ${timeText}` : childText;
+    }
+    if (cancel) cancel.disabled = state.scheduleBusy;
+    show("sticky-schedule-status", true);
+  }
+
   function renderStickyBar() {
     const count = selectedCount();
     const submit = el("students-submit");
     const clearBtn = el("sticky-clear");
+    const scheduleBtn = el("schedule-pickup-open");
     const isStudentsStepActive = document.documentElement.classList.contains("parent-checkin-active");
     if (submit) {
       submit.disabled = !count || state.loading;
       submit.textContent = `I'm Here For ${count} ${count === 1 ? "Child" : "Children"}`;
     }
     if (clearBtn) clearBtn.disabled = !count || state.loading;
+    if (scheduleBtn) scheduleBtn.disabled = (!count && !state.scheduledPickup) || state.loading || state.scheduleBusy;
+    renderScheduleStatus();
     show("sticky-checkin-bar", isStudentsStepActive && state.number && Boolean(state.context));
   }
 
@@ -495,6 +618,7 @@
 
   async function loadFamily(number) {
     state.context = await getCheckinContext(number);
+    state.scheduledPickup = state.context?.scheduled_pickup || await getPendingScheduledPickup();
     resetSelections();
     renderCheckinPage();
   }
@@ -847,11 +971,75 @@
     }
   }
 
+  async function submitScheduledPickup() {
+    const targets = collectTargets();
+    if (!targets.length) {
+      setScheduleError("Choose at least one child.");
+      return;
+    }
+
+    setScheduleError("");
+    clearError("students-error");
+    state.scheduleBusy = true;
+    syncScheduleModal();
+    renderStickyBar();
+
+    try {
+      const sendAt = new Date(Date.now() + state.scheduleMinutes * 60 * 1000).toISOString();
+      state.scheduledPickup = await createScheduledPickup(targets, sendAt);
+      state.checkinNotice = {
+        message: `Timer set for ${state.scheduledPickup.target_count} ${Number(state.scheduledPickup.target_count) === 1 ? "child" : "children"}.`,
+        note: `The request will send at ${formatScheduleTime(state.scheduledPickup.send_at)}.`
+      };
+      closeScheduleModal();
+      await loadFamily(state.number);
+    } catch (error) {
+      setScheduleError(error.message || "Unable to set the timer. Please try again.");
+    } finally {
+      state.scheduleBusy = false;
+      syncScheduleModal();
+      renderCheckinPage();
+    }
+  }
+
+  async function cancelScheduledPickup(options = {}) {
+    const requestId = state.scheduledPickup?.request_id;
+    if (!requestId || state.scheduleBusy) return;
+
+    state.scheduleBusy = true;
+    setScheduleError("");
+    renderStickyBar();
+    syncScheduleModal();
+
+    try {
+      await cancelScheduledPickupRequest(requestId);
+      state.scheduledPickup = null;
+      if (!options.silent) {
+        state.checkinNotice = {
+          message: "Timer cancelled.",
+          note: "No scheduled pickup request will be sent."
+        };
+      }
+      closeScheduleModal();
+      await loadFamily(state.number);
+    } catch (error) {
+      if (!options.silent) {
+        setScheduleError(error.message || "Unable to cancel the timer. Please try again.");
+        showError("students-error", error.message || "Unable to cancel the timer. Please try again.");
+      }
+    } finally {
+      state.scheduleBusy = false;
+      syncScheduleModal();
+      renderCheckinPage();
+    }
+  }
+
   function clearParentSession() {
     localStorage.removeItem(STORAGE_KEY);
     state.number = null;
     state.context = null;
     state.checkinNotice = null;
+    state.scheduledPickup = null;
     state.lastSubmittedStudents = [];
     state.repingBusyIds = new Set();
     resetSelections();
@@ -933,6 +1121,32 @@
       clearError("students-error");
     });
     el("students-submit").addEventListener("click", submitSelectedStudents);
+    el("schedule-pickup-open").addEventListener("click", openScheduleModal);
+    el("sticky-schedule-cancel").addEventListener("click", () => cancelScheduledPickup());
+    el("schedule-modal-close").addEventListener("click", closeScheduleModal);
+    el("schedule-submit").addEventListener("click", submitScheduledPickup);
+    el("schedule-minus").addEventListener("click", () => {
+      state.scheduleMinutes = Math.max(1, state.scheduleMinutes - 1);
+      syncScheduleModal();
+    });
+    el("schedule-plus").addEventListener("click", () => {
+      state.scheduleMinutes = Math.min(60, state.scheduleMinutes + 1);
+      syncScheduleModal();
+    });
+    el("schedule-modal").addEventListener("click", (event) => {
+      if (event.target.id === "schedule-modal") closeScheduleModal();
+    });
+    document.querySelectorAll("[data-schedule-minutes]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.scheduleMinutes = Number(button.dataset.scheduleMinutes) || 5;
+        syncScheduleModal();
+      });
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !el("schedule-modal").classList.contains("hidden")) {
+        closeScheduleModal();
+      }
+    });
   }
 
   function init() {
@@ -964,6 +1178,14 @@
       }
       if (studentsSection && !studentsSection.classList.contains("hidden") && allCheckinStudents().some(isStudentCheckedIn)) {
         renderCheckinPage();
+      }
+      if (state.scheduledPickup) {
+        renderScheduleStatus();
+        const sendAt = new Date(state.scheduledPickup.send_at).getTime();
+        if (sendAt <= Date.now() && state.number && Date.now() > state.scheduleRefreshAt) {
+          state.scheduleRefreshAt = Date.now() + 10000;
+          loadFamily(state.number).catch(() => {});
+        }
       }
     }, 1000);
   }
