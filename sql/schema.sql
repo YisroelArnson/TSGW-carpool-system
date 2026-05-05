@@ -42,6 +42,8 @@ create table if not exists public.families (
   parent_two_first_name text,
   parent_two_last_name text,
   contact_info text,
+  notification_email text,
+  notification_enabled boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -52,7 +54,9 @@ alter table if exists public.families
   add column if not exists parent_one_last_name text,
   add column if not exists parent_two_title text,
   add column if not exists parent_two_first_name text,
-  add column if not exists parent_two_last_name text;
+  add column if not exists parent_two_last_name text,
+  add column if not exists notification_email text,
+  add column if not exists notification_enabled boolean not null default true;
 
 create table if not exists public.classes (
   id uuid primary key default gen_random_uuid(),
@@ -79,12 +83,16 @@ create table if not exists public.daily_status (
   called_at timestamptz,
   called_by text,
   checked_in_by text,
+  pickup_family_id uuid references public.families(id) on delete set null,
+  pickup_family_label text,
   created_at timestamptz not null default now(),
   unique (student_id, date)
 );
 
 alter table public.daily_status
-  add column if not exists checked_in_by text;
+  add column if not exists checked_in_by text,
+  add column if not exists pickup_family_id uuid references public.families(id) on delete set null,
+  add column if not exists pickup_family_label text;
 
 create table if not exists public.app_users (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -127,6 +135,29 @@ create table if not exists public.pickup_authorization_audit (
   details jsonb not null default '{}'::jsonb
 );
 
+create table if not exists public.pickup_notification_queue (
+  id uuid primary key default gen_random_uuid(),
+  audit_id uuid not null references public.pickup_authorization_audit(id) on delete cascade,
+  authorization_id uuid references public.pickup_authorizations(id) on delete set null,
+  action text not null,
+  granting_family_id uuid references public.families(id) on delete set null,
+  receiving_family_id uuid references public.families(id) on delete set null,
+  starts_on date,
+  ends_on date,
+  student_ids uuid[] not null default '{}'::uuid[],
+  status text not null default 'pending',
+  attempt_count integer not null default 0,
+  provider_message_id text,
+  last_attempt_at timestamptz,
+  sent_at timestamptz,
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint pickup_notification_queue_status_check
+    check (status in ('pending', 'processing', 'sent', 'skipped', 'failed')),
+  constraint pickup_notification_queue_audit_unique unique (audit_id)
+);
+
 create table if not exists public.carpool_presets (
   id uuid primary key default gen_random_uuid(),
   owner_family_id uuid not null references public.families(id) on delete cascade,
@@ -162,6 +193,10 @@ create index if not exists idx_pickup_authorization_audit_granting_created
   on public.pickup_authorization_audit(granting_family_id, created_at desc);
 create index if not exists idx_pickup_authorization_audit_receiving_created
   on public.pickup_authorization_audit(receiving_family_id, created_at desc);
+create index if not exists idx_pickup_notification_queue_status_created
+  on public.pickup_notification_queue(status, created_at);
+create index if not exists idx_pickup_notification_queue_receiving_created
+  on public.pickup_notification_queue(receiving_family_id, created_at desc);
 create index if not exists idx_carpool_presets_owner_created
   on public.carpool_presets(owner_family_id, created_at desc);
 create unique index if not exists idx_carpool_presets_owner_name_ci
@@ -198,6 +233,52 @@ as $$
     'Family'
   )
   from parts;
+$$;
+
+create or replace function public.pickup_family_label(p_family_id uuid)
+returns text
+language sql
+stable
+as $$
+  with family as (
+    select
+      nullif(btrim(parent_one_last_name), '') as parent_one_last,
+      nullif(btrim(parent_two_last_name), '') as parent_two_last,
+      public.family_display_name(
+        parent_names,
+        parent_one_title,
+        parent_one_first_name,
+        parent_one_last_name,
+        parent_two_title,
+        parent_two_first_name,
+        parent_two_last_name
+      ) as display_name
+    from public.families
+    where id = p_family_id
+  ),
+  labeled as (
+    select
+      parent_one_last,
+      parent_two_last,
+      nullif((regexp_match(display_name, '([[:alnum:]''-]+)[[:space:]]*$'))[1], '') as fallback_last
+    from family
+  )
+  select coalesce(
+    case
+      when parent_one_last is not null
+        and parent_two_last is not null
+        and lower(parent_one_last) = lower(parent_two_last)
+        then parent_one_last
+      when parent_one_last is not null
+        and parent_two_last is not null
+        then parent_one_last || ' / ' || parent_two_last
+      when parent_one_last is not null then parent_one_last
+      when parent_two_last is not null then parent_two_last
+      else fallback_last
+    end,
+    'Family'
+  )
+  from labeled;
 $$;
 
 create or replace function public.family_search_text(
@@ -282,6 +363,11 @@ for each row execute function public.set_updated_at();
 drop trigger if exists trg_pickup_authorizations_updated_at on public.pickup_authorizations;
 create trigger trg_pickup_authorizations_updated_at
 before update on public.pickup_authorizations
+for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_pickup_notification_queue_updated_at on public.pickup_notification_queue;
+create trigger trg_pickup_notification_queue_updated_at
+before update on public.pickup_notification_queue
 for each row execute function public.set_updated_at();
 
 drop trigger if exists trg_carpool_presets_updated_at on public.carpool_presets;
@@ -477,6 +563,8 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_audit_id uuid;
 begin
   insert into public.pickup_authorization_audit (
     authorization_id,
@@ -498,7 +586,31 @@ begin
     p_ends_on,
     coalesce(p_student_ids, '{}'::uuid[]),
     coalesce(p_details, '{}'::jsonb)
-  );
+  )
+  returning id into v_audit_id;
+
+  if p_action in ('CREATED', 'UPDATED', 'REVOKED') then
+    insert into public.pickup_notification_queue (
+      audit_id,
+      authorization_id,
+      action,
+      granting_family_id,
+      receiving_family_id,
+      starts_on,
+      ends_on,
+      student_ids
+    ) values (
+      v_audit_id,
+      p_authorization_id,
+      p_action,
+      p_granting_family_id,
+      p_receiving_family_id,
+      p_starts_on,
+      p_ends_on,
+      coalesce(p_student_ids, '{}'::uuid[])
+    )
+    on conflict (audit_id) do nothing;
+  end if;
 end;
 $$;
 
@@ -870,21 +982,34 @@ begin
     where cds.student_id is null
   ),
   upserted as (
-    insert into public.daily_status (student_id, date, status, called_at, called_by, checked_in_by)
+    insert into public.daily_status (
+      student_id,
+      date,
+      status,
+      called_at,
+      called_by,
+      checked_in_by,
+      pickup_family_id,
+      pickup_family_label
+    )
     select
       es.student_id,
       v_today,
       'CALLED',
       now(),
       p_called_by,
-      coalesce(v_checked_in_by, initcap(p_called_by))
+      coalesce(v_checked_in_by, initcap(p_called_by)),
+      v_requesting_family_id,
+      public.pickup_family_label(v_requesting_family_id)
     from eligible_students es
     on conflict (student_id, date)
     do update set
       status = excluded.status,
       called_at = excluded.called_at,
       called_by = excluded.called_by,
-      checked_in_by = excluded.checked_in_by
+      checked_in_by = excluded.checked_in_by,
+      pickup_family_id = excluded.pickup_family_id,
+      pickup_family_label = excluded.pickup_family_label
     returning student_id
   ),
   response_rows as (
@@ -1370,21 +1495,34 @@ begin
     where cds.student_id is null
   ),
   upserted as (
-    insert into public.daily_status (student_id, date, status, called_at, called_by, checked_in_by)
+    insert into public.daily_status (
+      student_id,
+      date,
+      status,
+      called_at,
+      called_by,
+      checked_in_by,
+      pickup_family_id,
+      pickup_family_label
+    )
     select
       es.student_id,
       v_today,
       'CALLED',
       now(),
       p_called_by,
-      coalesce(v_checked_in_by, initcap(p_called_by))
+      coalesce(v_checked_in_by, initcap(p_called_by)),
+      v_owner_family_id,
+      public.pickup_family_label(v_owner_family_id)
     from eligible_students es
     on conflict (student_id, date)
     do update set
       status = excluded.status,
       called_at = excluded.called_at,
       called_by = excluded.called_by,
-      checked_in_by = excluded.checked_in_by
+      checked_in_by = excluded.checked_in_by,
+      pickup_family_id = excluded.pickup_family_id,
+      pickup_family_label = excluded.pickup_family_label
     returning student_id
   ),
   response_rows as (
@@ -2573,6 +2711,7 @@ alter table public.app_users enable row level security;
 alter table public.pickup_authorizations enable row level security;
 alter table public.pickup_authorization_students enable row level security;
 alter table public.pickup_authorization_audit enable row level security;
+alter table public.pickup_notification_queue enable row level security;
 alter table public.carpool_presets enable row level security;
 alter table public.carpool_preset_students enable row level security;
 
@@ -2594,6 +2733,8 @@ drop policy if exists pickup_authorization_students_select_staff on public.picku
 drop policy if exists pickup_authorization_students_admin_all on public.pickup_authorization_students;
 drop policy if exists pickup_authorization_audit_select_staff on public.pickup_authorization_audit;
 drop policy if exists pickup_authorization_audit_admin_all on public.pickup_authorization_audit;
+drop policy if exists pickup_notification_queue_select_admin on public.pickup_notification_queue;
+drop policy if exists pickup_notification_queue_admin_all on public.pickup_notification_queue;
 drop policy if exists carpool_presets_select_staff on public.carpool_presets;
 drop policy if exists carpool_presets_admin_all on public.carpool_presets;
 drop policy if exists carpool_preset_students_select_staff on public.carpool_preset_students;
@@ -2655,6 +2796,12 @@ create policy pickup_authorization_audit_select_staff on public.pickup_authoriza
 for select using (public.is_spotter_or_admin());
 
 create policy pickup_authorization_audit_admin_all on public.pickup_authorization_audit
+for all using (public.is_admin()) with check (public.is_admin());
+
+create policy pickup_notification_queue_select_admin on public.pickup_notification_queue
+for select using (public.is_admin());
+
+create policy pickup_notification_queue_admin_all on public.pickup_notification_queue
 for all using (public.is_admin()) with check (public.is_admin());
 
 create policy carpool_presets_select_staff on public.carpool_presets

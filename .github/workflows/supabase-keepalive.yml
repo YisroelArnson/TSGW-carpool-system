@@ -1,0 +1,62 @@
+name: Supabase keepalive
+
+on:
+  schedule:
+    # Ping twice weekly so short GitHub scheduling delays do not leave a full week gap.
+    - cron: "17 9 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Ping Supabase REST API
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL_SECRET: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY_SECRET: ${{ secrets.SUPABASE_ANON_KEY }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Supabase config
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          supabase_url="${SUPABASE_URL_SECRET}"
+          supabase_anon_key="${SUPABASE_ANON_KEY_SECRET}"
+
+          if [[ -z "$supabase_url" ]]; then
+            supabase_url="$(sed -nE 's/.*supabaseUrl:[[:space:]]*"([^"]+)".*/\1/p' assets/js/config.js | head -n 1)"
+          fi
+
+          if [[ -z "$supabase_anon_key" ]]; then
+            supabase_anon_key="$(sed -nE 's/.*supabaseAnonKey:[[:space:]]*"([^"]+)".*/\1/p' assets/js/config.js | head -n 1)"
+          fi
+
+          if [[ -z "$supabase_url" || -z "$supabase_anon_key" ]]; then
+            echo "Supabase URL/key not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY repository secrets." >&2
+            exit 1
+          fi
+
+          echo "::add-mask::$supabase_anon_key"
+          echo "supabase_url=$supabase_url" >> "$GITHUB_OUTPUT"
+          echo "supabase_anon_key=$supabase_anon_key" >> "$GITHUB_OUTPUT"
+
+      - name: Ping Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl --fail --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --retry-delay 10 \
+            --header "apikey: ${{ steps.config.outputs.supabase_anon_key }}" \
+            --header "Authorization: Bearer ${{ steps.config.outputs.supabase_anon_key }}" \
+            --header "Accept: application/json" \
+            "${{ steps.config.outputs.supabase_url }}/rest/v1/daily_status?select=id&limit=1"

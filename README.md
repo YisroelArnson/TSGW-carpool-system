@@ -36,6 +36,17 @@ values
    - Edit `/Users/yisroel/Developer/TSGW-carpool-system/assets/js/config.js`
    - Set `supabaseUrl` and `supabaseAnonKey`
 
+## Supabase Keepalive
+
+The GitHub Actions workflow in `.github/workflows/supabase-keepalive.yml` pings the Supabase REST API twice a week and can also be run manually.
+
+For GitHub, add these repository secrets:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+
+If those secrets are not configured, the workflow falls back to `assets/js/config.js`.
+
 ## Local Run
 
 Serve static files with any static server from repo root.
@@ -71,3 +82,41 @@ If your host does not support folder fallback for nested routes, configure rewri
 - Spotter session is persisted by Supabase in browser storage (`persistSession: true`).
 - Classroom hub count updates use status transition deltas to prevent overcount drift.
 - School day logic uses America/New_York (`school_today()`).
+
+## Pickup Permission Email Alerts
+
+Permission create, edit, and revoke events write to `pickup_notification_queue`. Deploy the Supabase Edge Function and connect a Database Webhook so pending rows are sent through Resend.
+
+1. Deploy the function:
+
+```bash
+supabase functions deploy send-pickup-permission-alert
+```
+
+2. Set function secrets:
+
+```bash
+supabase secrets set RESEND_API_KEY="<RESEND_API_KEY>"
+supabase secrets set NOTIFICATION_FROM_EMAIL="TSGW Carpool <carpool@example.org>"
+supabase secrets set APP_BASE_URL="https://your-carpool-site.example"
+supabase secrets set PICKUP_ALERT_WEBHOOK_SECRET="<random-shared-secret>"
+```
+
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase in deployed Edge Functions.
+
+3. In Supabase Dashboard, create a Database Webhook:
+   - Table: `public.pickup_notification_queue`
+   - Events: `Insert`
+   - Type: HTTP Request
+   - Method: `POST`
+   - URL: `https://<project-ref>.supabase.co/functions/v1/send-pickup-permission-alert`
+   - Header: `x-pickup-alert-secret: <random-shared-secret>`
+
+4. Manual function test after a queue row exists:
+
+```bash
+curl -X POST "https://<project-ref>.supabase.co/functions/v1/send-pickup-permission-alert" \
+  -H "Content-Type: application/json" \
+  -H "x-pickup-alert-secret: <random-shared-secret>" \
+  -d '{"queue_id":"<pickup_notification_queue_id>"}'
+```

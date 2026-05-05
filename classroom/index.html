@@ -626,10 +626,23 @@
 
       .projector .student-card-label {
         display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        min-width: 0;
+        max-width: 100%;
+        line-height: 1.08;
+      }
+
+      .projector .student-card-primary {
+        display: flex;
         align-items: baseline;
         justify-content: center;
         gap: 8px;
         flex-wrap: wrap;
+        min-width: 0;
+        max-width: 100%;
       }
 
       .projector .student-card-name {
@@ -641,6 +654,18 @@
         letter-spacing: 0.08em;
         text-transform: uppercase;
         opacity: 0.82;
+      }
+
+      .projector .student-card-pickup {
+        display: block;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.62em;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        opacity: 0.9;
       }
 
       .projector .student-card.waiting {

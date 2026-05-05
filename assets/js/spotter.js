@@ -348,7 +348,9 @@
       status,
       called_at: isCalled ? new Date().toISOString() : null,
       called_by: isCalled ? calledBy : null,
-      checked_in_by: checkedInBy
+      checked_in_by: checkedInBy,
+      pickup_family_id: null,
+      pickup_family_label: null
     }];
 
     const { error } = await client.from("daily_status").upsert(payload, { onConflict: "student_id,date" });

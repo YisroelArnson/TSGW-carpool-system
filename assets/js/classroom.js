@@ -13,6 +13,7 @@
     students: [],
     statusesByStudent: new Map(),
     calledAtByStudent: new Map(),
+    pickupLabelByStudent: new Map(),
     studentToClass: new Map(),
     classTotals: new Map(),
     classCalled: new Map(),
@@ -115,7 +116,7 @@
     const [classesRes, studentsRes, statusRes] = await Promise.all([
       client.from("classes").select("id,name,display_order").order("display_order", { ascending: true }),
       client.from("students").select("id,first_name,last_name,class_id"),
-      client.from("daily_status").select("student_id,status,called_at").eq("date", state.today)
+      client.from("daily_status").select("student_id,status,called_at,pickup_family_label").eq("date", state.today)
     ]);
 
     if (classesRes.error) throw classesRes.error;
@@ -126,10 +127,12 @@
     state.students = studentsRes.data || [];
     state.statusesByStudent = new Map();
     state.calledAtByStudent = new Map();
+    state.pickupLabelByStudent = new Map();
 
     (statusRes.data || []).forEach((row) => {
       state.statusesByStudent.set(row.student_id, row.status);
       if (row.called_at) state.calledAtByStudent.set(row.student_id, row.called_at);
+      if (row.pickup_family_label) state.pickupLabelByStudent.set(row.student_id, row.pickup_family_label);
     });
 
     buildMaps();
@@ -335,10 +338,15 @@
     const status = state.statusesByStudent.get(student.id) || "WAITING";
     const klass = status === "CALLED" ? "called" : "waiting";
     const classLabel = state.classIds.length > 1 ? `<span class="student-card-class">${escapeHtml(getClassName(student.class_id))}</span>` : "";
+    const pickupLabel = status === "CALLED" ? state.pickupLabelByStudent.get(student.id) : "";
+    const pickupLine = pickupLabel ? `<span class="student-card-pickup">Pickup: ${escapeHtml(pickupLabel)}</span>` : "";
     return `<div class="student-card ${klass}" data-student-id="${escapeHtml(student.id)}">
       <div class="student-card-label">
-        <span class="student-card-name">${escapeHtml(`${student.last_name}, ${student.first_name}`)}</span>
-        ${classLabel}
+        <span class="student-card-primary">
+          <span class="student-card-name">${escapeHtml(`${student.last_name}, ${student.first_name}`)}</span>
+          ${classLabel}
+        </span>
+        ${pickupLine}
       </div>
     </div>`;
   }
@@ -394,9 +402,10 @@
     const node = document.querySelector(`[data-student-id="${studentId}"]`);
     if (!node) return;
 
-    const status = state.statusesByStudent.get(studentId) || "WAITING";
-    node.classList.remove("waiting", "called");
-    node.classList.add(status === "CALLED" ? "called" : "waiting");
+    const student = state.students.find((entry) => entry.id === studentId);
+    if (!student) return;
+
+    node.outerHTML = displayStudentCardHtml(student);
   }
 
   function applyDelta(oldStatus, newStatus, studentId) {
@@ -617,11 +626,14 @@
     const newStatus = payload.new && payload.new.status ? payload.new.status : "WAITING";
     const oldCalledAt = payload.old && payload.old.called_at ? payload.old.called_at : state.calledAtByStudent.get(studentId) || null;
     const newCalledAt = payload.new && payload.new.called_at ? payload.new.called_at : null;
+    const pickupLabel = payload.new && payload.new.pickup_family_label ? payload.new.pickup_family_label : "";
 
     applyDelta(oldStatus, newStatus, studentId);
     state.statusesByStudent.set(studentId, newStatus);
     if (newCalledAt) state.calledAtByStudent.set(studentId, newCalledAt);
     else state.calledAtByStudent.delete(studentId);
+    if (newStatus === "CALLED" && pickupLabel) state.pickupLabelByStudent.set(studentId, pickupLabel);
+    else state.pickupLabelByStudent.delete(studentId);
 
     const classId = state.studentToClass.get(studentId);
     if (classId) updateHubCard(classId);
@@ -638,14 +650,16 @@
 
   async function fullResync() {
     const client = mustClient();
-    const { data, error } = await client.from("daily_status").select("student_id,status,called_at").eq("date", state.today);
+    const { data, error } = await client.from("daily_status").select("student_id,status,called_at,pickup_family_label").eq("date", state.today);
     if (error) return;
 
     state.statusesByStudent = new Map();
     state.calledAtByStudent = new Map();
+    state.pickupLabelByStudent = new Map();
     (data || []).forEach((row) => {
       state.statusesByStudent.set(row.student_id, row.status);
       if (row.called_at) state.calledAtByStudent.set(row.student_id, row.called_at);
+      if (row.pickup_family_label) state.pickupLabelByStudent.set(row.student_id, row.pickup_family_label);
     });
     buildMaps();
 

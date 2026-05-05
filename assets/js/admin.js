@@ -26,7 +26,9 @@
     "parent_one_last_name",
     "parent_two_title",
     "parent_two_first_name",
-    "parent_two_last_name"
+    "parent_two_last_name",
+    "notification_email",
+    "notification_enabled"
   ];
   const REQUIRED_IMPORT_FIELDS = ["carpool_number", "student_first_name", "student_last_name", "class_name"];
   const IMPORT_HEADER_ALIASES = {
@@ -50,6 +52,14 @@
     parent2title: "parent_two_title",
     parent2firstname: "parent_two_first_name",
     parent2lastname: "parent_two_last_name",
+    notificationemail: "notification_email",
+    familyemail: "notification_email",
+    parentemail: "notification_email",
+    email: "notification_email",
+    notificationsenabled: "notification_enabled",
+    notificationenabled: "notification_enabled",
+    alerts: "notification_enabled",
+    alertsenabled: "notification_enabled",
     student_first_name: "student_first_name",
     student_last_name: "student_last_name",
     class_name: "class_name",
@@ -59,7 +69,9 @@
     parent_one_last_name: "parent_one_last_name",
     parent_two_title: "parent_two_title",
     parent_two_first_name: "parent_two_first_name",
-    parent_two_last_name: "parent_two_last_name"
+    parent_two_last_name: "parent_two_last_name",
+    notification_email: "notification_email",
+    notification_enabled: "notification_enabled"
   };
 
   const state = {
@@ -198,24 +210,48 @@
     };
   }
 
-  function familyPayloadFromValues(values) {
-    return {
+  function notificationEnabledFromValue(value, defaultValue = true) {
+    if (typeof value === "boolean") return value;
+    const text = cleanValue(value).toLowerCase();
+    if (!text) return defaultValue;
+    if (["false", "no", "n", "0", "off", "disabled"].includes(text)) return false;
+    return true;
+  }
+
+  function familyPayloadFromValues(values, options = {}) {
+    const includeNotification = options.includeNotification !== false;
+    const payload = {
       carpool_number: Number(values.carpool_number),
       ...familyNamePayload("parent_one", values),
       ...familyNamePayload("parent_two", values),
       contact_info: cleanValue(values.contact_info) || null
     };
+
+    if (includeNotification) {
+      payload.notification_email = cleanValue(values.notification_email) || null;
+      payload.notification_enabled = notificationEnabledFromValue(values.notification_enabled, true);
+    }
+
+    return payload;
   }
 
   function sameFamilyData(a, b) {
-    return [
+    const fields = [
       "parent_one_title",
       "parent_one_first_name",
       "parent_one_last_name",
       "parent_two_title",
       "parent_two_first_name",
       "parent_two_last_name"
-    ].every((field) => cleanValue(a?.[field]) === cleanValue(b?.[field]));
+    ];
+    if (Object.prototype.hasOwnProperty.call(b || {}, "notification_email")) fields.push("notification_email");
+    if (Object.prototype.hasOwnProperty.call(b || {}, "notification_enabled")) fields.push("notification_enabled");
+    return fields.every((field) => {
+      if (field === "notification_enabled") {
+        return notificationEnabledFromValue(a?.[field], true) === notificationEnabledFromValue(b?.[field], true);
+      }
+      return cleanValue(a?.[field]) === cleanValue(b?.[field]);
+    });
   }
 
   function legacyParentParts(value) {
@@ -268,6 +304,8 @@
       parent_two_title: cleanValue(values.parent_two_title),
       parent_two_first_name: cleanValue(values.parent_two_first_name),
       parent_two_last_name: cleanValue(values.parent_two_last_name),
+      notification_email: cleanValue(values.notification_email),
+      notification_enabled: cleanValue(values.notification_enabled),
       legacy_parent_names: cleanValue(values.legacy_parent_names)
     };
     return applyLegacyParentNames(row);
@@ -277,8 +315,9 @@
     return field.replaceAll("_", " ");
   }
 
-  function familyFieldsFromRow(row) {
-    return {
+  function familyFieldsFromRow(row, options = {}) {
+    const includeBlankNotification = Boolean(options.includeBlankNotification);
+    const fields = {
       parent_one_title: row.parent_one_title,
       parent_one_first_name: row.parent_one_first_name,
       parent_one_last_name: row.parent_one_last_name,
@@ -286,6 +325,13 @@
       parent_two_first_name: row.parent_two_first_name,
       parent_two_last_name: row.parent_two_last_name
     };
+    if (includeBlankNotification || cleanValue(row.notification_email)) {
+      fields.notification_email = cleanValue(row.notification_email) || null;
+    }
+    if (includeBlankNotification || cleanValue(row.notification_enabled)) {
+      fields.notification_enabled = notificationEnabledFromValue(row.notification_enabled, true);
+    }
+    return fields;
   }
 
   function hydrateFamily(family) {
@@ -520,7 +566,9 @@
       status,
       called_at: isCalled ? new Date().toISOString() : null,
       called_by: isCalled ? "admin" : null,
-      checked_in_by: checkedInBy
+      checked_in_by: checkedInBy,
+      pickup_family_id: null,
+      pickup_family_label: null
     }];
 
     const { error } = await client.from("daily_status").upsert(payload, { onConflict: "student_id,date" });
@@ -536,7 +584,9 @@
       status,
       called_at: isCalled ? new Date().toISOString() : null,
       called_by: isCalled ? "admin" : null,
-      checked_in_by: isCalled ? (checkedInBy || "Admin") : null
+      checked_in_by: isCalled ? (checkedInBy || "Admin") : null,
+      pickup_family_id: null,
+      pickup_family_label: null
     };
     const existingIndex = state.dailyStatus.findIndex((row) => row.student_id === studentId && row.date === state.today);
     if (existingIndex >= 0) {
@@ -603,7 +653,7 @@
       client.from("classes").select("id,name,display_order").order("display_order", { ascending: true }),
       client
         .from("families")
-        .select("id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name,contact_info")
+        .select("id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name,contact_info,notification_email,notification_enabled")
         .order("carpool_number", { ascending: true }),
       client
         .from("students")
@@ -672,6 +722,7 @@
       if (col === "carpool") return f.carpool_number;
       if (col === "parents") return familyDisplayName(f);
       if (col === "contact") return f.contact_info || "";
+      if (col === "notification") return f.notification_email || "";
       if (col === "students") return (byFamily.get(f.id) || []).length;
       return 0;
     };
@@ -684,6 +735,7 @@
           <td>${escapeHtml(String(f.carpool_number))}</td>
           <td>${escapeHtml(familyDisplayName(f))}</td>
           <td>${escapeHtml(f.contact_info || "")}</td>
+          <td>${escapeHtml(f.notification_enabled === false ? "Off" : (f.notification_email || "On, no email"))}</td>
           <td>${escapeHtml(students.join(", "))}</td>
           <td>
             <div class="permissions-actions">
@@ -695,7 +747,7 @@
       })
       .join("");
 
-    el("families-tbody").innerHTML = html || '<tr><td colspan="5" class="muted">No families yet.</td></tr>';
+    el("families-tbody").innerHTML = html || '<tr><td colspan="6" class="muted">No families yet.</td></tr>';
     applySortHeaders("families-table", col, dir);
   }
 
@@ -1189,6 +1241,14 @@
           <label for="modal-family-contact">Contact info (optional)</label>
           <input id="modal-family-contact" type="text" value="${escapeHtml(data?.contact_info || "")}" />
         </div>
+        <div class="form-row">
+          <label for="modal-family-notification-email">Alert email (optional)</label>
+          <input id="modal-family-notification-email" type="email" value="${escapeHtml(data?.notification_email || "")}" />
+        </div>
+        <label class="modal-toggle" for="modal-family-notification-enabled">
+          <input id="modal-family-notification-enabled" type="checkbox" ${data?.notification_enabled === false ? "" : "checked"} />
+          <span>Send pickup permission email alerts</span>
+        </label>
       `;
     }
 
@@ -1468,6 +1528,8 @@
     const payload = familyPayloadFromValues({
       carpool_number: carpool,
       contact_info: contact,
+      notification_email: el("modal-family-notification-email").value,
+      notification_enabled: el("modal-family-notification-enabled").checked,
       parent_one_title: el("modal-parent-one-title").value,
       parent_one_first_name: el("modal-parent-one-first").value,
       parent_one_last_name: el("modal-parent-one-last").value,
@@ -2025,28 +2087,32 @@
 
         const familyKey = canonicalCarpool(row.carpool_number);
         let familyRow = familyMap.get(familyKey);
+        const rowFamilyFields = familyFieldsFromRow(row);
+        const rowIncludesNotifications =
+          Object.prototype.hasOwnProperty.call(rowFamilyFields, "notification_email") ||
+          Object.prototype.hasOwnProperty.call(rowFamilyFields, "notification_enabled");
         const familyPayload = familyPayloadFromValues({
           carpool_number: row.carpool_number,
-          ...familyFieldsFromRow(row)
-        });
+          ...rowFamilyFields
+        }, { includeNotification: rowIncludesNotifications });
 
         if (!familyRow) {
           const familyInsert = await client
             .from("families")
             .insert(familyPayload)
-            .select("id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name,contact_info")
+            .select("id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name,contact_info,notification_email,notification_enabled")
             .single();
           if (familyInsert.error) throw familyInsert.error;
           familyRow = hydrateFamily(familyInsert.data);
           familyMap.set(familyKey, familyRow);
           state.families.push(familyRow);
           results.families_created += 1;
-        } else if (!sameFamilyData(familyRow, familyFieldsFromRow(row))) {
+        } else if (!sameFamilyData(familyRow, rowFamilyFields)) {
           const familyUpdate = await client
             .from("families")
             .update(familyPayload)
             .eq("id", familyRow.id)
-            .select("id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name,contact_info")
+            .select("id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name,contact_info,notification_email,notification_enabled")
             .single();
           if (familyUpdate.error) throw familyUpdate.error;
           familyRow = hydrateFamily(familyUpdate.data);
