@@ -102,7 +102,7 @@ supabase secrets set APP_BASE_URL="https://your-carpool-site.example"
 supabase secrets set PICKUP_ALERT_WEBHOOK_SECRET="<random-shared-secret>"
 ```
 
-`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase in deployed Edge Functions.
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase in deployed Edge Functions. Set them manually only when serving the function locally.
 
 3. In Supabase Dashboard, create a Database Webhook:
    - Table: `public.pickup_notification_queue`

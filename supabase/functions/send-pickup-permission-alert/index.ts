@@ -154,20 +154,21 @@ Deno.serve(async (req) => {
     }
   });
 
-  const { data: currentQueue, error: currentError } = await supabase
+  const { data: currentQueueData, error: currentError } = await supabase
     .from("pickup_notification_queue")
     .select("*")
     .eq("id", queueId)
-    .maybeSingle<QueueRow>();
+    .maybeSingle();
 
   if (currentError) return jsonResponse({ error: currentError.message }, 500);
+  const currentQueue = currentQueueData as QueueRow | null;
   if (!currentQueue) return jsonResponse({ error: "Queue row not found" }, 404);
   if (["sent", "skipped"].includes(currentQueue.status)) {
     return jsonResponse({ ok: true, status: currentQueue.status });
   }
 
   const nextAttempt = (currentQueue.attempt_count || 0) + 1;
-  const { data: queue, error: claimError } = await supabase
+  const { data: queueData, error: claimError } = await supabase
     .from("pickup_notification_queue")
     .update({
       status: "processing",
@@ -178,9 +179,10 @@ Deno.serve(async (req) => {
     .eq("id", queueId)
     .in("status", ["pending", "failed"])
     .select("*")
-    .maybeSingle<QueueRow>();
+    .maybeSingle();
 
   if (claimError) return jsonResponse({ error: claimError.message }, 500);
+  const queue = queueData as QueueRow | null;
   if (!queue) return jsonResponse({ ok: true, status: "already_processing" });
 
   async function markQueue(status: "sent" | "skipped" | "failed", details: Record<string, unknown>) {
@@ -208,7 +210,8 @@ Deno.serve(async (req) => {
 
     if (familiesError) throw familiesError;
 
-    const familyById = new Map((families || []).map((family: FamilyRow) => [family.id, family]));
+    const familyRows = (families || []) as FamilyRow[];
+    const familyById = new Map(familyRows.map((family) => [family.id, family]));
     const grantingFamily = queue.granting_family_id ? familyById.get(queue.granting_family_id) || null : null;
     const receivingFamily = familyById.get(queue.receiving_family_id) || null;
 
