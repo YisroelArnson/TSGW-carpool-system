@@ -220,7 +220,7 @@
   }
 
   function formatScheduleRemaining(ms) {
-    if (ms <= 0) return "Sending now";
+    if (ms <= 0) return "0:00";
     const totalSeconds = Math.ceil(ms / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
@@ -468,6 +468,7 @@
   function studentScheduleText() {
     const sendAt = new Date(state.scheduledPickup?.send_at || "").getTime();
     if (!sendAt || Number.isNaN(sendAt)) return "Request scheduled.";
+    if (sendAt <= Date.now()) return "Request is being sent shortly.";
     const remaining = formatScheduleRemaining(sendAt - Date.now());
     const timeText = formatScheduleTime(state.scheduledPickup.send_at);
     return timeText ? `Request sending in ${remaining} at ${timeText}.` : `Request sending in ${remaining}.`;
@@ -608,7 +609,11 @@
     const names = scheduledStudentNames();
     const namesText = formatScheduledNames(names);
     const titleName = names.length === 1 ? names[0] : namesText;
-    if (title) title.textContent = `Sending ${titleName} in ${formatScheduleRemaining(msRemaining)}`;
+    if (title) {
+      title.textContent = msRemaining <= 0
+        ? `Sending ${titleName} shortly`
+        : `Sending ${titleName} in ${formatScheduleRemaining(msRemaining)}`;
+    }
     if (meta) {
       const timeText = formatScheduleTime(scheduled.send_at);
       meta.textContent = timeText ? `Scheduled for ${timeText}` : namesText;
