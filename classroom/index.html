@@ -457,6 +457,54 @@
         line-height: 1;
       }
 
+      .projector .display-title-group {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .projector .display-title-copy {
+        min-width: 0;
+      }
+
+      .projector .display-back-link {
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        text-decoration: none;
+        transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+      }
+
+      .projector .display-back-link:hover,
+      .projector .display-back-link:focus-visible {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.46);
+        transform: translateY(-1px);
+      }
+
+      .projector .display-back-link:focus-visible {
+        outline: 3px solid rgba(212, 175, 55, 0.8);
+        outline-offset: 3px;
+      }
+
+      .projector .display-back-link svg {
+        width: 21px;
+        height: 21px;
+        stroke: currentColor;
+        stroke-width: 2.4;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
       .projector .display-sub {
         font-size: 0.7rem;
         font-weight: 700;
@@ -774,9 +822,16 @@
       <!-- ── Individual display view ───────────────────────────── -->
       <section id="display-view" class="stack hidden">
         <div class="display-header">
-          <div>
-            <h1 id="display-class-name">Class</h1>
-            <span class="display-sub">Dismissal</span>
+          <div class="display-title-group">
+            <a class="display-back-link" href="./" aria-label="Back to classroom hub" title="Back to classroom hub">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="m15 18-6-6 6-6"></path>
+              </svg>
+            </a>
+            <div class="display-title-copy">
+              <h1 id="display-class-name">Class</h1>
+              <span class="display-sub">Dismissal</span>
+            </div>
           </div>
           <div class="display-audio-controls">
             <button
@@ -816,6 +871,6 @@
     <script src="../assets/js/config.js"></script>
     <script src="../assets/js/supabase-client.js"></script>
     <script src="../assets/js/utils.js"></script>
-    <script src="../assets/js/classroom.js"></script>
+    <script src="../assets/js/classroom.js?v=student-call-audio-20260514"></script>
   </body>
 </html>

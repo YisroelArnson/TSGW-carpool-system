@@ -709,6 +709,50 @@
         margin: 0;
       }
 
+      .student-audio-card {
+        border: 1px solid var(--border-light);
+        border-radius: 14px;
+        background: var(--surface-ivory);
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .student-audio-status {
+        color: var(--text-muted);
+        font-size: 0.88rem;
+        font-weight: 600;
+      }
+
+      .student-audio-status.success { color: #2a7d31; }
+      .student-audio-status.warning { color: #8a5b13; }
+      .student-audio-status.error { color: var(--status-danger); }
+      .student-audio-status.recording { color: var(--brand-maroon); }
+
+      .student-audio-preview {
+        width: 100%;
+        height: 40px;
+      }
+
+      .student-audio-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .student-audio-actions .btn-action:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .student-audio-hint {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+        line-height: 1.35;
+      }
+
       .checkbox-list {
         display: grid;
         gap: 8px;
@@ -861,6 +905,28 @@
         border-color: rgba(176, 42, 55, 0.32);
         background: #fbecee;
         color: var(--status-danger);
+      }
+
+      .audio-status-pill {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .audio-status-pill.has-audio {
+        background: #eef8f0;
+        color: #2a7d31;
+      }
+
+      .audio-status-pill.no-audio {
+        background: var(--surface-sand);
+        color: var(--text-muted);
       }
 
       /* ─ Sortable headers ─ */
@@ -1136,6 +1202,7 @@
                   <th data-sort="class">Class</th>
                   <th data-sort="family">Family</th>
                   <th data-sort="carpool">Family #</th>
+                  <th data-sort="audio">Audio</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -1264,6 +1331,6 @@
     <script src="../assets/js/config.js"></script>
     <script src="../assets/js/supabase-client.js"></script>
     <script src="../assets/js/utils.js"></script>
-    <script src="../assets/js/admin.js"></script>
+    <script src="../assets/js/admin.js?v=student-call-audio-20260514"></script>
   </body>
 </html>

@@ -399,8 +399,10 @@
 
   function syncPermanentUi() {
     const isPermanent = el("authorization-permanent").checked;
-    el("authorization-end-date").disabled = isPermanent;
-    if (isPermanent) el("authorization-end-date").value = "";
+    const endDate = el("authorization-end-date");
+    endDate.disabled = isPermanent;
+    endDate.closest(".form-row")?.classList.toggle("is-disabled", isPermanent);
+    if (isPermanent) endDate.value = "";
     if (!el("authorization-start-date").value) el("authorization-start-date").value = todayIso();
   }
 

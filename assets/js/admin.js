@@ -16,6 +16,17 @@
   if (!mustClient) return;
 
   const PERMANENT_END_DATE = "9999-12-31";
+  const STUDENT_AUDIO_BUCKET = "student-call-audio";
+  const STUDENT_AUDIO_MAX_MS = 10000;
+  const STUDENT_BASE_SELECT = "id,first_name,last_name,class_id,family_id,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)";
+  const STUDENT_AUDIO_SELECT = "id,first_name,last_name,class_id,family_id,call_audio_path,call_audio_mime_type,call_audio_updated_at,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)";
+  const STUDENT_AUDIO_MIME_CANDIDATES = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+    "audio/ogg"
+  ];
   const IMPORT_EDITABLE_FIELDS = [
     "carpool_number",
     "student_first_name",
@@ -102,7 +113,8 @@
     },
     modal: {
       mode: null,
-      entityId: null
+      entityId: null,
+      audio: emptyStudentAudioState()
     }
   };
 
@@ -114,6 +126,22 @@
     permissions: { col: null, dir: "asc" },
     presets: { col: null, dir: "asc" }
   };
+
+  function emptyStudentAudioState() {
+    return {
+      recorder: null,
+      stream: null,
+      chunks: [],
+      blob: null,
+      mimeType: "",
+      objectUrl: "",
+      existingPath: "",
+      existingMimeType: "",
+      deleteRequested: false,
+      isRecording: false,
+      timer: null
+    };
+  }
 
   function el(id) {
     return document.getElementById(id);
@@ -349,6 +377,273 @@
     };
   }
 
+  function baseAudioMimeType(mimeType) {
+    return String(mimeType || "").split(";")[0].trim().toLowerCase() || "audio/webm";
+  }
+
+  function preferredRecordingMimeType() {
+    if (!window.MediaRecorder || typeof window.MediaRecorder.isTypeSupported !== "function") return "";
+    return STUDENT_AUDIO_MIME_CANDIDATES.find((mimeType) => window.MediaRecorder.isTypeSupported(mimeType)) || "";
+  }
+
+  function audioExtensionForMime(mimeType) {
+    const baseType = baseAudioMimeType(mimeType);
+    if (baseType === "audio/mp4") return "m4a";
+    if (baseType === "audio/mpeg") return "mp3";
+    if (baseType === "audio/wav") return "wav";
+    if (baseType === "audio/ogg") return "ogg";
+    return "webm";
+  }
+
+  function newStudentId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+    return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+  }
+
+  function studentAudioPublicUrl(path) {
+    if (!path) return "";
+    const { data } = mustClient().storage.from(STUDENT_AUDIO_BUCKET).getPublicUrl(path);
+    return data?.publicUrl || "";
+  }
+
+  function revokeStudentAudioObjectUrl() {
+    const audio = state.modal.audio;
+    if (audio?.objectUrl) {
+      URL.revokeObjectURL(audio.objectUrl);
+      audio.objectUrl = "";
+    }
+  }
+
+  function stopStudentAudioStream() {
+    const audio = state.modal.audio;
+    if (!audio?.stream) return;
+    audio.stream.getTracks().forEach((track) => track.stop());
+    audio.stream = null;
+  }
+
+  function clearStudentAudioTimer() {
+    const audio = state.modal.audio;
+    if (audio?.timer) {
+      clearTimeout(audio.timer);
+      audio.timer = null;
+    }
+  }
+
+  function cleanupStudentAudioState() {
+    const audio = state.modal.audio;
+    if (!audio) {
+      state.modal.audio = emptyStudentAudioState();
+      return;
+    }
+
+    clearStudentAudioTimer();
+    if (audio.recorder && audio.recorder.state !== "inactive") {
+      audio.recorder.ondataavailable = null;
+      audio.recorder.onstop = null;
+      audio.recorder.onerror = null;
+      try {
+        audio.recorder.stop();
+      } catch (error) {
+        // Ignore cleanup errors while closing the modal.
+      }
+    }
+    stopStudentAudioStream();
+    revokeStudentAudioObjectUrl();
+    state.modal.audio = emptyStudentAudioState();
+  }
+
+  function setStudentAudioStatus(message, klass) {
+    const node = el("modal-student-audio-status");
+    if (!node) return;
+    node.className = ["student-audio-status", klass].filter(Boolean).join(" ");
+    node.textContent = message;
+  }
+
+  function refreshStudentAudioUi(messageOverride, klass) {
+    const audio = state.modal.audio;
+    const recordBtn = el("modal-student-audio-record");
+    const stopBtn = el("modal-student-audio-stop");
+    const deleteBtn = el("modal-student-audio-delete");
+    const preview = el("modal-student-audio-preview");
+    const supportsRecording = Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+    const hasPendingRecording = Boolean(audio?.blob);
+    const hasSavedRecording = Boolean(audio?.existingPath && !audio.deleteRequested);
+    const previewUrl = hasPendingRecording ? audio.objectUrl : hasSavedRecording ? studentAudioPublicUrl(audio.existingPath) : "";
+
+    if (recordBtn) {
+      recordBtn.disabled = Boolean(audio?.isRecording) || !supportsRecording;
+      recordBtn.textContent = hasPendingRecording || hasSavedRecording ? "Replace Recording" : "Record";
+    }
+    if (stopBtn) stopBtn.disabled = !audio?.isRecording;
+    if (deleteBtn) deleteBtn.disabled = Boolean(audio?.isRecording) || (!hasPendingRecording && !hasSavedRecording);
+
+    if (preview) {
+      if (previewUrl) {
+        if (preview.src !== previewUrl) {
+          preview.src = previewUrl;
+          preview.load();
+        }
+        preview.classList.remove("hidden");
+      } else {
+        preview.removeAttribute("src");
+        preview.classList.add("hidden");
+      }
+    }
+
+    if (messageOverride) {
+      setStudentAudioStatus(messageOverride, klass);
+    } else if (!supportsRecording) {
+      setStudentAudioStatus("This browser cannot record audio.", "error");
+    } else if (audio?.isRecording) {
+      setStudentAudioStatus("Recording... stops automatically after 10 seconds.", "recording");
+    } else if (hasPendingRecording) {
+      setStudentAudioStatus("New recording ready. Save changes to use it.", "success");
+    } else if (audio?.deleteRequested) {
+      setStudentAudioStatus("Recording will be removed when you save.", "warning");
+    } else if (hasSavedRecording) {
+      setStudentAudioStatus("Recording saved for classroom calls.", "success");
+    } else {
+      setStudentAudioStatus("No recording saved. Classroom will use the spoken-name fallback.", "");
+    }
+  }
+
+  function clearPendingStudentAudioRecording() {
+    const audio = state.modal.audio;
+    revokeStudentAudioObjectUrl();
+    audio.blob = null;
+    audio.mimeType = "";
+    audio.chunks = [];
+  }
+
+  function stopStudentAudioRecording() {
+    const audio = state.modal.audio;
+    if (!audio?.recorder || !audio.isRecording) return;
+
+    clearStudentAudioTimer();
+    try {
+      if (audio.recorder.state !== "inactive") audio.recorder.stop();
+    } catch (error) {
+      audio.isRecording = false;
+      stopStudentAudioStream();
+      refreshStudentAudioUi("Unable to finish this recording. Please try again.", "error");
+    }
+  }
+
+  async function startStudentAudioRecording() {
+    const audio = state.modal.audio;
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      refreshStudentAudioUi("This browser cannot record audio.", "error");
+      return;
+    }
+    if (audio.isRecording) return;
+
+    clearPendingStudentAudioRecording();
+    audio.deleteRequested = false;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorderMimeType = preferredRecordingMimeType();
+      const recorder = recorderMimeType ? new MediaRecorder(stream, { mimeType: recorderMimeType }) : new MediaRecorder(stream);
+      const baseMimeType = baseAudioMimeType(recorderMimeType || recorder.mimeType);
+
+      audio.recorder = recorder;
+      audio.stream = stream;
+      audio.chunks = [];
+      audio.mimeType = baseMimeType;
+      audio.isRecording = true;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) audio.chunks.push(event.data);
+      };
+      recorder.onerror = () => {
+        stopStudentAudioRecording();
+        refreshStudentAudioUi("Recording failed. Please try again.", "error");
+      };
+      recorder.onstop = () => {
+        clearStudentAudioTimer();
+        stopStudentAudioStream();
+        audio.recorder = null;
+        audio.isRecording = false;
+
+        const recordedBlob = audio.chunks.length ? new Blob(audio.chunks, { type: audio.mimeType || "audio/webm" }) : null;
+        audio.chunks = [];
+        if (!recordedBlob || recordedBlob.size === 0) {
+          audio.blob = null;
+          audio.mimeType = "";
+          refreshStudentAudioUi("No audio was captured. Please try again.", "error");
+          return;
+        }
+
+        audio.blob = recordedBlob;
+        audio.objectUrl = URL.createObjectURL(recordedBlob);
+        audio.deleteRequested = false;
+        refreshStudentAudioUi();
+      };
+
+      recorder.start();
+      audio.timer = window.setTimeout(stopStudentAudioRecording, STUDENT_AUDIO_MAX_MS);
+      refreshStudentAudioUi();
+    } catch (error) {
+      stopStudentAudioStream();
+      audio.recorder = null;
+      audio.isRecording = false;
+      refreshStudentAudioUi("Microphone access was denied or unavailable.", "error");
+    }
+  }
+
+  function requestStudentAudioDelete() {
+    const audio = state.modal.audio;
+    clearPendingStudentAudioRecording();
+    audio.deleteRequested = Boolean(audio.existingPath);
+    refreshStudentAudioUi();
+  }
+
+  function bindStudentAudioUi(student) {
+    cleanupStudentAudioState();
+    state.modal.audio = {
+      ...emptyStudentAudioState(),
+      existingPath: student?.call_audio_path || "",
+      existingMimeType: student?.call_audio_mime_type || ""
+    };
+
+    el("modal-student-audio-record")?.addEventListener("click", startStudentAudioRecording);
+    el("modal-student-audio-stop")?.addEventListener("click", stopStudentAudioRecording);
+    el("modal-student-audio-delete")?.addEventListener("click", requestStudentAudioDelete);
+    refreshStudentAudioUi();
+  }
+
+  async function uploadStudentAudio(client, studentId, blob, mimeType) {
+    const safeMimeType = baseAudioMimeType(mimeType || blob?.type);
+    const path = `students/${studentId}/call-${newStudentId()}.${audioExtensionForMime(safeMimeType)}`;
+    const { error } = await client.storage
+      .from(STUDENT_AUDIO_BUCKET)
+      .upload(path, blob, {
+        cacheControl: "3600",
+        contentType: safeMimeType,
+        upsert: false
+      });
+    if (error) throw error;
+    return {
+      call_audio_path: path,
+      call_audio_mime_type: safeMimeType,
+      call_audio_updated_at: new Date().toISOString()
+    };
+  }
+
+  async function removeStudentAudio(client, path) {
+    if (!path) return;
+    try {
+      await client.storage.from(STUDENT_AUDIO_BUCKET).remove([path]);
+    } catch (error) {
+      console.warn("Unable to remove student audio", error);
+    }
+  }
+
   function editIconSvg() {
     return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path d="M12 20h9"></path>
@@ -390,6 +685,15 @@
     return `<button class="icon-action-btn" type="button" ${datasetAttr}="${escapeHtml(value)}" aria-label="${escapeHtml(label)}">
       ${bellIconSvg()}
     </button>`;
+  }
+
+  function studentAudioPill(student) {
+    const hasAudio = Boolean(student?.call_audio_path);
+    const label = hasAudio ? "Recorded" : "Fallback";
+    const title = hasAudio
+      ? `Recording saved${student.call_audio_updated_at ? ` ${student.call_audio_updated_at}` : ""}`
+      : "No custom recording saved";
+    return `<span class="audio-status-pill ${hasAudio ? "has-audio" : "no-audio"}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
   }
 
   function formatDateLabel(value) {
@@ -655,10 +959,7 @@
         .from("families")
         .select("id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name,contact_info,notification_email,notification_enabled")
         .order("carpool_number", { ascending: true }),
-      client
-        .from("students")
-        .select("id,first_name,last_name,class_id,family_id,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)")
-        .order("last_name", { ascending: true }),
+      fetchAdminStudents(client),
       client
         .from("daily_status")
         .select("id,student_id,status,called_at,called_by,checked_in_by,date")
@@ -693,6 +994,22 @@
     state.pickupAuthorizationAudit = pickupAuditRes.data || [];
     state.carpoolPresets = presetsRes.data || [];
     state.carpoolPresetStudents = presetStudentsRes.data || [];
+  }
+
+  async function fetchAdminStudents(client) {
+    const withAudio = await client
+      .from("students")
+      .select(STUDENT_AUDIO_SELECT)
+      .order("last_name", { ascending: true });
+
+    if (!withAudio.error || !String(withAudio.error.message || "").includes("call_audio")) {
+      return withAudio;
+    }
+
+    return client
+      .from("students")
+      .select(STUDENT_BASE_SELECT)
+      .order("last_name", { ascending: true });
   }
 
   function setTab(nextTab) {
@@ -832,6 +1149,7 @@
       if (col === "class") return s.classes ? s.classes.name : "";
       if (col === "family") return s.families ? familyDisplayName(s.families) : "";
       if (col === "carpool") return s.families ? s.families.carpool_number : 0;
+      if (col === "audio") return s.call_audio_path ? 1 : 0;
       return "";
     };
     const sorted = sortedBy(state.students, col, dir, valFn);
@@ -843,6 +1161,7 @@
           <td>${escapeHtml(s.classes ? s.classes.name : "")}</td>
           <td>${escapeHtml(s.families ? familyDisplayName(s.families) : "")}</td>
           <td>${escapeHtml(s.families ? String(s.families.carpool_number) : "")}</td>
+          <td>${studentAudioPill(s)}</td>
           <td>
             <div class="permissions-actions">
               ${editActionButton("data-edit-student", s.id, "Edit student")}
@@ -853,7 +1172,7 @@
       })
       .join("");
 
-    el("students-tbody").innerHTML = html || '<tr><td colspan="5" class="muted">No students yet.</td></tr>';
+    el("students-tbody").innerHTML = html || '<tr><td colspan="6" class="muted">No students yet.</td></tr>';
     applySortHeaders("students-table", col, dir);
   }
 
@@ -1304,6 +1623,19 @@
             ${classOptions}
           </select>
         </div>
+        <div class="form-row student-audio-section">
+          <label>Call audio</label>
+          <div class="student-audio-card">
+            <div id="modal-student-audio-status" class="student-audio-status"></div>
+            <audio id="modal-student-audio-preview" class="student-audio-preview hidden" controls></audio>
+            <div class="student-audio-actions">
+              <button id="modal-student-audio-record" class="btn-action maroon" type="button">Record</button>
+              <button id="modal-student-audio-stop" class="btn-action ghost" type="button" disabled>Stop</button>
+              <button id="modal-student-audio-delete" class="btn-action ghost" type="button" disabled>Delete</button>
+            </div>
+            <p class="student-audio-hint">Record up to 10 seconds. This plays after the classroom chime.</p>
+          </div>
+        </div>
       `;
     }
 
@@ -1392,6 +1724,10 @@
   }
 
   function bindModalSpecificUi(mode, data) {
+    if (mode === "add-student" || mode === "edit-student") {
+      bindStudentAudioUi(data || null);
+    }
+
     if (mode === "add-permission" || mode === "edit-permission") {
       const selectedIds = data?.student_ids || [];
       const grantingSelect = el("modal-permission-granting");
@@ -1461,12 +1797,14 @@
     } else if (mode === "add-student") {
       title = "Add Student";
       submitLabel = "Add Student";
+      modalData = null;
       body = modalFieldTemplate("student");
     } else if (mode === "edit-student") {
       const student = state.students.find((s) => s.id === entityId);
       if (!student) return;
       title = "Edit Student";
       submitLabel = "Save Changes";
+      modalData = student;
       body = modalFieldTemplate("student", student);
     } else if (mode === "add-permission") {
       title = "Add Pickup Permission";
@@ -1516,6 +1854,7 @@
   }
 
   function closeModal() {
+    cleanupStudentAudioState();
     state.modal.mode = null;
     state.modal.entityId = null;
     show("admin-modal", false);
@@ -1593,21 +1932,59 @@
     const last = el("modal-student-last").value.trim();
     const familyId = el("modal-student-family").value;
     const classId = el("modal-student-class").value;
+    const audio = state.modal.audio || emptyStudentAudioState();
 
     if (!first || !last || !familyId || !classId) {
       setNodeMessage("admin-modal-msg", "All student fields are required.", "error");
       return;
     }
 
+    if (audio.isRecording) {
+      setNodeMessage("admin-modal-msg", "Stop the recording before saving.", "error");
+      return;
+    }
+
+    const existingStudent = isEdit ? state.students.find((student) => student.id === state.modal.entityId) : null;
+    const studentId = isEdit ? state.modal.entityId : newStudentId();
+    let uploadedAudio = null;
+
+    try {
+      if (audio.blob) {
+        uploadedAudio = await uploadStudentAudio(client, studentId, audio.blob, audio.mimeType);
+      }
+    } catch (error) {
+      setNodeMessage("admin-modal-msg", error.message || "Unable to upload the student recording.", "error");
+      return;
+    }
+
     const payload = { first_name: first, last_name: last, family_id: familyId, class_id: classId };
+    if (uploadedAudio) {
+      Object.assign(payload, uploadedAudio);
+    } else if (audio.deleteRequested) {
+      Object.assign(payload, {
+        call_audio_path: null,
+        call_audio_mime_type: null,
+        call_audio_updated_at: null
+      });
+    }
+
     const query = isEdit
       ? client.from("students").update(payload).eq("id", state.modal.entityId)
-      : client.from("students").insert(payload);
+      : client.from("students").insert({ id: studentId, ...payload });
 
     const { error } = await query;
     if (error) {
+      if (uploadedAudio) await removeStudentAudio(client, uploadedAudio.call_audio_path);
       setNodeMessage("admin-modal-msg", error.message, "error");
       return;
+    }
+
+    if (
+      existingStudent?.call_audio_path &&
+      (uploadedAudio || audio.deleteRequested) &&
+      existingStudent.call_audio_path !== uploadedAudio?.call_audio_path
+    ) {
+      await removeStudentAudio(client, existingStudent.call_audio_path);
     }
 
     await refreshAndRender();
@@ -2136,7 +2513,7 @@
               family_id: familyRow.id,
               class_id: classRow.id
             })
-            .select("id,first_name,last_name,class_id,family_id,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)")
+            .select(STUDENT_AUDIO_SELECT)
             .single();
           if (studentInsert.error) throw studentInsert.error;
           const newStudent = hydrateStudent(studentInsert.data);
@@ -2161,7 +2538,7 @@
                 family_id: familyRow.id
               })
               .eq("id", existingStudent.id)
-              .select("id,first_name,last_name,class_id,family_id,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)")
+              .select(STUDENT_AUDIO_SELECT)
               .single();
             if (studentUpdate.error) throw studentUpdate.error;
             const updatedStudent = hydrateStudent(studentUpdate.data);
@@ -2234,12 +2611,14 @@
   async function deleteStudent(id) {
     if (!confirm("Delete this student?")) return;
     const client = mustClient();
+    const student = state.students.find((entry) => entry.id === id);
     const { error } = await client.from("students").delete().eq("id", id);
     if (error) {
       alert(error.message);
       return;
     }
 
+    await removeStudentAudio(client, student?.call_audio_path);
     await refreshAndRender();
   }
 

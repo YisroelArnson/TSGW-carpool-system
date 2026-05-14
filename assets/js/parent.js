@@ -1,5 +1,5 @@
 (function parentPage() {
-  const { mustClient, show, escapeHtml, familyDisplayName, formatWeekdays } = window.carpoolUtils || {};
+  const { mustClient, show, escapeHtml, familyDisplayName, formatWeekdays, fetchSchoolToday } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const STORAGE_KEY = "tsgw_carpool_number";
@@ -62,10 +62,6 @@
     if (!node) return;
     node.textContent = "";
     show(id, false);
-  }
-
-  function todayIso() {
-    return new Date().toISOString().slice(0, 10);
   }
 
   function selectedCheckInActor() {
@@ -254,6 +250,73 @@
         family_id: family.family_id
       }))
     );
+  }
+
+  function contextStudentGroups(context) {
+    return [
+      context?.own_students || [],
+      ...(context?.authorized_pickups || []).map((family) => family.students || [])
+    ];
+  }
+
+  async function applyStudentCallLabels(context) {
+    const studentGroups = contextStudentGroups(context);
+    const studentIds = [...new Set(
+      studentGroups
+        .flatMap((students) => students || [])
+        .map((student) => student?.student_id)
+        .filter(Boolean)
+        .map(String)
+    )];
+    if (!studentIds.length) return;
+
+    try {
+      const client = mustClient();
+      const today = fetchSchoolToday ? await fetchSchoolToday() : new Date().toISOString().slice(0, 10);
+      const { data, error } = await client
+        .from("daily_status")
+        .select("student_id,called_by,checked_in_by,pickup_family_label")
+        .eq("date", today)
+        .eq("status", "CALLED")
+        .in("student_id", studentIds);
+      if (error) throw error;
+
+      const statusByStudent = new Map((data || []).map((row) => [String(row.student_id), row]));
+
+      studentGroups.forEach((students) => {
+        (students || []).forEach((student) => {
+          const status = statusByStudent.get(String(student.student_id));
+          if (!status) return;
+
+          student.called_by = status.called_by || student.called_by;
+          student.checked_in_by = status.checked_in_by || "";
+          student.pickup_family_label = String(status.pickup_family_label || "").trim();
+        });
+      });
+    } catch (error) {
+      console.warn("Unable to load student call labels", error);
+    }
+  }
+
+  function callSourceDisplayName(source) {
+    const normalized = String(source || "").trim().toLowerCase();
+    if (normalized === "admin") return "Administrator";
+    if (normalized === "spotter") return "Spotter";
+    if (normalized === "parent") return "Parent";
+    if (!normalized) return "";
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  }
+
+  function studentCalledByLabel(student) {
+    if (!isStudentCheckedIn(student)) return "";
+    const source = String(student?.called_by || "").trim().toLowerCase();
+    if (source === "parent") {
+      return String(student?.pickup_family_label || "").trim() || "Parent";
+    }
+    if (source === "admin" || source === "spotter") {
+      return callSourceDisplayName(source);
+    }
+    return String(student?.pickup_family_label || student?.checked_in_by || "").trim() || callSourceDisplayName(source);
   }
 
   function scheduledStudentIds() {
@@ -538,12 +601,16 @@
       const isCheckedIn = isStudentCheckedIn(student);
       const isScheduled = !isCheckedIn && pendingStudentIds.has(studentId);
       const studentName = `${student.first_name} ${student.last_name}`;
+      const calledByLabel = studentCalledByLabel(student);
       const studentCopy = `
         <span class="selection-row-main">
           <span class="selection-row-toggle">${isCheckedIn || isSelected ? "✓" : "+"}</span>
           <span class="student-pick-content">
             <span class="student-pick-name">${escapeHtml(studentName)}</span>
-            <small class="student-pick-grade">${escapeHtml(student.class_name || "")}</small>
+            <span class="student-pick-meta-row">
+              ${student.class_name ? `<small class="student-pick-grade">${escapeHtml(student.class_name)}</small>` : ""}
+              ${calledByLabel ? `<small class="student-pick-called-by">Called By: ${escapeHtml(calledByLabel)}</small>` : ""}
+            </span>
             ${isScheduled ? `<small class="student-pick-scheduled">${escapeHtml(studentScheduleText())}</small>` : ""}
           </span>
         </span>
@@ -699,6 +766,7 @@
 
   async function loadFamily(number) {
     state.context = await getCheckinContext(number);
+    await applyStudentCallLabels(state.context);
     state.scheduledPickup = state.context?.scheduled_pickup || await getPendingScheduledPickup();
     resetSelections();
     renderCheckinPage();

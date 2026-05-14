@@ -762,12 +762,34 @@
         color: var(--text-dark);
       }
 
+      .student-pick-meta-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 8px;
+        min-height: 18px;
+      }
+
       .student-pick small,
       .student-pick-grade {
         margin: 0;
         color: var(--text-muted);
         font-size: 0.82rem;
         line-height: 1.35;
+      }
+
+      .student-pick-called-by {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        max-width: 100%;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: rgba(107, 45, 91, 0.08);
+        color: var(--brand-maroon);
+        font-size: 0.74rem;
+        font-weight: 800;
+        line-height: 1.25;
       }
 
       .student-pick-scheduled {

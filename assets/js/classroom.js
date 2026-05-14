@@ -4,6 +4,9 @@
 
   const ALERT_VISIBLE_MS = 3000;
   const ALERT_FADE_MS = 450;
+  const STUDENT_AUDIO_BUCKET = "student-call-audio";
+  const STUDENT_BASE_SELECT = "id,first_name,last_name,class_id";
+  const STUDENT_AUDIO_SELECT = "id,first_name,last_name,class_id,call_audio_path,call_audio_mime_type,call_audio_updated_at";
 
   const state = {
     mode: "hub",
@@ -26,8 +29,11 @@
     alertTimer: null,
     audioContext: null,
     audioReady: false,
+    speechReady: false,
     alertQueue: [],
-    activeAlertStudentId: null
+    activeAlertStudentId: null,
+    activeStudentAudio: null,
+    speechTimer: null
   };
 
   function el(id) {
@@ -45,12 +51,14 @@
     const status = el("display-audio-status");
     if (!button || !status) return;
 
-    if (controls) controls.classList.toggle("ready", state.audioReady);
-    button.classList.toggle("ready", state.audioReady);
-    button.setAttribute("aria-pressed", String(state.audioReady));
-    button.setAttribute("aria-label", state.audioReady ? "Sound active. Click to test sound." : "Sound off. Click to enable sound.");
-    button.title = state.audioReady ? "Sound active" : "Enable sound";
-    status.textContent = messageOverride || (state.audioReady ? "Sound ready" : "Sound locked");
+    const soundReady = state.audioReady && state.speechReady;
+
+    if (controls) controls.classList.toggle("ready", soundReady);
+    button.classList.toggle("ready", soundReady);
+    button.setAttribute("aria-pressed", String(soundReady));
+    button.setAttribute("aria-label", soundReady ? "Sound and voice active. Click to test." : "Sound and voice off. Click to enable.");
+    button.title = soundReady ? "Sound and voice active" : "Enable sound and voice";
+    status.textContent = messageOverride || (soundReady ? "Sound and voice ready" : "Sound and voice locked");
   }
 
   function parseClassIds() {
@@ -115,7 +123,7 @@
 
     const [classesRes, studentsRes, statusRes] = await Promise.all([
       client.from("classes").select("id,name,display_order").order("display_order", { ascending: true }),
-      client.from("students").select("id,first_name,last_name,class_id"),
+      fetchClassroomStudents(client),
       client.from("daily_status").select("student_id,status,called_at,pickup_family_label").eq("date", state.today)
     ]);
 
@@ -136,6 +144,14 @@
     });
 
     buildMaps();
+  }
+
+  async function fetchClassroomStudents(client) {
+    const withAudio = await client.from("students").select(STUDENT_AUDIO_SELECT);
+    if (!withAudio.error || !String(withAudio.error.message || "").includes("call_audio")) {
+      return withAudio;
+    }
+    return client.from("students").select(STUDENT_BASE_SELECT);
   }
 
   function getClassName(classId) {
@@ -444,8 +460,46 @@
     return state.audioReady ? ctx : null;
   }
 
+  function supportsSpeech() {
+    return "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+  }
+
+  function primeSpeech() {
+    if (!supportsSpeech()) {
+      state.speechReady = true;
+      updateAudioUi();
+      return;
+    }
+
+    if (state.speechReady) return;
+
+    const utterance = new SpeechSynthesisUtterance(" ");
+    utterance.lang = "en-US";
+    utterance.volume = 0;
+    utterance.rate = 1;
+    utterance.onend = () => {
+      state.speechReady = true;
+      updateAudioUi();
+    };
+    utterance.onerror = () => {
+      state.speechReady = false;
+      updateAudioUi("Tap Enable Sound");
+    };
+
+    try {
+      window.speechSynthesis.resume();
+      window.speechSynthesis.speak(utterance);
+      state.speechReady = true;
+      updateAudioUi();
+    } catch (error) {
+      state.speechReady = false;
+      updateAudioUi("Tap Enable Sound");
+    }
+  }
+
   function unlockAudio() {
     ensureAudioContext().catch(() => {});
+    primeSpeech();
   }
 
   function autoEnableSound() {
@@ -453,7 +507,7 @@
     ensureAudioContext()
       .then((ctx) => {
         if (ctx) {
-          updateAudioUi("Sound ready");
+          updateAudioUi(state.speechReady ? "Sound and voice ready" : "Tap to enable voice");
           return;
         }
         updateAudioUi("Tap if sound stays off");
@@ -463,9 +517,109 @@
       });
   }
 
+  function getStudentFullName(student) {
+    return [student?.first_name, student?.last_name].filter(Boolean).join(" ").trim();
+  }
+
+  function speakStudentName(student) {
+    const name = getStudentFullName(student);
+    if (!name || !supportsSpeech()) return;
+
+    stopActiveStudentAudio();
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+
+    const utterance = new SpeechSynthesisUtterance(name);
+    utterance.lang = "en-US";
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    utterance.onerror = () => {
+      state.speechReady = false;
+      updateAudioUi("Tap Enable Sound for voice");
+    };
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function studentAudioPublicUrl(path) {
+    if (!path) return "";
+    const { data } = mustClient().storage.from(STUDENT_AUDIO_BUCKET).getPublicUrl(path);
+    return data?.publicUrl || "";
+  }
+
+  function stopActiveStudentAudio() {
+    if (!state.activeStudentAudio) return;
+    state.activeStudentAudio.pause();
+    state.activeStudentAudio.removeAttribute("src");
+    state.activeStudentAudio.load();
+    state.activeStudentAudio = null;
+  }
+
+  async function refreshStudentAudioMetadata(student) {
+    if (!student?.id) return student;
+
+    const client = mustClient();
+    const { data, error } = await client
+      .from("students")
+      .select("call_audio_path,call_audio_mime_type,call_audio_updated_at")
+      .eq("id", student.id)
+      .single();
+
+    if (!error && data) {
+      student.call_audio_path = data.call_audio_path;
+      student.call_audio_mime_type = data.call_audio_mime_type;
+      student.call_audio_updated_at = data.call_audio_updated_at;
+    }
+
+    return student;
+  }
+
+  function playAudioUrl(url) {
+    return new Promise((resolve, reject) => {
+      if (!url) {
+        reject(new Error("Missing audio URL"));
+        return;
+      }
+
+      stopActiveStudentAudio();
+      const audio = new Audio(url);
+      state.activeStudentAudio = audio;
+      audio.preload = "auto";
+      audio.onended = () => {
+        if (state.activeStudentAudio === audio) state.activeStudentAudio = null;
+        resolve();
+      };
+      audio.onerror = () => {
+        if (state.activeStudentAudio === audio) state.activeStudentAudio = null;
+        reject(new Error("Unable to play student recording"));
+      };
+
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch((error) => {
+          if (state.activeStudentAudio === audio) state.activeStudentAudio = null;
+          reject(error);
+        });
+      }
+    });
+  }
+
+  async function playStudentRecording(student) {
+    await refreshStudentAudioMetadata(student);
+    const url = studentAudioPublicUrl(student?.call_audio_path);
+    if (!url) return false;
+
+    try {
+      await playAudioUrl(url);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
   async function playChime() {
     const ctx = await ensureAudioContext();
-    if (!ctx) return;
+    if (!ctx) return 0;
 
     const start = ctx.currentTime + 0.01;
     const honks = [
@@ -525,6 +679,25 @@
         compressor.disconnect();
       }, Math.ceil((honk.startOffset + honk.duration + 0.2) * 1000));
     });
+
+    const lastHonk = honks[honks.length - 1];
+    return Math.ceil((lastHonk.startOffset + lastHonk.duration + 0.12) * 1000);
+  }
+
+  async function playStudentAnnouncement(student) {
+    if (state.speechTimer) {
+      clearTimeout(state.speechTimer);
+      state.speechTimer = null;
+    }
+    stopActiveStudentAudio();
+
+    const chimeDuration = await playChime();
+    const speechDelay = chimeDuration || 950;
+    state.speechTimer = window.setTimeout(async () => {
+      state.speechTimer = null;
+      const playedRecording = await playStudentRecording(student);
+      if (!playedRecording) speakStudentName(student);
+    }, speechDelay);
   }
 
   function bindAudioUnlock() {
@@ -561,7 +734,7 @@
       clearTimeout(state.alertTimer);
     }
 
-    playChime();
+    playStudentAnnouncement(student);
 
     state.alertTimer = window.setTimeout(() => {
       alertOverlay.classList.remove("visible");
@@ -593,7 +766,7 @@
     alertOverlay.classList.remove("visible");
     void alertOverlay.offsetWidth;
     alertOverlay.classList.add("visible");
-    playChime();
+    playStudentAnnouncement(student);
 
     state.alertTimer = window.setTimeout(() => {
       alertOverlay.classList.remove("visible");
@@ -745,9 +918,10 @@
         return;
       }
 
-      updateAudioUi("Playing test sound");
-      await playChime();
-      window.setTimeout(() => updateAudioUi(), 900);
+      primeSpeech();
+      updateAudioUi("Playing test sound and voice");
+      await playStudentAnnouncement({ first_name: "Test", last_name: "student" });
+      window.setTimeout(() => updateAudioUi(), 1900);
     });
   }
 
@@ -781,6 +955,9 @@
   window.addEventListener("beforeunload", () => {
     if (state.syncInterval) clearInterval(state.syncInterval);
     if (state.alertTimer) clearTimeout(state.alertTimer);
+    if (state.speechTimer) clearTimeout(state.speechTimer);
+    stopActiveStudentAudio();
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     if (state.hubStudentsFitTimer) window.cancelAnimationFrame(state.hubStudentsFitTimer);
     if (state.channel && window.carpoolClient) {
       window.carpoolClient.removeChannel(state.channel);

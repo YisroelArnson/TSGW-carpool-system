@@ -71,9 +71,31 @@ create table if not exists public.students (
   last_name text not null,
   family_id uuid not null references public.families(id) on delete restrict,
   class_id uuid not null references public.classes(id) on delete restrict,
+  call_audio_path text,
+  call_audio_mime_type text,
+  call_audio_updated_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table if exists public.students
+  add column if not exists call_audio_path text,
+  add column if not exists call_audio_mime_type text,
+  add column if not exists call_audio_updated_at timestamptz;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'student-call-audio',
+  'student-call-audio',
+  true,
+  2097152,
+  array['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'audio/ogg']::text[]
+)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 create table if not exists public.daily_status (
   id uuid primary key default gen_random_uuid(),
@@ -3149,6 +3171,10 @@ drop policy if exists carpool_preset_students_select_staff on public.carpool_pre
 drop policy if exists carpool_preset_students_admin_all on public.carpool_preset_students;
 drop policy if exists scheduled_pickup_requests_select_admin on public.scheduled_pickup_requests;
 drop policy if exists scheduled_pickup_requests_admin_all on public.scheduled_pickup_requests;
+drop policy if exists student_call_audio_select_public on storage.objects;
+drop policy if exists student_call_audio_insert_admin on storage.objects;
+drop policy if exists student_call_audio_update_admin on storage.objects;
+drop policy if exists student_call_audio_delete_admin on storage.objects;
 
 -- families: only spotter/admin can read; only admin can mutate
 create policy families_select_staff on public.families
@@ -3231,3 +3257,15 @@ for select using (public.is_admin());
 
 create policy scheduled_pickup_requests_admin_all on public.scheduled_pickup_requests
 for all using (public.is_admin()) with check (public.is_admin());
+
+create policy student_call_audio_select_public on storage.objects
+for select using (bucket_id = 'student-call-audio');
+
+create policy student_call_audio_insert_admin on storage.objects
+for insert with check (bucket_id = 'student-call-audio' and public.is_admin());
+
+create policy student_call_audio_update_admin on storage.objects
+for update using (bucket_id = 'student-call-audio' and public.is_admin()) with check (bucket_id = 'student-call-audio' and public.is_admin());
+
+create policy student_call_audio_delete_admin on storage.objects
+for delete using (bucket_id = 'student-call-audio' and public.is_admin());
