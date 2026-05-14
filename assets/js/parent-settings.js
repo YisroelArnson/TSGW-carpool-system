@@ -145,7 +145,7 @@
   function syncHeader() {
     const family = state.context?.requesting_family;
     if (!family) return;
-    el("settings-family-number").textContent = `Carpool #${family.carpool_number}`;
+    el("settings-family-number").textContent = `Family #${family.carpool_number}`;
     el("settings-family-name").textContent = familyDisplayName(family);
   }
 
@@ -219,7 +219,7 @@
     const node = el("settings-authorized-pickups");
     const authorized = state.context?.authorized_pickups || [];
     if (!authorized.length) {
-      node.innerHTML = '<p class="item-meta empty-state">No students are currently available to your family.</p>';
+      node.innerHTML = '<p class="item-meta empty-state">You don\'t have any pick up permissions</p>';
       return;
     }
 
@@ -425,10 +425,6 @@
     }).join("");
 
     details.innerHTML = `
-      <div class="lookup-family-box">
-        <p class="entity-kicker">Receiving Family</p>
-        <h3>${escapeHtml(familyDisplayName(state.lookupFamily))}</h3>
-      </div>
       <div class="picker-group">
         <div class="picker-group-head">
           <p class="entity-kicker">Your Children</p>

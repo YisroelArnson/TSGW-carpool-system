@@ -506,7 +506,7 @@
         >
           <span class="spotter-student-copy">
             <span class="spotter-student-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
-            <small>${escapeHtml(student.class_name || "")} · ${escapeHtml(student.display_name || "Family")}${student.carpool_number ? ` · Carpool #${escapeHtml(String(student.carpool_number))}` : ""}</small>
+            <small>${escapeHtml(student.class_name || "")} · ${escapeHtml(student.display_name || "Family")}${student.carpool_number ? ` · Family #${escapeHtml(String(student.carpool_number))}` : ""}</small>
           </span>
           <span class="spotter-student-pick-toggle">${isSelected ? "✓" : "+"}</span>
         </button>
@@ -572,7 +572,7 @@
   async function lookupCarpool() {
     const lookupFamily = resolveLookupFamily();
     if (!lookupFamily) {
-      setMessage("Enter a carpool number or family name.", "error");
+      setMessage("Enter a family number or family name.", "error");
       return;
     }
 

@@ -18,6 +18,7 @@
     scheduleRefreshAt: 0,
     lastSubmittedStudents: [],
     repingBusyIds: new Set(),
+    cancelBusyIds: new Set(),
     repingTimer: null
   };
 
@@ -131,6 +132,16 @@
     const { data, error } = await client.rpc("cancel_scheduled_pickup_request", {
       p_request_id: requestId,
       p_requesting_carpool_number: Number(state.number)
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function cancelParentCheckInRequest(studentIds) {
+    const client = mustClient();
+    const { data, error } = await client.rpc("cancel_parent_check_in_request", {
+      p_requesting_carpool_number: Number(state.number),
+      p_student_ids: studentIds
     });
     if (error) throw error;
     return data;
@@ -459,12 +470,6 @@
     label.textContent = hasAllSelected ? "Clear All" : "Select All";
   }
 
-  function studentStatusText(student) {
-    const msRemaining = studentCooldownUntil(student) - Date.now();
-    if (msRemaining > 0) return `Sent to classroom. Call again in ${formatCooldown(msRemaining)}.`;
-    return "Sent to classroom. You can call again if needed.";
-  }
-
   function studentScheduleText() {
     const sendAt = new Date(state.scheduledPickup?.send_at || "").getTime();
     if (!sendAt || Number.isNaN(sendAt)) return "Request scheduled.";
@@ -478,7 +483,7 @@
     const studentId = String(student.student_id);
     const isBusy = state.repingBusyIds.has(studentId);
     const isCoolingDown = isStudentCoolingDown(student);
-    const buttonLabel = isBusy ? "Calling..." : (isCoolingDown ? `Wait ${formatCooldown(studentCooldownUntil(student) - Date.now())}` : "Call Again");
+    const buttonLabel = isBusy ? "Calling..." : (isCoolingDown ? `Re-ping in ${formatCooldown(studentCooldownUntil(student) - Date.now())}` : "Call Again");
 
     return `
       <button
@@ -491,6 +496,36 @@
       >
         ${escapeHtml(buttonLabel)}
       </button>
+    `;
+  }
+
+  function studentCancelButtonHtml(student) {
+    const studentId = String(student.student_id);
+    const isBusy = state.cancelBusyIds.has(studentId);
+    const studentName = `${student.first_name} ${student.last_name}`.trim() || "student";
+    const icon = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 1 1 0 11H11"/></svg>';
+
+    return `
+      <button
+        type="button"
+        class="student-cancel-btn"
+        data-cancel-student="${escapeHtml(studentId)}"
+        aria-label="${escapeHtml(`Cancel pickup request for ${studentName}`)}"
+        title="Cancel pickup request"
+        aria-disabled="${isBusy ? "true" : "false"}"
+        ${isBusy ? "disabled" : ""}
+      >
+        ${isBusy ? "..." : icon}
+      </button>
+    `;
+  }
+
+  function studentCallActionsHtml(student, familyId) {
+    return `
+      <span class="student-call-actions">
+        ${studentRecallButtonHtml(student, familyId)}
+        ${studentCancelButtonHtml(student)}
+      </span>
     `;
   }
 
@@ -509,7 +544,6 @@
           <span class="student-pick-content">
             <span class="student-pick-name">${escapeHtml(studentName)}</span>
             <small class="student-pick-grade">${escapeHtml(student.class_name || "")}</small>
-            ${isCheckedIn ? `<small class="student-pick-status">${escapeHtml(studentStatusText(student))}</small>` : ""}
             ${isScheduled ? `<small class="student-pick-scheduled">${escapeHtml(studentScheduleText())}</small>` : ""}
           </span>
         </span>
@@ -519,7 +553,7 @@
         return `
           <div class="selection-row student-pick checked-in" data-family-id="${escapeHtml(card.family_id)}">
             ${studentCopy}
-            ${studentRecallButtonHtml(student, card.family_id)}
+            ${studentCallActionsHtml(student, card.family_id)}
           </div>
         `;
       }
@@ -688,7 +722,7 @@
     state.checkinNotice = null;
 
     if (!number) {
-      showError("number-error", "Please enter your carpool number.");
+      showError("number-error", "Please enter your family number.");
       return;
     }
 
@@ -711,7 +745,7 @@
       state.context = null;
       syncNumberUi();
       showNumberStep(true);
-      showError("number-error", "Please enter your carpool number to continue.");
+      showError("number-error", "Please enter your family number to continue.");
     }
   }
 
@@ -892,8 +926,10 @@
       const fullName = `${student.first_name} ${student.last_name}`;
       const msRemaining = student.cooldownUntil - Date.now();
       const isBusy = state.repingBusyIds.has(student.student_id);
+      const isCancelBusy = state.cancelBusyIds.has(student.student_id);
       const isCoolingDown = msRemaining > 0;
       const metaParts = [];
+      const cancelIcon = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 1 1 0 11H11"/></svg>';
       if (student.class_name) {
         metaParts.push(`<span class="done-reping-meta">${escapeHtml(student.class_name)}</span>`);
       }
@@ -906,15 +942,28 @@
             <span class="selection-row-name">${escapeHtml(fullName)}</span>
             ${meta}
           </span>
-          <button
-            type="button"
-            class="done-reping-btn${isCoolingDown ? " is-cooling-down" : ""}"
-            data-reping-student="${escapeHtml(student.student_id)}"
-            aria-disabled="${isBusy || isCoolingDown ? "true" : "false"}"
-            ${isBusy || isCoolingDown ? "disabled" : ""}
-          >
-            ${escapeHtml(buttonLabel)}
-          </button>
+          <span class="student-call-actions">
+            <button
+              type="button"
+              class="done-reping-btn${isCoolingDown ? " is-cooling-down" : ""}"
+              data-reping-student="${escapeHtml(student.student_id)}"
+              aria-disabled="${isBusy || isCoolingDown ? "true" : "false"}"
+              ${isBusy || isCoolingDown ? "disabled" : ""}
+            >
+              ${escapeHtml(buttonLabel)}
+            </button>
+            <button
+              type="button"
+              class="done-cancel-btn"
+              data-cancel-student="${escapeHtml(student.student_id)}"
+              aria-label="${escapeHtml(`Cancel pickup request for ${fullName}`)}"
+              title="Cancel pickup request"
+              aria-disabled="${isCancelBusy ? "true" : "false"}"
+              ${isCancelBusy ? "disabled" : ""}
+            >
+              ${isCancelBusy ? "..." : cancelIcon}
+            </button>
+          </span>
         </div>
       `;
     }).join("");
@@ -964,6 +1013,52 @@
       setDoneRepingStatus(error.message || "Unable to reping right now. Please try again.", "error");
     } finally {
       state.repingBusyIds.delete(studentId);
+      renderCheckinPage();
+      renderDoneRepingActions();
+    }
+  }
+
+  async function cancelCalledStudent(studentId) {
+    const target = state.lastSubmittedStudents.find((student) => student.student_id === studentId)
+      || allCheckinStudents().find((student) => String(student.student_id) === String(studentId));
+    if (!target || !state.number || state.cancelBusyIds.has(studentId)) return;
+
+    const fullName = `${target.first_name || "Student"} ${target.last_name || ""}`.trim();
+
+    state.cancelBusyIds.add(studentId);
+    setDoneRepingStatus("");
+    clearError("students-error");
+    renderCheckinPage();
+    renderDoneRepingActions();
+
+    try {
+      const result = await cancelParentCheckInRequest([target.student_id || studentId]);
+      const cancelledIds = new Set((result?.cancelled_student_ids || []).map(String));
+
+      if (!cancelledIds.has(String(studentId))) {
+        throw new Error("This pickup request could not be cancelled.");
+      }
+
+      state.lastSubmittedStudents = state.lastSubmittedStudents.filter((student) => student.student_id !== studentId);
+      state.checkinNotice = {
+        message: `Pickup request cancelled for ${fullName}.`,
+        note: "The classroom display has been updated."
+      };
+
+      const doneSection = el("done-section");
+      if (doneSection && !doneSection.classList.contains("hidden")) {
+        el("done-message").textContent = `Pickup request cancelled for ${fullName}.`;
+        el("done-note").textContent = "The classroom display has been updated.";
+        show("done-note", true);
+        setDoneRepingStatus(`Cancelled ${fullName}.`, "success");
+      }
+
+      await loadFamily(state.number);
+    } catch (error) {
+      showError("students-error", error.message || "Unable to cancel this pickup request. Please try again.");
+      setDoneRepingStatus(error.message || "Unable to cancel this pickup request. Please try again.", "error");
+    } finally {
+      state.cancelBusyIds.delete(studentId);
       renderCheckinPage();
       renderDoneRepingActions();
     }
@@ -1090,6 +1185,7 @@
     state.scheduledPickup = null;
     state.lastSubmittedStudents = [];
     state.repingBusyIds = new Set();
+    state.cancelBusyIds = new Set();
     resetSelections();
     syncNumberUi();
     setBootPending(false);
@@ -1125,6 +1221,12 @@
     el("done-back-btn").addEventListener("click", returnToStudentCheckin);
 
     el("done-reping-list").addEventListener("click", (event) => {
+      const cancelBtn = event.target.closest("[data-cancel-student]");
+      if (cancelBtn) {
+        cancelCalledStudent(cancelBtn.dataset.cancelStudent);
+        return;
+      }
+
       const repingBtn = event.target.closest("[data-reping-student]");
       if (!repingBtn) return;
       repingLastSubmittedStudent(repingBtn.dataset.repingStudent);
@@ -1138,6 +1240,12 @@
 
     ["your-students-list", "authorized-students-list"].forEach((id) => {
       el(id).addEventListener("click", (event) => {
+        const cancelBtn = event.target.closest("[data-cancel-student]");
+        if (cancelBtn) {
+          cancelCalledStudent(cancelBtn.dataset.cancelStudent);
+          return;
+        }
+
         const repingBtn = event.target.closest("[data-reping-student]");
         if (repingBtn) {
           repingLastSubmittedStudent(repingBtn.dataset.repingStudent, repingBtn.dataset.repingFamily);

@@ -800,7 +800,7 @@
           <td></td>
           <td colspan="4">
             <table class="detail-table">
-              <thead><tr><th>Student</th><th>Carpool #</th></tr></thead>
+              <thead><tr><th>Student</th><th>Family #</th></tr></thead>
               <tbody>${studentRows || '<tr><td colspan="2" class="muted">No students in this class.</td></tr>'}</tbody>
             </table>
           </td>
@@ -1210,7 +1210,7 @@
     if (kind === "family") {
       return `
         <div class="form-row">
-          <label for="modal-family-number">Carpool #</label>
+          <label for="modal-family-number">Family #</label>
           <input id="modal-family-number" type="number" value="${escapeHtml(String(data?.carpool_number || ""))}" required />
         </div>
         <div class="form-row">
@@ -1545,7 +1545,7 @@
     ].some(Boolean);
 
     if (!carpool || !hasAnyParentName) {
-      setNodeMessage("admin-modal-msg", "Carpool number and at least one parent name are required.", "error");
+      setNodeMessage("admin-modal-msg", "Family number and at least one parent name are required.", "error");
       return;
     }
 
@@ -1828,7 +1828,7 @@
 
       const carpoolText = canonicalCarpool(row.carpool_number);
       if (carpoolText && !/^\d+$/.test(carpoolText)) {
-        row.errors.push("Carpool number must be a whole number.");
+        row.errors.push("Family number must be a whole number.");
       }
 
       const className = normalizedClassName(row.class_name);
@@ -1860,7 +1860,7 @@
 
       const carpoolText = canonicalCarpool(row.carpool_number);
       if (carpoolText && familyConflicts.get(carpoolText)) {
-        row.errors.push("This import has conflicting parent data for the same carpool number.");
+        row.errors.push("This import has conflicting parent data for the same family number.");
       }
 
       const batchKey = `${carpoolText}::${normalizedStudentName(row.student_first_name)}::${normalizedStudentName(row.student_last_name)}`;

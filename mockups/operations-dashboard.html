@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DismissalFlow Operations Dashboard Mock-up</title>
+    <style>
+      :root {
+        --navy: #17243a;
+        --charcoal: #30343b;
+        --ivory: #faf7f1;
+        --cream: #fff4e6;
+        --aqua: #bfe5e3;
+        --coral: #f26d5b;
+        --green: #2e7d50;
+        --amber: #f2b84b;
+        --line: #e8dfd2;
+        --muted: #68707c;
+        --panel: #fffdf8;
+        --soft: #f4eee4;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--ivory);
+        color: var(--navy);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      .shell {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .mark {
+        display: grid;
+        width: 36px;
+        height: 36px;
+        place-items: center;
+        border: 2px solid var(--navy);
+        border-radius: 8px;
+        color: var(--navy);
+        font-weight: 800;
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.1;
+      }
+
+      .brand p,
+      .session p,
+      .panel-title p,
+      .muted {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .session {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .pill,
+      .ghost-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 32px;
+        padding: 6px 10px;
+        border-radius: 7px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+
+      .button {
+        border: 0;
+        border-radius: 7px;
+        background: var(--navy);
+        color: white;
+        min-height: 36px;
+        padding: 0 13px;
+        font-weight: 700;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr) 320px;
+        gap: 16px;
+      }
+
+      .side,
+      .panel,
+      .mini-screen,
+      .phone {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .side {
+        padding: 12px;
+        align-self: start;
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 40px;
+        padding: 0 10px;
+        border-radius: 7px;
+        color: var(--muted);
+        font-weight: 650;
+        font-size: 14px;
+      }
+
+      .nav-item.active {
+        background: #e9f3ef;
+        color: var(--green);
+      }
+
+      .icon {
+        width: 22px;
+        height: 22px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        background: var(--soft);
+        color: var(--navy);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .active .icon {
+        background: var(--green);
+        color: white;
+      }
+
+      .main {
+        display: grid;
+        gap: 16px;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .stat {
+        min-height: 92px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .stat strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 30px;
+        line-height: 1;
+      }
+
+      .stat span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 750;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .green strong {
+        color: var(--green);
+      }
+
+      .amber strong {
+        color: #b17a10;
+      }
+
+      .coral strong {
+        color: var(--coral);
+      }
+
+      .panel {
+        padding: 16px;
+      }
+
+      .panel-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .panel-title h2,
+      .panel-title h3 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .queue {
+        display: grid;
+        gap: 8px;
+      }
+
+      .queue-row {
+        display: grid;
+        grid-template-columns: 74px minmax(180px, 1.2fr) minmax(145px, 0.8fr) 190px;
+        align-items: center;
+        gap: 12px;
+        min-height: 76px;
+        padding: 11px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: white;
+      }
+
+      .tag {
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 34px;
+        border-radius: 7px;
+        background: var(--navy);
+        color: white;
+        font-weight: 800;
+      }
+
+      .student-list {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 6px;
+      }
+
+      .chip {
+        border-radius: 6px;
+        background: var(--soft);
+        border: 1px solid var(--line);
+        padding: 4px 7px;
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .status-text {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .actions {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+
+      .action {
+        min-height: 34px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        color: var(--navy);
+        font-weight: 750;
+      }
+
+      .action.primary {
+        background: var(--green);
+        color: white;
+        border-color: var(--green);
+      }
+
+      .action.warn {
+        color: #815609;
+        background: #fff7df;
+      }
+
+      .right-rail {
+        display: grid;
+        gap: 16px;
+        align-self: start;
+      }
+
+      .alert {
+        display: grid;
+        grid-template-columns: 10px 1fr;
+        gap: 10px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .alert:last-child {
+        border-bottom: 0;
+      }
+
+      .bar {
+        width: 10px;
+        border-radius: 999px;
+        background: var(--amber);
+      }
+
+      .bar.coral {
+        background: var(--coral);
+      }
+
+      .bar.green {
+        background: var(--green);
+      }
+
+      .alert strong {
+        display: block;
+        font-size: 13px;
+      }
+
+      .alert p {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .role-grid {
+        display: grid;
+        grid-template-columns: 1.05fr 0.75fr 1fr;
+        gap: 16px;
+        margin-top: 18px;
+      }
+
+      .mini-screen {
+        padding: 16px;
+      }
+
+      .tile-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+      }
+
+      .student-tile {
+        min-height: 70px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 6px;
+        background: #f6f2eb;
+        font-weight: 750;
+      }
+
+      .student-tile.called {
+        background: #e7f3eb;
+        border-color: #bddbc7;
+        color: var(--green);
+      }
+
+      .student-tile.ready {
+        background: #fff4d6;
+        border-color: #f4d283;
+        color: #8a620d;
+      }
+
+      .phone {
+        max-width: 330px;
+        justify-self: center;
+        border-radius: 24px;
+        padding: 14px;
+        background: var(--navy);
+      }
+
+      .phone-inner {
+        background: var(--panel);
+        border-radius: 16px;
+        padding: 18px;
+      }
+
+      .pick-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 56px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: white;
+        margin-bottom: 8px;
+        font-weight: 750;
+      }
+
+      .check {
+        display: grid;
+        width: 24px;
+        height: 24px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--green);
+        color: white;
+        font-size: 14px;
+        font-weight: 900;
+      }
+
+      .admin-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .admin-row {
+        display: grid;
+        grid-template-columns: 30px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        min-height: 46px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 8px;
+        background: white;
+        font-weight: 700;
+      }
+
+      @media (max-width: 1100px) {
+        .layout,
+        .role-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .side {
+          display: flex;
+          overflow: auto;
+        }
+
+        .nav-item {
+          white-space: nowrap;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .shell {
+          padding: 14px;
+        }
+
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .stats {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .queue-row {
+          grid-template-columns: 1fr;
+        }
+
+        .actions {
+          grid-template-columns: 1fr 1fr 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">D</div>
+          <div>
+            <h1>DismissalFlow</h1>
+            <p>Maple Ridge Elementary</p>
+          </div>
+        </div>
+        <div class="session">
+          <span class="pill"><span class="dot"></span> Live dismissal</span>
+          <span class="ghost-pill">Today · 2:48 PM</span>
+          <button class="button">End session</button>
+        </div>
+      </header>
+
+      <section class="layout" aria-label="Main staff dashboard">
+        <nav class="side" aria-label="Primary">
+          <div class="nav-item active"><span class="icon">✓</span> Live Dismissal</div>
+          <div class="nav-item"><span class="icon">S</span> Students</div>
+          <div class="nav-item"><span class="icon">F</span> Families</div>
+          <div class="nav-item"><span class="icon">C</span> Classes</div>
+          <div class="nav-item"><span class="icon">P</span> Permissions</div>
+          <div class="nav-item"><span class="icon">↑</span> Imports</div>
+          <div class="nav-item"><span class="icon">⚙</span> Settings</div>
+        </nav>
+
+        <div class="main">
+          <div class="stats">
+            <article class="stat">
+              <span>Total</span>
+              <strong>142</strong>
+            </article>
+            <article class="stat green">
+              <span>Checked in</span>
+              <strong>61</strong>
+            </article>
+            <article class="stat amber">
+              <span>Called</span>
+              <strong>44</strong>
+            </article>
+            <article class="stat green">
+              <span>Dismissed</span>
+              <strong>98</strong>
+            </article>
+            <article class="stat coral">
+              <span>Waiting</span>
+              <strong>6</strong>
+            </article>
+          </div>
+
+          <section class="panel">
+            <div class="panel-title">
+              <div>
+                <h2>Live Pickup Queue</h2>
+                <p>Sorted by arrival and classroom readiness</p>
+              </div>
+              <span class="pill"><span class="dot"></span> 8 active pickups</span>
+            </div>
+
+            <div class="queue">
+              <div class="queue-row">
+                <span class="tag">A-47</span>
+                <div>
+                  <strong>Leah Reyes</strong>
+                  <div class="student-list">
+                    <span class="chip">Mia · Room 204</span>
+                    <span class="chip">Theo · Room 118</span>
+                  </div>
+                </div>
+                <div class="status-text">Both called · 1 min ago</div>
+                <div class="actions">
+                  <button class="action primary">Dismiss</button>
+                  <button class="action">Call</button>
+                  <button class="action warn">Hold</button>
+                </div>
+              </div>
+              <div class="queue-row">
+                <span class="tag">B-12</span>
+                <div>
+                  <strong>Omar Okafor</strong>
+                  <div class="student-list">
+                    <span class="chip">Ava · Room 109</span>
+                  </div>
+                </div>
+                <div class="status-text">Ready at classroom door</div>
+                <div class="actions">
+                  <button class="action primary">Dismiss</button>
+                  <button class="action">Call</button>
+                  <button class="action warn">Hold</button>
+                </div>
+              </div>
+              <div class="queue-row">
+                <span class="tag">C-03</span>
+                <div>
+                  <strong>Jordan Patel</strong>
+                  <div class="student-list">
+                    <span class="chip">Noah · Room 212</span>
+                    <span class="chip">Lia · Room 211</span>
+                  </div>
+                </div>
+                <div class="status-text">Sibling pending · call sent</div>
+                <div class="actions">
+                  <button class="action">Dismiss</button>
+                  <button class="action primary">Call</button>
+                  <button class="action warn">Hold</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <aside class="right-rail" aria-label="Activity">
+          <section class="panel">
+            <div class="panel-title">
+              <div>
+                <h3>Needs Attention</h3>
+                <p>Only exceptions surface here</p>
+              </div>
+            </div>
+            <div class="alert">
+              <span class="bar coral"></span>
+              <div>
+                <strong>Permission mismatch</strong>
+                <p>A-19 pickup adult is not approved for Cohen family.</p>
+              </div>
+            </div>
+            <div class="alert">
+              <span class="bar"></span>
+              <div>
+                <strong>Student waiting 6 min</strong>
+                <p>Ray Brooks has been called but not marked sent.</p>
+              </div>
+            </div>
+            <div class="alert">
+              <span class="bar green"></span>
+              <div>
+                <strong>Class completed</strong>
+                <p>K · Pham reached 22 of 22 dismissed.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">
+              <div>
+                <h3>Quick Actions</h3>
+                <p>Admin tasks stay one click away</p>
+              </div>
+            </div>
+            <div class="admin-list">
+              <div class="admin-row"><span class="icon">↑</span> Import CSV <span>›</span></div>
+              <div class="admin-row"><span class="icon">S</span> Add student <span>›</span></div>
+              <div class="admin-row"><span class="icon">F</span> Add family <span>›</span></div>
+              <div class="admin-row"><span class="icon">P</span> Review permissions <span>›</span></div>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <section class="role-grid" aria-label="Role-specific views">
+        <article class="mini-screen">
+          <div class="panel-title">
+            <div>
+              <h3>Room 204</h3>
+              <p>Classroom display</p>
+            </div>
+            <span class="pill"><span class="dot"></span> Live</span>
+          </div>
+          <div class="tile-grid">
+            <div class="student-tile called">Mia<span>called</span></div>
+            <div class="student-tile called">Theo<span>called</span></div>
+            <div class="student-tile">Leo<span>waiting</span></div>
+            <div class="student-tile">Zoe<span>waiting</span></div>
+            <div class="student-tile ready">Omar<span>get ready</span></div>
+            <div class="student-tile called">Ava<span>called</span></div>
+            <div class="student-tile">Ray<span>waiting</span></div>
+            <div class="student-tile called">Sam<span>called</span></div>
+          </div>
+        </article>
+
+        <article class="phone" aria-label="Parent mobile check in">
+          <div class="phone-inner">
+            <div class="panel-title">
+              <div>
+                <h3>Who are you picking up?</h3>
+                <p>Maple Ridge</p>
+              </div>
+            </div>
+            <div class="pick-card">Mia <span class="check">✓</span></div>
+            <div class="pick-card">Theo <span class="check">✓</span></div>
+            <button class="button" style="width: 100%; margin-top: 10px">Check in</button>
+          </div>
+        </article>
+
+        <article class="mini-screen">
+          <div class="panel-title">
+            <div>
+              <h3>Admin Home</h3>
+              <p>Setup, data, and live progress</p>
+            </div>
+          </div>
+          <div class="admin-list">
+            <div class="admin-row"><span class="icon">✓</span> Imports complete <span class="check">✓</span></div>
+            <div class="admin-row"><span class="icon">P</span> Permissions current <span class="check">✓</span></div>
+            <div class="admin-row"><span class="icon">C</span> Classes mapped <span class="check">✓</span></div>
+            <div class="admin-row"><span class="icon">F</span> Family contacts synced <span class="check">✓</span></div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

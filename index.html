@@ -645,6 +645,14 @@
         gap: 8px;
       }
 
+      .student-call-actions {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+
       .checkin-shell,
       .manage-shell,
       .family-card,
@@ -762,19 +770,6 @@
         line-height: 1.35;
       }
 
-      .student-pick-status {
-        display: inline-block;
-        width: fit-content;
-        max-width: 100%;
-        padding: 4px 8px;
-        border-radius: 999px;
-        background: rgba(71, 132, 83, 0.12);
-        color: #2f6a39;
-        font-size: 0.74rem;
-        font-weight: 700;
-        letter-spacing: 0.02em;
-      }
-
       .student-pick-scheduled {
         display: inline-block;
         width: fit-content;
@@ -788,7 +783,8 @@
         letter-spacing: 0.01em;
       }
 
-      .student-recall-btn {
+      .student-recall-btn,
+      .done-reping-btn {
         border: none;
         border-radius: 999px;
         padding: 10px 14px;
@@ -801,21 +797,73 @@
         transition: background 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
       }
 
-      .student-recall-btn:not(:disabled) {
+      .student-cancel-btn,
+      .done-cancel-btn {
+        width: 38px;
+        min-width: 38px;
+        height: 38px;
+        border: 1px solid rgba(107, 45, 91, 0.2);
+        border-radius: 999px;
+        padding: 0;
+        background: #fff;
+        color: var(--brand-maroon);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Open Sans", sans-serif;
+        font-size: 1.15rem;
+        font-weight: 800;
+        line-height: 1;
+        white-space: nowrap;
+        transition: border-color 0.2s ease, background 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+      }
+
+      .student-cancel-btn svg,
+      .done-cancel-btn svg {
+        width: 19px;
+        height: 19px;
+        stroke: currentColor;
+        stroke-width: 2.2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .student-recall-btn:not(:disabled),
+      .student-cancel-btn:not(:disabled),
+      .done-reping-btn:not(:disabled),
+      .done-cancel-btn:not(:disabled) {
         cursor: pointer;
       }
 
-      .student-recall-btn:not(:disabled):hover {
+      .student-recall-btn:not(:disabled):hover,
+      .done-reping-btn:not(:disabled):hover {
         background: #7b3d69;
       }
 
-      .student-recall-btn:not(:disabled):active {
+      .student-cancel-btn:not(:disabled):hover,
+      .done-cancel-btn:not(:disabled):hover {
+        border-color: rgba(107, 45, 91, 0.38);
+        background: #f8f4ef;
+      }
+
+      .student-recall-btn:not(:disabled):active,
+      .student-cancel-btn:not(:disabled):active,
+      .done-reping-btn:not(:disabled):active,
+      .done-cancel-btn:not(:disabled):active {
         transform: translateY(1px);
       }
 
-      .student-recall-btn:disabled {
+      .student-recall-btn:disabled,
+      .done-reping-btn:disabled {
         background: rgba(107, 45, 91, 0.18);
         color: rgba(107, 45, 91, 0.74);
+        cursor: not-allowed;
+      }
+
+      .student-cancel-btn:disabled,
+      .done-cancel-btn:disabled {
+        opacity: 0.58;
         cursor: not-allowed;
       }
 
@@ -1479,7 +1527,12 @@
           flex-direction: column;
         }
 
+        .student-call-actions {
+          width: 100%;
+        }
+
         .student-recall-btn {
+          flex: 1 1 auto;
           width: 100%;
         }
       }
@@ -1535,13 +1588,13 @@
         <section id="number-section" class="c-body">
           <div class="number-intro">
             <span class="input-eyebrow">Parent Pickup</span>
-            <h1>What is your carpool number?</h1>
-            <p>Enter your family pickup number to get started. Then choose the child or children you are here for.</p>
+            <h1>What is your Family Number?</h1>
+            <p>Enter your family number to get started. Then choose the child or children you are here for.</p>
           </div>
           <div class="quick-steps" aria-label="Pickup steps">
             <div class="quick-step">
               <span class="quick-step-number">1</span>
-              <span class="quick-step-copy">Enter your carpool number.</span>
+              <span class="quick-step-copy">Enter your family number.</span>
             </div>
             <div class="quick-step">
               <span class="quick-step-number">2</span>
@@ -1552,7 +1605,7 @@
               <span class="quick-step-copy">Press "I'm Here" to alert the school.</span>
             </div>
           </div>
-          <label class="input-eyebrow" for="carpool-number">Carpool Number</label>
+          <label class="input-eyebrow" for="carpool-number">Family Number</label>
           <input id="carpool-number" type="number" inputmode="numeric" placeholder="e.g. 101" />
           <p class="number-help">Numbers only, for example 101.</p>
           <button id="find-family" class="btn-w btn-maroon">Continue</button>
