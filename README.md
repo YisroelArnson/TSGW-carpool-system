@@ -36,6 +36,9 @@ values
    - Edit `/Users/yisroel/Developer/TSGW-carpool-system/assets/js/config.js`
    - Set `supabaseUrl` and `supabaseAnonKey`
 
+For a full school-owned Supabase and Vercel redeployment, use
+`/Users/yisroel/Developer/TSGW-carpool-system/docs/school-owned-deployment.md`.
+
 ## Supabase Keepalive
 
 The GitHub Actions workflow in `.github/workflows/supabase-keepalive.yml` pings the Supabase REST API twice a week and can also be run manually.
@@ -74,6 +77,8 @@ Classroom display supports:
 - `/classroom/?classId=<classId>` (display fallback)
 
 If your host does not support folder fallback for nested routes, configure rewrites so `/classroom/*` serves `/classroom/index.html`.
+
+Vercel routing is configured in `/Users/yisroel/Developer/TSGW-carpool-system/vercel.json`.
 
 ## Behavior Notes
 
