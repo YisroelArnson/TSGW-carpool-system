@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TSGW Carpool Parent Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <style>
+      body {
+        background-color: var(--surface-ivory);
+        background-image: radial-gradient(circle, #ddd9d2 1px, transparent 1px);
+        background-size: 22px 22px;
+        min-height: 100vh;
+      }
+
+      .brand-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 0 20px;
+        height: 54px;
+        background: var(--brand-maroon);
+      }
+
+      .brand-bar-inner {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .brand-name {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        line-height: 1;
+        text-transform: uppercase;
+        color: #fff;
+      }
+
+      .brand-sub {
+        font-family: "Open Sans", sans-serif;
+        font-size: 0.6rem;
+        letter-spacing: 0.16em;
+        line-height: 1;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.5);
+      }
+
+      .brand-bar-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .brand-bar-action {
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        background: transparent;
+        color: #fff;
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        text-decoration: none;
+      }
+
+      .brand-bar-action:hover {
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .gold-rule {
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          var(--brand-maroon) 0%,
+          var(--brand-gold) 30%,
+          var(--brand-gold) 70%,
+          var(--brand-maroon) 100%
+        );
+      }
+
+      .tutorial-layout {
+        width: min(960px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 40px 0 64px;
+        display: grid;
+        gap: 22px;
+      }
+
+      .tutorial-hero,
+      .tutorial-panel,
+      .tutorial-help {
+        background: var(--surface-white);
+        border: 1px solid var(--border-light);
+        border-radius: 22px;
+        box-shadow:
+          0 1px 2px rgba(107, 45, 91, 0.06),
+          0 4px 18px rgba(107, 45, 91, 0.08),
+          0 16px 48px rgba(0, 0, 0, 0.05);
+      }
+
+      .tutorial-hero {
+        padding: 30px 26px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .tutorial-kicker,
+      .section-kicker,
+      .video-kicker {
+        margin: 0;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+
+      .tutorial-hero h1 {
+        margin: 0;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: clamp(2rem, 4vw, 3.25rem);
+        line-height: 1.05;
+        color: var(--text-dark);
+      }
+
+      .tutorial-hero p {
+        max-width: 680px;
+        margin: 0;
+        color: var(--text-muted);
+        line-height: 1.6;
+      }
+
+      .topic-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 6px;
+      }
+
+      .topic-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 38px;
+        border: 1px solid rgba(107, 45, 91, 0.16);
+        border-radius: 999px;
+        padding: 8px 13px;
+        background: var(--surface-ivory);
+        color: var(--brand-maroon);
+        font-size: 0.86rem;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .topic-link:hover {
+        border-color: rgba(107, 45, 91, 0.32);
+        background: #fff;
+      }
+
+      .tutorial-panel {
+        overflow: hidden;
+      }
+
+      .help-topic {
+        border-bottom: 1px solid var(--border-light);
+      }
+
+      .help-topic:last-child {
+        border-bottom: none;
+      }
+
+      .help-topic summary {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 14px;
+        align-items: center;
+        padding: 20px 22px;
+        cursor: pointer;
+        list-style: none;
+      }
+
+      .help-topic summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .topic-number {
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(107, 45, 91, 0.1);
+        color: var(--brand-maroon);
+        font-weight: 800;
+        font-size: 0.9rem;
+      }
+
+      .topic-title {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+      }
+
+      .topic-title strong {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.28rem;
+        line-height: 1.16;
+        color: var(--text-dark);
+      }
+
+      .topic-title span {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        line-height: 1.45;
+      }
+
+      .topic-caret {
+        width: 30px;
+        height: 30px;
+        border: 1px solid rgba(107, 45, 91, 0.16);
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--brand-maroon);
+        font-size: 1.15rem;
+        line-height: 1;
+      }
+
+      .topic-caret::before {
+        content: "+";
+        transform: translateY(-1px);
+      }
+
+      .help-topic[open] .topic-caret::before {
+        content: "-";
+      }
+
+      .topic-body {
+        padding: 0 22px 24px 70px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .video-slot {
+        min-height: 190px;
+        border: 1px dashed rgba(107, 45, 91, 0.28);
+        border-radius: 18px;
+        background:
+          linear-gradient(135deg, rgba(107, 45, 91, 0.08), rgba(196, 151, 92, 0.12)),
+          var(--surface-ivory);
+        display: grid;
+        place-items: center;
+        padding: 22px;
+        text-align: center;
+      }
+
+      .video-slot-active {
+        min-height: 0;
+        border-style: solid;
+        background: #111;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      .tutorial-video {
+        width: 100%;
+        display: block;
+        background: #111;
+        aspect-ratio: 16 / 9;
+      }
+
+      .video-placeholder {
+        display: grid;
+        justify-items: center;
+        gap: 9px;
+        max-width: 430px;
+      }
+
+      .play-mark {
+        width: 54px;
+        height: 54px;
+        border-radius: 999px;
+        background: var(--brand-maroon);
+        position: relative;
+        box-shadow: 0 10px 22px rgba(107, 45, 91, 0.22);
+      }
+
+      .play-mark::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 52%;
+        width: 0;
+        height: 0;
+        border-top: 10px solid transparent;
+        border-bottom: 10px solid transparent;
+        border-left: 15px solid #fff;
+        transform: translate(-38%, -50%);
+      }
+
+      .video-title {
+        margin: 0;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.35rem;
+        line-height: 1.15;
+        color: var(--text-dark);
+      }
+
+      .video-copy {
+        margin: 0;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      .docs-block {
+        display: grid;
+        gap: 14px;
+      }
+
+      .docs-block h3 {
+        margin: 0;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.28rem;
+        line-height: 1.2;
+      }
+
+      .docs-block p {
+        margin: 0;
+        color: var(--text-muted);
+        line-height: 1.6;
+      }
+
+      .docs-list {
+        margin: 0;
+        padding-left: 1.25rem;
+        display: grid;
+        gap: 9px;
+        color: var(--text-dark);
+        line-height: 1.55;
+      }
+
+      .docs-list li::marker {
+        color: var(--brand-maroon);
+        font-weight: 700;
+      }
+
+      .note-box {
+        border-left: 4px solid var(--brand-gold);
+        background: #fbf8f1;
+        padding: 12px 14px;
+        color: var(--text-muted);
+        line-height: 1.55;
+      }
+
+      .note-box strong {
+        color: var(--text-dark);
+      }
+
+      .split-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .definition-row {
+        border: 1px solid var(--border-light);
+        border-radius: 14px;
+        padding: 13px 14px;
+        background: #fff;
+      }
+
+      .definition-row strong {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--text-dark);
+      }
+
+      .definition-row span {
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      .tutorial-help {
+        padding: 22px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .tutorial-help h2 {
+        margin: 0;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.5rem;
+      }
+
+      .faq-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .faq-item {
+        border: 1px solid var(--border-light);
+        border-radius: 14px;
+        padding: 14px;
+        background: #fff;
+      }
+
+      .faq-item h3 {
+        margin: 0 0 6px;
+        font-family: "Open Sans", sans-serif;
+        font-size: 0.98rem;
+      }
+
+      .faq-item p {
+        margin: 0;
+        color: var(--text-muted);
+        line-height: 1.55;
+      }
+
+      @media (max-width: 720px) {
+        .brand-bar {
+          padding: 0 14px;
+        }
+
+        .brand-bar-action {
+          padding: 8px 11px;
+          font-size: 0.74rem;
+        }
+
+        .tutorial-layout {
+          width: min(100% - 24px, 960px);
+          padding: 24px 0 44px;
+        }
+
+        .tutorial-hero {
+          padding: 24px 20px;
+          border-radius: 18px;
+        }
+
+        .help-topic summary {
+          grid-template-columns: auto 1fr auto;
+          gap: 10px;
+          padding: 18px 16px;
+        }
+
+        .topic-number {
+          width: 30px;
+          height: 30px;
+        }
+
+        .topic-title strong {
+          font-size: 1.13rem;
+        }
+
+        .topic-title span {
+          font-size: 0.84rem;
+        }
+
+        .topic-body {
+          padding: 0 16px 22px;
+        }
+
+        .video-slot {
+          min-height: 170px;
+          border-radius: 16px;
+        }
+
+        .docs-list {
+          padding-left: 1.1rem;
+        }
+      }
+
+      @media (max-width: 420px) {
+        .brand-sub {
+          display: none;
+        }
+
+        .topic-links {
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand-bar">
+        <div class="brand-bar-inner">
+          <span class="brand-name">TSGW Carpool</span>
+          <span class="brand-sub">Torah School of Greater Washington</span>
+        </div>
+        <div class="brand-bar-actions">
+          <a href="../" class="brand-bar-action">Back to Pickup</a>
+        </div>
+      </div>
+      <div class="gold-rule"></div>
+    </header>
+
+    <main class="tutorial-layout">
+      <section class="tutorial-hero">
+        <p class="tutorial-kicker">Parent Help</p>
+        <h1>How to use TSGW Carpool</h1>
+        <p>
+          Choose the topic you need below. Each section is short, and the main sections have a video slot ready for the screen recording.
+        </p>
+        <nav class="topic-links" aria-label="Tutorial topics">
+          <a class="topic-link" href="#sign-in">Sign In</a>
+          <a class="topic-link" href="#check-in">Check In</a>
+          <a class="topic-link" href="#timer">Pickup Timer</a>
+          <a class="topic-link" href="#saved-carpools">Saved Carpools</a>
+          <a class="topic-link" href="#permissions">Pickup Permissions</a>
+        </nav>
+      </section>
+
+      <section class="tutorial-panel" aria-label="Parent tutorial topics">
+        <details id="sign-in" class="help-topic">
+          <summary>
+            <span class="topic-number">1</span>
+            <span class="topic-title">
+              <strong>Sign in with your Family Number</strong>
+              <span>Use the pickup website without installing an app or creating a password.</span>
+            </span>
+            <span class="topic-caret" aria-hidden="true"></span>
+          </summary>
+          <div class="topic-body">
+            <div class="video-slot video-slot-active" data-video-slot="sign-in-check-in">
+              <video class="tutorial-video" controls preload="metadata" playsinline>
+                <source src="../assets/videos/parent-sign-in-check-in-tutorial.mov?v=20260527-133309" />
+                <a href="../assets/videos/parent-sign-in-check-in-tutorial.mov?v=20260527-133309">Open the sign-in tutorial video.</a>
+              </video>
+            </div>
+            <div class="docs-block">
+              <h3>Steps</h3>
+              <ol class="docs-list">
+                <li>Open the parent pickup website.</li>
+                <li>Find the box labeled <strong>Family Number</strong>.</li>
+                <li>Enter your Family Number, for example <strong>101</strong>.</li>
+                <li>Tap <strong>Continue</strong>.</li>
+              </ol>
+              <p>
+                After your Family Number is accepted, this device remembers it. The next time you open the page, it will bring you back to your family pickup screen.
+              </p>
+              <div class="note-box">
+                <strong>Using someone else's phone?</strong> Tap <strong>Log out</strong> when you are done so the phone does not stay connected to your Family Number.
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details id="check-in" class="help-topic">
+          <summary>
+            <span class="topic-number">2</span>
+            <span class="topic-title">
+              <strong>Check in for pickup</strong>
+              <span>Tell the school which child or children you are picking up today.</span>
+            </span>
+            <span class="topic-caret" aria-hidden="true"></span>
+          </summary>
+          <div class="topic-body">
+            <div class="video-slot video-slot-active" data-video-slot="daily-check-in">
+              <video class="tutorial-video" controls preload="metadata" playsinline>
+                <source src="../assets/videos/parent-check-in-tutorial.mov?v=20260527-133659" />
+                <a href="../assets/videos/parent-check-in-tutorial.mov?v=20260527-133659">Open the check-in tutorial video.</a>
+              </video>
+            </div>
+            <div class="docs-block">
+              <h3>Steps</h3>
+              <ol class="docs-list">
+                <li>Open the parent pickup website.</li>
+                <li>If asked, enter your Family Number and tap <strong>Continue</strong>.</li>
+                <li>On the <strong>Who are you picking up today?</strong> screen, tap each child you are picking up.</li>
+                <li>If you are picking up all of your children, tap <strong>Select All</strong>.</li>
+                <li>At the bottom of the screen, tap the <strong>I'm Here</strong> button. The button will show how many children you selected.</li>
+              </ol>
+              <p>
+                The school is notified right away. The selected child or children will show as called on the classroom display.
+              </p>
+              <div class="note-box">
+                If your child is still not outside after a few minutes, use <strong>Call Again</strong> to remind the classroom.
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details id="timer" class="help-topic">
+          <summary>
+            <span class="topic-number">3</span>
+            <span class="topic-title">
+              <strong>Send a pickup request later</strong>
+              <span>Set a timer if you are close to school but not ready yet.</span>
+            </span>
+            <span class="topic-caret" aria-hidden="true"></span>
+          </summary>
+          <div class="topic-body">
+            <div class="video-slot video-slot-active" data-video-slot="pickup-timer">
+              <video class="tutorial-video" controls preload="metadata" playsinline>
+                <source src="../assets/videos/parent-pickup-timer-tutorial.mov?v=20260527-133950" />
+                <a href="../assets/videos/parent-pickup-timer-tutorial.mov?v=20260527-133950">Open the pickup timer tutorial video.</a>
+              </video>
+            </div>
+            <div class="docs-block">
+              <h3>Steps</h3>
+              <ol class="docs-list">
+                <li>Choose the child or children you want picked up.</li>
+                <li>Tap the clock button at the bottom of the screen.</li>
+                <li>Choose how many minutes to wait.</li>
+                <li>Tap <strong>Start Timer</strong>.</li>
+              </ol>
+              <p>
+                The request will be sent automatically when the timer ends. You can cancel the timer before it sends.
+              </p>
+            </div>
+          </div>
+        </details>
+
+        <details id="saved-carpools" class="help-topic">
+          <summary>
+            <span class="topic-number">4</span>
+            <span class="topic-title">
+              <strong>Add a saved carpool</strong>
+              <span>Create a quick pick for students you pick up together often.</span>
+            </span>
+            <span class="topic-caret" aria-hidden="true"></span>
+          </summary>
+          <div class="topic-body">
+            <div class="video-slot video-slot-active" data-video-slot="saved-carpools">
+              <video class="tutorial-video" controls preload="metadata" playsinline>
+                <source src="../assets/videos/parent-saved-carpool-tutorial.mov?v=20260527-134151" />
+                <a href="../assets/videos/parent-saved-carpool-tutorial.mov?v=20260527-134151">Open the saved carpool tutorial video.</a>
+              </video>
+            </div>
+            <div class="docs-block">
+              <h3>Steps</h3>
+              <ol class="docs-list">
+                <li>Sign in with your Family Number.</li>
+                <li>Tap the settings icon at the top of the page.</li>
+                <li>In <strong>Saved Carpools</strong>, tap <strong>Add New Carpool</strong>.</li>
+                <li>Enter a <strong>Carpool Name</strong>, such as <strong>Monday Carpool</strong>.</li>
+                <li>Choose the days of the week when you usually use this carpool.</li>
+                <li>Choose the students who belong in this saved carpool.</li>
+                <li>Tap <strong>Save Carpool</strong>.</li>
+              </ol>
+              <p>
+                The saved carpool will appear as a quick pick on the daily check-in page. When you need it, tap the saved carpool, then tap the <strong>I'm Here</strong> button.
+              </p>
+            </div>
+          </div>
+        </details>
+
+        <details id="permissions" class="help-topic">
+          <summary>
+            <span class="topic-number">5</span>
+            <span class="topic-title">
+              <strong>Manage pickup permissions</strong>
+              <span>Allow another family to pick up your child, or see who you can pick up.</span>
+            </span>
+            <span class="topic-caret" aria-hidden="true"></span>
+          </summary>
+          <div class="topic-body">
+            <div class="video-slot video-slot-active" data-video-slot="pickup-permissions">
+              <video class="tutorial-video" controls preload="metadata" playsinline>
+                <source src="../assets/videos/parent-permissions-tutorial.mov?v=20260527-135037" />
+                <a href="../assets/videos/parent-permissions-tutorial.mov?v=20260527-135037">Open the permissions tutorial video.</a>
+              </video>
+            </div>
+            <div class="docs-block">
+              <h3>What the sections mean</h3>
+              <div class="split-list">
+                <div class="definition-row">
+                  <strong>Students You Can Pick Up</strong>
+                  <span>Children that other parents have allowed your family to pick up.</span>
+                </div>
+                <div class="definition-row">
+                  <strong>Who Can Pick Up Your Children</strong>
+                  <span>Families that you have allowed to pick up your children.</span>
+                </div>
+              </div>
+            </div>
+            <div class="docs-block">
+              <h3>Give another family permission</h3>
+              <ol class="docs-list">
+                <li>Sign in with your Family Number.</li>
+                <li>Tap the settings icon at the top of the page.</li>
+                <li>Go to <strong>Who Can Pick Up Your Children</strong>.</li>
+                <li>Tap <strong>Add Permission</strong>.</li>
+                <li>Search for the other family by parent name.</li>
+                <li>Tap the correct family.</li>
+                <li>Choose which of your children that family can pick up.</li>
+                <li>Choose the start date.</li>
+                <li>Choose an end date, or check <strong>Keep this permission until I remove it</strong>.</li>
+                <li>Tap <strong>Save Permission</strong>.</li>
+              </ol>
+            </div>
+            <div class="docs-block">
+              <h3>Get permission to pick up another family's child</h3>
+              <p>
+                You cannot give yourself permission to pick up someone else's child. The other child's parent must give your family permission.
+              </p>
+              <ol class="docs-list">
+                <li>Ask the other parent to open their Parent Settings.</li>
+                <li>They should go to <strong>Who Can Pick Up Your Children</strong>.</li>
+                <li>They should tap <strong>Add Permission</strong>.</li>
+                <li>They should search for your family and choose your family.</li>
+                <li>They should choose the child or children you may pick up.</li>
+                <li>They should tap <strong>Save Permission</strong>.</li>
+              </ol>
+              <div class="note-box">
+                After the other parent saves it, the child will appear for you under <strong>Also Approved For Pickup</strong> on the daily check-in page.
+              </div>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section class="tutorial-help" aria-labelledby="troubleshooting-title">
+        <p class="section-kicker">Troubleshooting</p>
+        <h2 id="troubleshooting-title">Common questions</h2>
+        <div class="faq-list">
+          <article class="faq-item">
+            <h3>I entered my Family Number, but it did not work.</h3>
+            <p>Check that the number is typed correctly. Use numbers only. If it still does not work, contact the school office.</p>
+          </article>
+          <article class="faq-item">
+            <h3>I do not see another family's child.</h3>
+            <p>That child's parent may not have given your family permission yet, or the permission may have expired.</p>
+          </article>
+          <article class="faq-item">
+            <h3>I made a saved carpool, but a student is missing.</h3>
+            <p>A student can only be added if they are your child or if you currently have pickup permission for that student.</p>
+          </article>
+          <article class="faq-item">
+            <h3>I am using someone else's phone.</h3>
+            <p>Tap <strong>Log out</strong> when you are done so the phone does not stay connected to your Family Number.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      function openCurrentTopic() {
+        const topic = window.location.hash ? document.querySelector(window.location.hash) : null;
+        if (topic && topic.tagName.toLowerCase() === "details") {
+          topic.open = true;
+        }
+      }
+
+      document.querySelectorAll(".topic-link").forEach((link) => {
+        link.addEventListener("click", () => {
+          const id = link.getAttribute("href");
+          const topic = id ? document.querySelector(id) : null;
+          if (topic && topic.tagName.toLowerCase() === "details") {
+            topic.open = true;
+          }
+        });
+      });
+
+      window.addEventListener("hashchange", openCurrentTopic);
+      openCurrentTopic();
+    </script>
+  </body>
+</html>
