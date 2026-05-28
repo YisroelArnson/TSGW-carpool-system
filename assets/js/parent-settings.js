@@ -24,6 +24,7 @@
     familySearchTimer: null,
     manageSelection: new Set(),
     editingAuthorizationId: null,
+    authorizationSaving: false,
     presetSelection: new Set(),
     presetWeekdays: new Set(),
     editingPresetId: null
@@ -152,6 +153,7 @@
   function setPseudoDisabled(buttonId, isDisabled) {
     const button = el(buttonId);
     if (!button) return;
+    button.disabled = Boolean(isDisabled);
     button.classList.toggle("is-disabled", Boolean(isDisabled));
     button.setAttribute("aria-disabled", isDisabled ? "true" : "false");
   }
@@ -381,6 +383,7 @@
     state.lookupFamily = null;
     state.manageSelection = new Set();
     state.editingAuthorizationId = null;
+    state.authorizationSaving = false;
     clearAuthorizationSearchState();
     el("authorization-editor-title").textContent = "Create Pickup Permission";
     el("open-authorization-editor").textContent = "Add Permission";
@@ -408,6 +411,9 @@
 
   function renderAuthorizationLookup() {
     const details = el("authorization-lookup-result");
+    if (state.authorizationSaving) {
+      setPseudoDisabled("authorization-submit", true);
+    }
     if (!state.lookupFamily) {
       details.innerHTML = '<p class="item-meta empty-state">Choose a family to continue.</p>';
       setPseudoDisabled("authorization-submit", true);
@@ -438,7 +444,8 @@
 
     setPseudoDisabled(
       "authorization-submit",
-      !state.manageSelection.size ||
+      state.authorizationSaving ||
+        !state.manageSelection.size ||
         !el("authorization-start-date").value ||
         (!el("authorization-permanent").checked && !el("authorization-end-date").value)
     );
@@ -464,6 +471,9 @@
   }
 
   async function saveAuthorization() {
+    const submit = el("authorization-submit");
+    if (state.authorizationSaving || submit?.disabled || submit?.getAttribute("aria-disabled") === "true") return;
+
     const startDate = el("authorization-start-date").value || todayIso();
     const endDate = el("authorization-permanent").checked ? PERMANENT_END_DATE : el("authorization-end-date").value;
 
@@ -487,6 +497,10 @@
       p_ends_on: endDate
     };
 
+    state.authorizationSaving = true;
+    setPseudoDisabled("authorization-submit", true);
+    let saved = false;
+
     try {
       if (state.editingAuthorizationId) {
         await updateAuthorization({
@@ -501,10 +515,16 @@
       }
 
       await refreshState();
+      saved = true;
       setMessage("authorization-message", "Permission saved.", "success");
       window.setTimeout(resetAuthorizationForm, 300);
     } catch (error) {
       setMessage("authorization-message", error.message || "Unable to save permission.", "error");
+    } finally {
+      if (!saved) {
+        state.authorizationSaving = false;
+        renderAuthorizationLookup();
+      }
     }
   }
 
@@ -742,6 +762,7 @@
       state.lookupFamily = null;
       state.manageSelection = new Set();
       state.editingAuthorizationId = null;
+      state.authorizationSaving = false;
       clearAuthorizationSearchState();
       el("authorization-editor-title").textContent = "Create Pickup Permission";
       el("authorize-family-search").value = "";

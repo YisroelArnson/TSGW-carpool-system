@@ -114,6 +114,7 @@
     modal: {
       mode: null,
       entityId: null,
+      isSaving: false,
       audio: emptyStudentAudioState()
     }
   };
@@ -1768,6 +1769,7 @@
   function openModal(mode, entityId) {
     state.modal.mode = mode;
     state.modal.entityId = entityId || null;
+    state.modal.isSaving = false;
 
     let title = "";
     let submitLabel = "Save";
@@ -1853,10 +1855,21 @@
     bindModalSpecificUi(mode, modalData);
   }
 
+  function setModalSaving(isSaving) {
+    const submit = el("admin-modal-submit");
+    const cancel = el("admin-modal-cancel");
+    const close = el("admin-modal-close");
+    if (submit) submit.disabled = Boolean(isSaving);
+    if (cancel) cancel.disabled = Boolean(isSaving);
+    if (close) close.disabled = Boolean(isSaving);
+  }
+
   function closeModal() {
     cleanupStudentAudioState();
     state.modal.mode = null;
     state.modal.entityId = null;
+    state.modal.isSaving = false;
+    setModalSaving(false);
     show("admin-modal", false);
   }
 
@@ -2564,18 +2577,27 @@
 
   async function handleModalSubmit(event) {
     event.preventDefault();
+    if (state.modal.isSaving) return;
 
     const mode = state.modal.mode;
-    if (mode === "add-family") return saveFamily(false);
-    if (mode === "edit-family") return saveFamily(true);
-    if (mode === "add-class") return saveClass(false);
-    if (mode === "edit-class") return saveClass(true);
-    if (mode === "add-student") return saveStudent(false);
-    if (mode === "edit-student") return saveStudent(true);
-    if (mode === "add-permission") return savePermission(false);
-    if (mode === "edit-permission") return savePermission(true);
-    if (mode === "add-preset") return savePreset(false);
-    if (mode === "edit-preset") return savePreset(true);
+    state.modal.isSaving = true;
+    setModalSaving(true);
+
+    try {
+      if (mode === "add-family") return await saveFamily(false);
+      if (mode === "edit-family") return await saveFamily(true);
+      if (mode === "add-class") return await saveClass(false);
+      if (mode === "edit-class") return await saveClass(true);
+      if (mode === "add-student") return await saveStudent(false);
+      if (mode === "edit-student") return await saveStudent(true);
+      if (mode === "add-permission") return await savePermission(false);
+      if (mode === "edit-permission") return await savePermission(true);
+      if (mode === "add-preset") return await savePreset(false);
+      if (mode === "edit-preset") return await savePreset(true);
+    } finally {
+      state.modal.isSaving = false;
+      setModalSaving(false);
+    }
   }
 
   async function deleteFamily(id) {
