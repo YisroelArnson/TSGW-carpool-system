@@ -11,6 +11,10 @@ Implementation of `carpool-system-spec.md` using:
 
 - `/index.html` - Parent check-in page
 - `/settings/index.html` - Parent settings page for permissions and saved carpools
+- `/tutorial/index.html` - Parent getting started videos and instructions
+- `/help/index.html` - Parent help hub
+- `/troubleshooting/index.html` - Parent troubleshooting and office question form
+- `/faq/index.html` - Parent FAQ
 - `/classroom/index.html` - Classroom hub and classroom display page
 - `/spotter/index.html` - Spotter dashboard (authenticated)
 - `/admin/index.html` - Admin dashboard (authenticated)
@@ -64,6 +68,10 @@ Then open:
 
 - `http://localhost:8080/`
 - `http://localhost:8080/settings/`
+- `http://localhost:8080/tutorial/`
+- `http://localhost:8080/help/`
+- `http://localhost:8080/troubleshooting/`
+- `http://localhost:8080/faq/`
 - `http://localhost:8080/classroom/`
 - `http://localhost:8080/spotter/`
 - `http://localhost:8080/admin/`
@@ -125,6 +133,24 @@ curl -X POST "https://<project-ref>.supabase.co/functions/v1/send-pickup-permiss
   -H "Content-Type: application/json" \
   -H "x-pickup-alert-secret: <random-shared-secret>" \
   -d '{"queue_id":"<pickup_notification_queue_id>"}'
+```
+
+## Office Help Request Form
+
+The `/troubleshooting/` page sends parent questions through the `send-office-help-request` Supabase Edge Function. If the function is not deployed or configured, the page falls back to opening a prefilled email to the office address.
+
+1. Deploy the function:
+
+```bash
+supabase functions deploy send-office-help-request
+```
+
+2. Set function secrets:
+
+```bash
+supabase secrets set RESEND_API_KEY="<RESEND_API_KEY>"
+supabase secrets set NOTIFICATION_FROM_EMAIL="TSGW Carpool <carpool@example.org>"
+supabase secrets set OFFICE_HELP_EMAIL="info@tsgw.org"
 ```
 
 ## Scheduled Parent Pickup Requests

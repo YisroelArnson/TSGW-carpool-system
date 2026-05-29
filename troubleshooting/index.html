@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TSGW Carpool Troubleshooting</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Playfair+Display:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <link rel="stylesheet" href="../assets/css/help-section.css" />
+  </head>
+  <body class="help-section-page">
+    <header>
+      <div class="help-brand-bar">
+        <div class="help-brand-bar-inner">
+          <span class="help-brand-name">TSGW Carpool</span>
+          <span class="help-brand-sub">Torah School of Greater Washington</span>
+        </div>
+        <nav class="help-brand-actions" aria-label="Site navigation">
+          <a href="../" class="help-brand-action">Pickup</a>
+          <a href="../help/" class="help-brand-action" aria-current="page">Help</a>
+        </nav>
+      </div>
+      <div class="help-gold-rule"></div>
+    </header>
+
+    <main class="help-page-layout">
+      <section class="help-hero">
+        <h1>Troubleshooting</h1>
+      </section>
+
+      <section class="help-panel" aria-labelledby="troubleshooting-title">
+        <div class="help-panel-head">
+          <h2 id="troubleshooting-title">Common pickup questions</h2>
+        </div>
+        <div class="help-list">
+          <article class="help-item">
+            <h3>I entered my Family Number, but it did not work.</h3>
+            <p>Check that the number is typed correctly. Use numbers only. If it still does not work, contact the school office.</p>
+          </article>
+          <article class="help-item">
+            <h3>I do not see another family's child.</h3>
+            <p>That child's parent may not have given your family permission yet, or the permission may have expired. Ask the parent to check Parent Settings.</p>
+          </article>
+          <article class="help-item">
+            <h3>I made a saved carpool, but a student is missing.</h3>
+            <p>A student can only be added if they are your child or if you currently have pickup permission for that student.</p>
+          </article>
+          <article class="help-item">
+            <h3>I am using someone else's phone.</h3>
+            <p>Tap <strong>Log out</strong> when you are done so the phone does not stay connected to your Family Number.</p>
+          </article>
+          <article class="help-item">
+            <h3>I don't have a smartphone. Can I still use the system?</h3>
+            <p>Yes. There is still a spotter in the parking lot. Tell the spotter your Family Number, and they can check you in.</p>
+          </article>
+          <article class="help-item">
+            <h3>What happens if a child asks for a ride?</h3>
+            <p>A child should only be sent with another family when pickup permission is already approved. Ask that child's parent to grant your family permission before pickup.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="ask-office" class="help-form-card" aria-labelledby="help-form-title">
+        <div class="help-panel-head">
+          <h2 id="help-form-title">Send a question</h2>
+          <p>Type your question below. It will be sent to the school office at <a href="mailto:info@tsgw.org" data-office-email>info@tsgw.org</a>.</p>
+        </div>
+
+        <form id="help-request-form" class="help-request-form">
+          <div class="help-form-grid">
+            <div class="form-row">
+              <label for="help-name">Your name</label>
+              <input id="help-name" name="name" type="text" autocomplete="name" />
+            </div>
+            <div class="form-row">
+              <label for="help-family-number">Family Number</label>
+              <input id="help-family-number" name="familyNumber" type="text" inputmode="numeric" autocomplete="off" />
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="help-contact">Email or phone</label>
+            <input id="help-contact" name="contact" type="text" autocomplete="email" />
+          </div>
+          <div class="form-row">
+            <label for="help-question">Question</label>
+            <textarea id="help-question" name="question" required></textarea>
+          </div>
+          <div class="help-hidden-field" aria-hidden="true">
+            <label for="help-website">Website</label>
+            <input id="help-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+          </div>
+          <div class="help-form-actions">
+            <button type="submit" class="btn-primary">Send Question</button>
+            <p id="help-form-status" class="help-form-status" aria-live="polite"></p>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/help-form.js"></script>
+  </body>
+</html>

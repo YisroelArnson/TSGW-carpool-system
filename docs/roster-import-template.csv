@@ -1,0 +1,5 @@
+carpool_number,student_first_name,student_last_name,class_name,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name,notification_email,notification_enabled
+101,Leah,Cohen,1A,Mrs.,Rivka,Cohen,Mr.,Avi,Cohen,rcohen@example.org,true
+101,Yosef,Cohen,3B,Mrs.,Rivka,Cohen,Mr.,Avi,Cohen,rcohen@example.org,true
+102,Sara,Levy,2A,Ms.,Miriam,Levy,,,,mlevy@example.org,true
+103,Moshe,Gold,Kindergarten,Dr.,Aaron,Gold,Dr.,Esther,Gold,,false

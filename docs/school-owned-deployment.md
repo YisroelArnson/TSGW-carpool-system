@@ -18,7 +18,7 @@ Use this when moving the carpool system to school-owned Supabase and Vercel acco
    - Anon public key
 3. In the Supabase SQL Editor, run `sql/schema.sql`.
 4. Load roster data.
-   - For a fresh setup, add classes, families, and students through the admin page after the admin login is created.
+   - For a fresh setup, add classes, families, and students through the admin page after the admin login is created. Use `docs/roster-import-instructions.md` for the roster CSV format.
    - For a migration, export/import at least `classes`, `families`, `students`, `pickup_authorizations`, `pickup_authorization_students`, `carpool_presets`, and `carpool_preset_students`. Do not import `daily_status` unless the current day's live pickup state must be preserved.
 5. Create Supabase Auth users for the school staff who need dashboard access.
 6. Insert roles for those users:

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TSGW Carpool Parent Help</title>
+    <title>TSGW Carpool Getting Started</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -24,8 +24,8 @@
         align-items: center;
         justify-content: space-between;
         gap: 14px;
-        padding: 0 20px;
-        height: 54px;
+        padding: 8px 20px;
+        min-height: 54px;
         background: var(--brand-maroon);
       }
 
@@ -57,7 +57,14 @@
       .brand-bar-actions {
         display: flex;
         align-items: center;
+        justify-content: flex-end;
         gap: 10px;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      .brand-bar-actions::-webkit-scrollbar {
+        display: none;
       }
 
       .brand-bar-action {
@@ -66,14 +73,17 @@
         color: #fff;
         border-radius: 999px;
         padding: 8px 14px;
+        font-family: "Open Sans", sans-serif;
         font-size: 0.82rem;
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         text-decoration: none;
+        white-space: nowrap;
       }
 
-      .brand-bar-action:hover {
+      .brand-bar-action:hover,
+      .brand-bar-action[aria-current="page"] {
         background: rgba(255, 255, 255, 0.12);
       }
 
@@ -97,8 +107,7 @@
       }
 
       .tutorial-hero,
-      .tutorial-panel,
-      .tutorial-help {
+      .tutorial-panel {
         background: var(--surface-white);
         border: 1px solid var(--border-light);
         border-radius: 22px;
@@ -114,22 +123,12 @@
         gap: 14px;
       }
 
-      .tutorial-kicker,
-      .section-kicker,
-      .video-kicker {
-        margin: 0;
-        font-size: 0.68rem;
-        font-weight: 700;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--text-muted);
-      }
-
       .tutorial-hero h1 {
         margin: 0;
         font-family: "Playfair Display", Georgia, serif;
         font-size: clamp(2rem, 4vw, 3.25rem);
         line-height: 1.05;
+        text-align: center;
         color: var(--text-dark);
       }
 
@@ -138,32 +137,6 @@
         margin: 0;
         color: var(--text-muted);
         line-height: 1.6;
-      }
-
-      .topic-links {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 6px;
-      }
-
-      .topic-link {
-        display: inline-flex;
-        align-items: center;
-        min-height: 38px;
-        border: 1px solid rgba(107, 45, 91, 0.16);
-        border-radius: 999px;
-        padding: 8px 13px;
-        background: var(--surface-ivory);
-        color: var(--brand-maroon);
-        font-size: 0.86rem;
-        font-weight: 700;
-        text-decoration: none;
-      }
-
-      .topic-link:hover {
-        border-color: rgba(107, 45, 91, 0.32);
-        background: #fff;
       }
 
       .tutorial-panel {
@@ -363,19 +336,18 @@
 
       .split-list {
         display: grid;
-        gap: 10px;
+        gap: 16px;
       }
 
       .definition-row {
-        border: 1px solid var(--border-light);
-        border-radius: 14px;
-        padding: 13px 14px;
-        background: #fff;
+        display: grid;
+        gap: 4px;
+        padding-left: 14px;
+        border-left: 3px solid var(--brand-gold);
       }
 
       .definition-row strong {
         display: block;
-        margin-bottom: 4px;
         color: var(--text-dark);
       }
 
@@ -384,45 +356,14 @@
         line-height: 1.5;
       }
 
-      .tutorial-help {
-        padding: 22px;
-        display: grid;
-        gap: 16px;
-      }
-
-      .tutorial-help h2 {
-        margin: 0;
-        font-family: "Playfair Display", Georgia, serif;
-        font-size: 1.5rem;
-      }
-
-      .faq-list {
-        display: grid;
-        gap: 10px;
-      }
-
-      .faq-item {
-        border: 1px solid var(--border-light);
-        border-radius: 14px;
-        padding: 14px;
-        background: #fff;
-      }
-
-      .faq-item h3 {
-        margin: 0 0 6px;
-        font-family: "Open Sans", sans-serif;
-        font-size: 0.98rem;
-      }
-
-      .faq-item p {
-        margin: 0;
-        color: var(--text-muted);
-        line-height: 1.55;
-      }
-
       @media (max-width: 720px) {
         .brand-bar {
-          padding: 0 14px;
+          padding: 8px 14px;
+          align-items: flex-start;
+        }
+
+        .brand-bar-actions {
+          max-width: 62vw;
         }
 
         .brand-bar-action {
@@ -478,9 +419,8 @@
           display: none;
         }
 
-        .topic-links {
-          display: grid;
-          grid-template-columns: 1fr;
+        .brand-bar-actions {
+          max-width: 58vw;
         }
       }
     </style>
@@ -492,24 +432,17 @@
           <span class="brand-name">TSGW Carpool</span>
           <span class="brand-sub">Torah School of Greater Washington</span>
         </div>
-        <div class="brand-bar-actions">
-          <a href="../" class="brand-bar-action">Back to Pickup</a>
-        </div>
+        <nav class="brand-bar-actions" aria-label="Site navigation">
+          <a href="../" class="brand-bar-action">Pickup</a>
+          <a href="../help/" class="brand-bar-action" aria-current="page">Help</a>
+        </nav>
       </div>
       <div class="gold-rule"></div>
     </header>
 
     <main class="tutorial-layout">
       <section class="tutorial-hero">
-        <p class="tutorial-kicker">Parent Help</p>
         <h1>How to use TSGW Carpool</h1>
-        <nav class="topic-links" aria-label="Tutorial topics">
-          <a class="topic-link" href="#sign-in">Sign In</a>
-          <a class="topic-link" href="#check-in">Check In</a>
-          <a class="topic-link" href="#timer">Pickup Timer</a>
-          <a class="topic-link" href="#saved-carpools">Saved Carpools</a>
-          <a class="topic-link" href="#permissions">Pickup Permissions</a>
-        </nav>
       </section>
 
       <section class="tutorial-panel" aria-label="Parent tutorial topics">
@@ -517,7 +450,7 @@
           <summary>
             <span class="topic-number">1</span>
             <span class="topic-title">
-              <strong>Sign in with your Family Number</strong>
+              <strong>Sign in with your Family Number (That the school sent you in an email)</strong>
             </span>
             <span class="topic-caret" aria-hidden="true"></span>
           </summary>
@@ -707,28 +640,6 @@
         </details>
       </section>
 
-      <section class="tutorial-help" aria-labelledby="troubleshooting-title">
-        <p class="section-kicker">Troubleshooting</p>
-        <h2 id="troubleshooting-title">Common questions</h2>
-        <div class="faq-list">
-          <article class="faq-item">
-            <h3>I entered my Family Number, but it did not work.</h3>
-            <p>Check that the number is typed correctly. Use numbers only. If it still does not work, contact the school office.</p>
-          </article>
-          <article class="faq-item">
-            <h3>I do not see another family's child.</h3>
-            <p>That child's parent may not have given your family permission yet, or the permission may have expired.</p>
-          </article>
-          <article class="faq-item">
-            <h3>I made a saved carpool, but a student is missing.</h3>
-            <p>A student can only be added if they are your child or if you currently have pickup permission for that student.</p>
-          </article>
-          <article class="faq-item">
-            <h3>I am using someone else's phone.</h3>
-            <p>Tap <strong>Log out</strong> when you are done so the phone does not stay connected to your Family Number.</p>
-          </article>
-        </div>
-      </section>
     </main>
 
     <script>
@@ -738,16 +649,6 @@
           topic.open = true;
         }
       }
-
-      document.querySelectorAll(".topic-link").forEach((link) => {
-        link.addEventListener("click", () => {
-          const id = link.getAttribute("href");
-          const topic = id ? document.querySelector(id) : null;
-          if (topic && topic.tagName.toLowerCase() === "details") {
-            topic.open = true;
-          }
-        });
-      });
 
       window.addEventListener("hashchange", openCurrentTopic);
       openCurrentTopic();
