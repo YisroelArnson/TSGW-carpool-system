@@ -401,6 +401,11 @@
         border-color: rgba(42, 125, 49, 0.3);
       }
 
+      .hub-student-card .attendance-badge {
+        align-self: center;
+        font-size: 0.62rem;
+      }
+
       /* ─────────────────────────────────────────────────────── */
       /* ─ Projector / Display mode ─ */
 
@@ -604,6 +609,8 @@
       }
 
       .display-alert-modal {
+        position: relative;
+        overflow: visible;
         width: min(900px, calc(100vw - 48px));
         border-radius: 28px;
         padding: clamp(28px, 3vw, 42px);
@@ -613,6 +620,66 @@
         box-shadow: 0 28px 70px rgba(0, 0, 0, 0.35);
         text-align: center;
         color: #fff;
+      }
+
+      .display-alert-modal > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .display-alert-overlay.recall {
+        background: rgba(45, 27, 7, 0.58);
+      }
+
+      .display-alert-overlay.recall .display-alert-modal {
+        border: 5px solid rgba(255, 177, 77, 0.9);
+        background:
+          radial-gradient(circle at top, rgba(255, 245, 220, 0.26), transparent 58%),
+          linear-gradient(145deg, #a33f00, #e16a00 52%, #ffad32 130%);
+        box-shadow:
+          0 0 0 12px rgba(255, 128, 0, 0.18),
+          0 0 54px rgba(255, 137, 20, 0.64),
+          0 32px 82px rgba(0, 0, 0, 0.42);
+        animation: recallModalPulse 1.05s ease-in-out infinite;
+      }
+
+      .display-alert-overlay.recall .display-alert-modal::before {
+        content: "";
+        position: absolute;
+        inset: -18px;
+        border: 6px solid rgba(255, 151, 36, 0.78);
+        border-radius: 40px;
+        z-index: 0;
+        pointer-events: none;
+        animation: recallRingPulse 1.05s ease-in-out infinite;
+      }
+
+      @keyframes recallModalPulse {
+        0%, 100% {
+          transform: scale(1);
+          box-shadow:
+            0 0 0 10px rgba(255, 128, 0, 0.16),
+            0 0 42px rgba(255, 137, 20, 0.54),
+            0 32px 82px rgba(0, 0, 0, 0.42);
+        }
+        50% {
+          transform: scale(1.025);
+          box-shadow:
+            0 0 0 18px rgba(255, 128, 0, 0.26),
+            0 0 74px rgba(255, 159, 38, 0.82),
+            0 36px 92px rgba(0, 0, 0, 0.46);
+        }
+      }
+
+      @keyframes recallRingPulse {
+        0%, 100% {
+          opacity: 0.52;
+          transform: scale(0.985);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.035);
+        }
       }
 
       .display-alert-eyebrow {
@@ -714,6 +781,16 @@
         font-weight: 700;
         letter-spacing: 0.02em;
         opacity: 0.9;
+      }
+
+      .projector .student-card .attendance-badge {
+        font-size: 0.5em;
+        letter-spacing: 0.04em;
+      }
+
+      .projector .student-card.called .attendance-badge {
+        background: rgba(255, 255, 255, 0.18);
+        color: #fff;
       }
 
       .projector .student-card.waiting {
@@ -855,7 +932,7 @@
         <div id="display-grid" class="grid student-grid"></div>
         <div id="display-alert-overlay" class="display-alert-overlay" aria-live="assertive">
           <div class="display-alert-modal">
-            <div class="display-alert-eyebrow">Attention</div>
+            <div id="display-alert-eyebrow" class="display-alert-eyebrow">Attention</div>
             <div id="display-alert-title" class="display-alert-title"></div>
             <div id="display-alert-class" class="display-alert-class"></div>
           </div>
@@ -870,7 +947,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../assets/js/config.js"></script>
     <script src="../assets/js/supabase-client.js"></script>
-    <script src="../assets/js/utils.js"></script>
-    <script src="../assets/js/classroom.js?v=student-call-audio-20260514"></script>
+    <script src="../assets/js/utils.js?v=attendance-markers-20260529"></script>
+    <script src="../assets/js/classroom.js?v=attendance-markers-20260529"></script>
   </body>
 </html>

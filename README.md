@@ -92,6 +92,7 @@ Vercel routing is configured in `/Users/yisroel/Developer/TSGW-carpool-system/ve
 
 - Parent flow uses RPC (`get_parent_checkin_context`, `submit_check_in_request`) with no custom backend.
 - Parent delayed pickup uses `scheduled_pickup_requests`; the browser creates/cancels rows through RPCs, and a backend job processes due rows.
+- Parent location auto call uses `pickup_geofence_settings`; parents must allow browser location access and keep the parent page visible. Screen wake lock is requested when the browser supports it.
 - Spotter/admin require Supabase Auth.
 - Spotter session is persisted by Supabase in browser storage (`persistSession: true`).
 - Classroom hub count updates use status transition deltas to prevent overcount drift.

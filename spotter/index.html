@@ -826,7 +826,7 @@
       }
 
       table {
-        min-width: 540px;
+        min-width: 720px;
       }
 
       th {
@@ -866,6 +866,56 @@
 
       .status-called  { background: #e6f4e8; color: #1e6a23; }
       .status-waiting { background: var(--surface-sand); color: var(--text-muted); }
+
+      .spotter-attendance-cell {
+        display: grid;
+        gap: 7px;
+      }
+
+      .spotter-attendance-empty {
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+
+      .spotter-attendance-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .spotter-attendance-btn {
+        border: 1px solid var(--border-light);
+        border-radius: 999px;
+        background: #fff;
+        color: var(--text-muted);
+        padding: 5px 9px;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .spotter-attendance-btn:hover {
+        border-color: rgba(107, 45, 91, 0.3);
+        color: var(--text-dark);
+      }
+
+      .spotter-attendance-btn.active {
+        background: var(--surface-sand);
+        border-color: rgba(107, 45, 91, 0.28);
+        color: var(--brand-maroon);
+      }
+
+      .spotter-attendance-btn:disabled {
+        opacity: 0.42;
+        cursor: not-allowed;
+      }
+
+      .spotter-student-pick .attendance-badge {
+        font-size: 0.68rem;
+      }
 
       /* Toggle buttons — styled by data-toggle-to attribute */
       button[data-toggle-to] {
@@ -1075,6 +1125,7 @@
             <option value="name">Sort: Name</option>
             <option value="class">Sort: Class</option>
             <option value="status">Sort: Status</option>
+            <option value="attendance">Sort: Attendance</option>
           </select>
         </div>
 
@@ -1087,6 +1138,7 @@
                 <th>Class</th>
                 <th>Family #</th>
                 <th>Status</th>
+                <th>Attendance</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -1100,7 +1152,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../assets/js/config.js"></script>
     <script src="../assets/js/supabase-client.js"></script>
-    <script src="../assets/js/utils.js"></script>
-    <script src="../assets/js/spotter.js"></script>
+    <script src="../assets/js/utils.js?v=attendance-markers-20260529"></script>
+    <script src="../assets/js/spotter.js?v=attendance-markers-20260529"></script>
   </body>
 </html>

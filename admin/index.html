@@ -246,6 +246,112 @@
         padding: 18px 22px;
       }
 
+      .recall-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .recall-range-controls {
+        display: flex;
+        align-items: end;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .recall-range-field {
+        display: grid;
+        gap: 4px;
+      }
+      .recall-range-field label {
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .recall-range-field input {
+        width: 145px;
+        border: 1.5px solid var(--border-light);
+        border-radius: 9px;
+        padding: 8px 10px;
+        font-size: 0.84rem;
+        font-family: "Open Sans", sans-serif;
+        background: var(--surface-ivory);
+      }
+      .recall-range-field input:focus {
+        outline: none;
+        border-color: var(--brand-maroon);
+        box-shadow: 0 0 0 3px rgba(107, 45, 91, 0.1);
+        background: #fff;
+      }
+      .recall-window-label,
+      .recall-warning {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        font-weight: 600;
+        font-family: "Open Sans", sans-serif;
+      }
+      .recall-warning {
+        margin: 0 0 14px;
+        color: var(--status-danger);
+      }
+      .recall-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 0;
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 18px;
+      }
+      .recall-summary-item {
+        padding: 14px 16px;
+        border-right: 1px solid var(--border-light);
+        border-bottom: 1px solid var(--border-light);
+        min-width: 0;
+      }
+      .recall-summary-item:last-child {
+        border-right: none;
+      }
+      .recall-summary-label {
+        display: block;
+        font-size: 0.64rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-bottom: 6px;
+      }
+      .recall-summary-value {
+        display: block;
+        font-size: 1.45rem;
+        line-height: 1.1;
+        font-weight: 800;
+        color: var(--brand-maroon);
+        overflow-wrap: anywhere;
+      }
+      .recall-summary-text {
+        font-size: 0.96rem;
+        line-height: 1.25;
+      }
+      .recall-table-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+      .recall-table-section h3 {
+        margin: 0 0 10px;
+        font-family: "Open Sans", sans-serif;
+        font-size: 0.88rem;
+        color: var(--text-dark);
+      }
+      .recall-table-section .table-wrap {
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        overflow: auto;
+      }
+
       .student-grid-card {
         --fit-grid-gap: 12px;
         --fit-card-height: auto;
@@ -519,6 +625,75 @@
         border-color: rgba(107, 45, 91, 0.28);
         box-shadow: 0 6px 14px rgba(107, 45, 91, 0.08);
         transform: translateY(-1px);
+      }
+
+      .status-initial {
+        background: #e7f0f7;
+        color: #245274;
+      }
+      .status-recall {
+        background: #f9e8df;
+        color: #8a3e1f;
+      }
+
+      .attendance-cell {
+        display: grid;
+        gap: 7px;
+        align-items: start;
+      }
+
+      .attendance-cell-empty {
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+
+      .attendance-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .attendance-action-btn {
+        border: 1px solid var(--border-light);
+        border-radius: 999px;
+        background: #fff;
+        color: var(--text-muted);
+        padding: 5px 9px;
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .attendance-action-btn:hover {
+        border-color: rgba(107, 45, 91, 0.3);
+        color: var(--text-dark);
+      }
+
+      .attendance-action-btn.active {
+        background: var(--surface-sand);
+        border-color: rgba(107, 45, 91, 0.28);
+        color: var(--brand-maroon);
+      }
+
+      .attendance-action-btn:disabled {
+        opacity: 0.42;
+        cursor: not-allowed;
+      }
+
+      .all-students-card .attendance-badge {
+        font-size: 0.62rem;
+      }
+
+      .all-students-card .attendance-actions {
+        justify-content: center;
+      }
+
+      .all-students-card .attendance-action-btn {
+        padding: 4px 7px;
+        font-size: 0.62rem;
       }
 
       /* ─ Table overrides ─ */
@@ -929,6 +1104,93 @@
         color: var(--text-muted);
       }
 
+      .settings-form {
+        display: grid;
+        gap: 16px;
+        max-width: 780px;
+      }
+
+      .settings-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text-dark);
+        font: 700 0.94rem "Open Sans", sans-serif;
+        cursor: pointer;
+      }
+
+      .settings-toggle input {
+        width: 20px;
+        height: 20px;
+        margin: 0;
+        accent-color: var(--brand-maroon);
+      }
+
+      .settings-field-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .settings-form-row {
+        display: grid;
+        gap: 6px;
+      }
+
+      .settings-form-row label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+      }
+
+      .settings-form-row input {
+        border: 1.5px solid var(--border-light);
+        border-radius: 10px;
+        padding: 11px 14px;
+        font-size: 0.95rem;
+        font-family: "Open Sans", sans-serif;
+        background: var(--surface-ivory);
+        width: 100%;
+        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+      }
+
+      .settings-form-row input:focus {
+        outline: none;
+        border-color: var(--brand-maroon);
+        box-shadow: 0 0 0 3px rgba(107, 45, 91, 0.1);
+        background: #fff;
+      }
+
+      .settings-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .settings-summary {
+        display: grid;
+        gap: 4px;
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.88rem;
+        line-height: 1.45;
+      }
+
+      .settings-message {
+        min-height: 20px;
+        margin: 0;
+        font-size: 0.88rem;
+        font-weight: 700;
+      }
+
+      .settings-message.success { color: #2a7d31; }
+      .settings-message.error { color: var(--status-danger); }
+      .settings-message.pending { color: var(--brand-maroon); }
+
       /* ─ Sortable headers ─ */
       th[data-sort] {
         cursor: pointer;
@@ -991,6 +1253,8 @@
       @media (max-width: 700px) {
         .admin-topbar { flex-direction: column; align-items: flex-start; }
         .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+        .recall-table-grid { grid-template-columns: 1fr; }
+        .settings-field-grid { grid-template-columns: 1fr; }
         .admin-layout { padding: 20px 16px 40px; }
       }
     </style>
@@ -1046,11 +1310,13 @@
         <!-- Tab bar -->
         <div id="admin-tabs" class="tab-bar" role="tablist" aria-label="Admin sections">
           <button class="tab-btn active" data-tab="today" role="tab" aria-selected="true">Today</button>
+          <button class="tab-btn" data-tab="analytics" role="tab" aria-selected="false">Analytics</button>
           <button class="tab-btn" data-tab="permissions" role="tab" aria-selected="false">Permissions</button>
           <button class="tab-btn" data-tab="students" role="tab" aria-selected="false">Students</button>
           <button class="tab-btn" data-tab="families" role="tab" aria-selected="false">Families</button>
           <button class="tab-btn" data-tab="classes" role="tab" aria-selected="false">Classes</button>
           <button class="tab-btn" data-tab="imports" role="tab" aria-selected="false">Imports &amp; Logs</button>
+          <button class="tab-btn" data-tab="settings" role="tab" aria-selected="false">Settings</button>
         </div>
 
         <!-- ── Today tab ──────────────────────────────────────── -->
@@ -1096,7 +1362,8 @@
                     <th data-sort="class">Class</th>
                     <th data-sort="family">Family</th>
                     <th data-sort="carpool">Family #</th>
-                    <th data-sort="status">Status</th>
+                    <th data-sort="status">Type</th>
+                    <th>Attendance</th>
                     <th data-sort="source">Checked In By</th>
                     <th>Action</th>
                   </tr>
@@ -1121,6 +1388,85 @@
             </div>
             <div class="content-card-body">
               <div id="today-student-grid" class="all-students-grid"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-analytics" class="content-card hidden" data-tab-panel="analytics">
+          <div class="content-card-header recall-header">
+            <h2>Recall Analytics</h2>
+            <form id="recall-date-range-form" class="recall-range-controls">
+              <span id="recall-window-label" class="recall-window-label"></span>
+              <span class="recall-range-field">
+                <label for="recall-start-date">Start</label>
+                <input id="recall-start-date" type="date" />
+              </span>
+              <span class="recall-range-field">
+                <label for="recall-end-date">End</label>
+                <input id="recall-end-date" type="date" />
+              </span>
+              <button class="btn-action maroon" type="submit">Apply</button>
+              <button id="recall-last-30-btn" class="btn-action ghost" type="button">Last 30 Days</button>
+            </form>
+          </div>
+          <div class="content-card-body">
+            <p id="recall-tracking-warning" class="recall-warning hidden"></p>
+            <div class="recall-summary-grid">
+              <div class="recall-summary-item">
+                <span class="recall-summary-label">Calls Today</span>
+                <span id="recall-today-call-count" class="recall-summary-value">0</span>
+              </div>
+              <div class="recall-summary-item">
+                <span class="recall-summary-label">Recalls Today</span>
+                <span id="recall-today-recall-count" class="recall-summary-value">0</span>
+              </div>
+              <div class="recall-summary-item">
+                <span class="recall-summary-label">Window Recalls</span>
+                <span id="recall-window-recall-count" class="recall-summary-value">0</span>
+              </div>
+              <div class="recall-summary-item">
+                <span class="recall-summary-label">Recall Rate</span>
+                <span id="recall-rate" class="recall-summary-value">0%</span>
+              </div>
+              <div class="recall-summary-item">
+                <span class="recall-summary-label">Top Family</span>
+                <span id="recall-top-family" class="recall-summary-value recall-summary-text">None</span>
+              </div>
+            </div>
+            <div class="recall-table-grid">
+              <section class="recall-table-section">
+                <h3>Families Recalling Often</h3>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Pickup Family</th>
+                        <th>Recalls</th>
+                        <th>Students</th>
+                        <th>Last Recall</th>
+                      </tr>
+                    </thead>
+                    <tbody id="recall-families-tbody"></tbody>
+                  </table>
+                </div>
+              </section>
+              <section class="recall-table-section">
+                <h3>Students Recalled Often</h3>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Student</th>
+                        <th>Family</th>
+                        <th>Class</th>
+                        <th>Recalls</th>
+                        <th>Last Recall</th>
+                      </tr>
+                    </thead>
+                    <tbody id="recall-students-tbody"></tbody>
+                  </table>
+                </div>
+              </section>
             </div>
           </div>
         </section>
@@ -1305,6 +1651,41 @@
           </div>
         </section>
 
+        <!-- ── Settings tab ───────────────────────────────────── -->
+        <section id="tab-settings" class="content-card hidden" data-tab-panel="settings">
+          <div class="content-card-header">
+            <h2>Pickup Location</h2>
+          </div>
+          <div class="content-card-body">
+            <form id="geofence-settings-form" class="settings-form">
+              <label class="settings-toggle" for="geofence-enabled">
+                <input id="geofence-enabled" type="checkbox" />
+                <span>Enable auto call near school</span>
+              </label>
+              <div class="settings-field-grid">
+                <div class="settings-form-row">
+                  <label for="geofence-latitude">School Latitude</label>
+                  <input id="geofence-latitude" type="number" inputmode="decimal" min="-90" max="90" step="0.000001" placeholder="39.000000" />
+                </div>
+                <div class="settings-form-row">
+                  <label for="geofence-longitude">School Longitude</label>
+                  <input id="geofence-longitude" type="number" inputmode="decimal" min="-180" max="180" step="0.000001" placeholder="-77.000000" />
+                </div>
+                <div class="settings-form-row">
+                  <label for="geofence-radius-miles">Call Radius (Miles)</label>
+                  <input id="geofence-radius-miles" type="number" inputmode="decimal" min="0.05" max="3" step="0.05" placeholder="0.25" />
+                </div>
+              </div>
+              <div class="settings-actions">
+                <button id="geofence-save-btn" class="btn-action maroon" type="submit">Save Location</button>
+                <button id="geofence-use-current-btn" class="btn-action ghost" type="button">Use Current Location</button>
+              </div>
+              <p id="geofence-settings-message" class="settings-message hidden"></p>
+              <p id="geofence-settings-summary" class="settings-summary"></p>
+            </form>
+          </div>
+        </section>
+
       </div>
     </section>
 
@@ -1330,7 +1711,7 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="../assets/js/config.js"></script>
     <script src="../assets/js/supabase-client.js"></script>
-    <script src="../assets/js/utils.js"></script>
-    <script src="../assets/js/admin.js?v=student-call-audio-20260514"></script>
+    <script src="../assets/js/utils.js?v=attendance-markers-20260529"></script>
+    <script src="../assets/js/admin.js?v=attendance-markers-20260529"></script>
   </body>
 </html>

@@ -793,6 +793,10 @@
         line-height: 1.25;
       }
 
+      .student-pick .attendance-badge {
+        font-size: 0.7rem;
+      }
+
       .student-pick-scheduled {
         display: inline-block;
         width: fit-content;
@@ -1069,12 +1073,13 @@
 
       .sticky-checkin-actions {
         display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr) auto auto;
         gap: 10px;
         align-items: stretch;
       }
 
-      .schedule-pickup-btn {
+      .schedule-pickup-btn,
+      .auto-call-location-btn {
         width: 48px;
         min-width: 48px;
         padding: 0;
@@ -1084,7 +1089,8 @@
         justify-content: center;
       }
 
-      .schedule-pickup-btn svg {
+      .schedule-pickup-btn svg,
+      .auto-call-location-btn svg {
         width: 20px;
         height: 20px;
         stroke: currentColor;
@@ -1094,7 +1100,8 @@
         stroke-linejoin: round;
       }
 
-      .schedule-pickup-btn:disabled {
+      .schedule-pickup-btn:disabled,
+      .auto-call-location-btn:disabled {
         opacity: 0.45;
         cursor: not-allowed;
         box-shadow: none !important;
@@ -1251,6 +1258,148 @@
 
       html.parent-checkin-active body {
         padding-bottom: 178px;
+      }
+
+      .auto-call-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 130;
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        padding: max(22px, env(safe-area-inset-top)) 18px max(22px, env(safe-area-inset-bottom));
+        background:
+          linear-gradient(180deg, rgba(251, 248, 243, 0.96), rgba(255, 255, 255, 0.98));
+      }
+
+      .auto-call-overlay.hidden {
+        display: none !important;
+      }
+
+      .auto-call-panel {
+        width: min(460px, 100%);
+        min-height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: stretch;
+        gap: 20px;
+        text-align: center;
+      }
+
+      .auto-call-main {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        width: 100%;
+      }
+
+      .auto-call-visual {
+        position: relative;
+        width: min(58vw, 220px);
+        aspect-ratio: 1;
+        display: grid;
+        place-items: center;
+      }
+
+      .auto-call-visual::before,
+      .auto-call-visual::after {
+        content: "";
+        position: absolute;
+        inset: 10%;
+        border: 2px solid rgba(107, 45, 91, 0.18);
+        border-radius: 50%;
+        animation: locationScan 2.2s ease-out infinite;
+      }
+
+      .auto-call-visual::after {
+        animation-delay: 0.75s;
+      }
+
+      .auto-call-pin {
+        width: 74px;
+        height: 74px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--brand-maroon);
+        color: #fff;
+        box-shadow: 0 16px 34px rgba(107, 45, 91, 0.22);
+        animation: locationFloat 1.8s ease-in-out infinite;
+      }
+
+      .auto-call-pin svg {
+        width: 34px;
+        height: 34px;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      @keyframes locationScan {
+        0% { transform: scale(0.58); opacity: 0.72; }
+        70% { opacity: 0.22; }
+        100% { transform: scale(1.28); opacity: 0; }
+      }
+
+      @keyframes locationFloat {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-5px); }
+      }
+
+      .auto-call-panel h2 {
+        margin: 0;
+        font-family: "Playfair Display", Georgia, serif;
+        color: var(--text-dark);
+        font-size: clamp(2rem, 8vw, 3.1rem);
+        line-height: 1;
+      }
+
+      .auto-call-copy {
+        margin: 0;
+        color: var(--text-dark);
+        font: 700 clamp(1.05rem, 4.6vw, 1.35rem) "Open Sans", sans-serif;
+        line-height: 1.35;
+      }
+
+      .auto-call-detail {
+        margin: -4px 0 0;
+        color: var(--text-muted);
+        font-size: 0.94rem;
+        line-height: 1.45;
+      }
+
+      .auto-call-cancel {
+        width: 100%;
+        margin-top: 0;
+        padding: 15px 18px;
+        border: 1px solid rgba(107, 45, 91, 0.22);
+        border-radius: 14px;
+        background: #fff;
+        color: var(--brand-maroon);
+        font: 800 0.98rem "Open Sans", sans-serif;
+        cursor: pointer;
+      }
+
+      .auto-call-overlay.success .auto-call-pin {
+        background: #2a7d31;
+      }
+
+      .auto-call-overlay.error .auto-call-pin {
+        background: var(--status-danger);
+      }
+
+      .auto-call-overlay.success .auto-call-visual::before,
+      .auto-call-overlay.success .auto-call-visual::after,
+      .auto-call-overlay.error .auto-call-visual::before,
+      .auto-call-overlay.error .auto-call-visual::after {
+        animation-play-state: paused;
+        opacity: 0.18;
       }
 
       .modal-overlay.hidden {
@@ -1549,7 +1698,7 @@
         }
 
         .sticky-checkin-actions {
-          grid-template-columns: auto minmax(0, 1fr) auto;
+          grid-template-columns: minmax(0, 1fr) auto auto;
         }
 
         .section-head-row {
@@ -1726,7 +1875,6 @@
           <button type="button" id="sticky-schedule-cancel" class="sticky-schedule-cancel">Cancel</button>
         </div>
         <div class="sticky-checkin-actions">
-          <button id="sticky-clear" type="button" class="btn-w btn-ghost">Clear</button>
           <button type="button" id="students-submit" class="btn-w btn-maroon students-submit">I'm Here For 0 Children</button>
           <button type="button" id="schedule-pickup-open" class="btn-w btn-maroon schedule-pickup-btn" aria-label="Schedule pickup request">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -1734,7 +1882,32 @@
               <path d="M12 7v5l3 2"></path>
             </svg>
           </button>
+          <button type="button" id="auto-call-location" class="btn-w btn-maroon auto-call-location-btn" aria-label="Auto call near school" title="Auto call near school">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11Z"></path>
+              <circle cx="12" cy="10" r="2.5"></circle>
+            </svg>
+          </button>
         </div>
+      </div>
+    </div>
+
+    <div id="auto-call-overlay" class="auto-call-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="auto-call-overlay-title">
+      <div class="auto-call-panel">
+        <div class="auto-call-main">
+          <div class="auto-call-visual" aria-hidden="true">
+            <div class="auto-call-pin">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11Z"></path>
+                <circle cx="12" cy="10" r="2.5"></circle>
+              </svg>
+            </div>
+          </div>
+          <h2 id="auto-call-overlay-title">Auto call is on</h2>
+          <p id="auto-call-overlay-copy" class="auto-call-copy">Please keep this screen open.</p>
+          <p id="auto-call-overlay-detail" class="auto-call-detail"></p>
+        </div>
+        <button type="button" id="auto-call-overlay-cancel" class="auto-call-cancel">Cancel Auto Call</button>
       </div>
     </div>
 
@@ -1764,8 +1937,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="assets/js/config.js"></script>
     <script src="assets/js/supabase-client.js"></script>
-    <script src="assets/js/utils.js"></script>
-    <script src="assets/js/parent.js"></script>
+    <script src="assets/js/utils.js?v=attendance-markers-20260529"></script>
+    <script src="assets/js/parent.js?v=attendance-markers-20260529"></script>
     <script>
       // Fallback: if no parent state is visible after load, restore the number entry card.
       (function () {

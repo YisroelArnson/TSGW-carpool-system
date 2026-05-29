@@ -9,6 +9,8 @@
     familyDisplayName,
     familySearchText,
     normalizeText,
+    attendanceBadgeHtml,
+    attendanceStatusLabel,
     normalizeWeekdays,
     formatWeekdays,
     weekdayKeyForISO
@@ -20,6 +22,7 @@
     families: [],
     students: [],
     statuses: new Map(),
+    attendanceStatuses: new Map(),
     channel: null,
     context: null,
     lookupFamily: null,
@@ -234,6 +237,41 @@
     return state.statuses.get(studentId) || "WAITING";
   }
 
+  function studentAttendanceStatus(studentId) {
+    return state.attendanceStatuses.get(studentId) || "";
+  }
+
+  function attendanceLabel(status) {
+    return attendanceStatusLabel ? attendanceStatusLabel(status) : "";
+  }
+
+  function attendanceActionButton(studentId, status, label, currentStatus) {
+    const isClear = !status;
+    const active = status && currentStatus === status;
+    const disabled = isClear && !currentStatus;
+    return `<button
+      class="spotter-attendance-btn${active ? " active" : ""}"
+      type="button"
+      data-attendance-student="${escapeHtml(studentId)}"
+      data-attendance-status="${escapeHtml(status)}"
+      aria-pressed="${active ? "true" : "false"}"
+      ${disabled ? "disabled" : ""}
+    >${escapeHtml(label)}</button>`;
+  }
+
+  function attendanceCellHtml(studentId) {
+    const currentStatus = studentAttendanceStatus(studentId);
+    const badge = attendanceBadgeHtml ? attendanceBadgeHtml(currentStatus) : "";
+    return `<div class="spotter-attendance-cell">
+      ${badge || '<span class="spotter-attendance-empty">In school</span>'}
+      <div class="spotter-attendance-actions">
+        ${attendanceActionButton(studentId, "ABSENT", "Absent", currentStatus)}
+        ${attendanceActionButton(studentId, "LEFT_EARLY", "Left early", currentStatus)}
+        ${attendanceActionButton(studentId, "", "Back", currentStatus)}
+      </div>
+    </div>`;
+  }
+
   function filteredStudents() {
     const search = el("spotter-search").value.trim().toLowerCase();
     const sortBy = el("spotter-sort").value;
@@ -242,7 +280,9 @@
     if (search) {
       list = list.filter((s) => {
         const full = `${s.last_name}, ${s.first_name}`.toLowerCase();
-        return full.includes(search) || String(s.carpool_number).includes(search);
+        return full.includes(search)
+          || String(s.carpool_number).includes(search)
+          || attendanceLabel(studentAttendanceStatus(s.id)).toLowerCase().includes(search);
       });
     }
 
@@ -250,6 +290,8 @@
       list.sort((a, b) => a.class_name.localeCompare(b.class_name) || a.last_name.localeCompare(b.last_name));
     } else if (sortBy === "status") {
       list.sort((a, b) => studentStatus(a.id).localeCompare(studentStatus(b.id)) || a.last_name.localeCompare(b.last_name));
+    } else if (sortBy === "attendance") {
+      list.sort((a, b) => studentAttendanceStatus(a.id).localeCompare(studentAttendanceStatus(b.id)) || a.last_name.localeCompare(b.last_name));
     } else {
       list.sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name));
     }
@@ -302,13 +344,32 @@
           <td>${escapeHtml(s.class_name)}</td>
           <td>${escapeHtml(String(s.carpool_number))}</td>
           <td><span class="${tag}">${status}</span></td>
+          <td>${attendanceCellHtml(s.id)}</td>
           <td>${actions}</td>
         </tr>`;
       })
       .join("");
 
     const tbody = el("spotter-tbody");
-    tbody.innerHTML = rows || '<tr><td colspan="5" class="muted">No students found.</td></tr>';
+    tbody.innerHTML = rows || '<tr><td colspan="6" class="muted">No students found.</td></tr>';
+
+    tbody.querySelectorAll("button[data-attendance-student]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const studentId = btn.dataset.attendanceStudent;
+        try {
+          await setAttendanceStatus(studentId, btn.dataset.attendanceStatus || null);
+          const student = state.students.find((entry) => entry.id === studentId);
+          const fullName = student ? `${student.first_name} ${student.last_name}` : "Student";
+          const label = attendanceLabel(btn.dataset.attendanceStatus);
+          setMessage(label ? `${fullName} marked ${label.toLowerCase()}` : `${fullName} marked back in school`, "success");
+        } catch (error) {
+          setMessage(error.message || "Unable to update attendance.", "error");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
 
     tbody.querySelectorAll("button[data-status-action]").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -355,6 +416,46 @@
 
     const { error } = await client.from("daily_status").upsert(payload, { onConflict: "student_id,date" });
     if (error) throw error;
+  }
+
+  function applyAttendanceRecord(record) {
+    if (!record?.student_id) return;
+    state.statuses.set(record.student_id, record.status || "WAITING");
+    if (record.attendance_status) {
+      state.attendanceStatuses.set(record.student_id, record.attendance_status);
+    } else {
+      state.attendanceStatuses.delete(record.student_id);
+    }
+
+    const groups = [
+      state.context?.own_students || [],
+      ...(state.context?.authorized_pickups || []).map((family) => family.students || [])
+    ];
+    groups.forEach((students) => {
+      (students || []).forEach((student) => {
+        if (String(student.student_id) === String(record.student_id)) {
+          student.attendance_status = record.attendance_status || "";
+          student.attendance_marked_at = record.attendance_marked_at || null;
+          student.attendance_marked_by = record.attendance_marked_by || "";
+          student.attendance_cleared_at = record.attendance_cleared_at || null;
+          student.attendance_cleared_by = record.attendance_cleared_by || "";
+        }
+      });
+    });
+  }
+
+  async function setAttendanceStatus(studentId, attendanceStatus) {
+    const client = mustClient();
+    const actor = await currentActorLabel(client, "Spotter");
+    const { data, error } = await client.rpc("set_student_attendance_status", {
+      p_student_id: studentId,
+      p_attendance_status: attendanceStatus || null,
+      p_actor: actor
+    });
+    if (error) throw error;
+    applyAttendanceRecord(data);
+    renderTable();
+    renderContextPanel();
   }
 
   async function getCheckinContext(number) {
@@ -486,6 +587,7 @@
           <span class="spotter-student-copy">
             <span class="spotter-student-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
             <small>${escapeHtml(student.class_name || "")}</small>
+            ${attendanceBadgeHtml ? attendanceBadgeHtml(student.attendance_status) : ""}
           </span>
           <span class="spotter-student-pick-toggle">${isSelected ? "✓" : "+"}</span>
         </button>
@@ -507,6 +609,7 @@
           <span class="spotter-student-copy">
             <span class="spotter-student-name">${escapeHtml(`${student.first_name} ${student.last_name}`)}</span>
             <small>${escapeHtml(student.class_name || "")} · ${escapeHtml(student.display_name || "Family")}${student.carpool_number ? ` · Family #${escapeHtml(String(student.carpool_number))}` : ""}</small>
+            ${attendanceBadgeHtml ? attendanceBadgeHtml(student.attendance_status) : ""}
           </span>
           <span class="spotter-student-pick-toggle">${isSelected ? "✓" : "+"}</span>
         </button>
@@ -640,7 +743,7 @@
       client
         .from("students")
         .select("id,first_name,last_name,class_id,family_id,classes(name),families(id,carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)"),
-      client.from("daily_status").select("student_id,status").eq("date", state.today)
+      client.from("daily_status").select("student_id,status,attendance_status").eq("date", state.today)
     ]);
 
     if (studentsRes.error) throw studentsRes.error;
@@ -674,14 +777,24 @@
     }));
 
     state.statuses = new Map();
-    (statusRes.data || []).forEach((row) => state.statuses.set(row.student_id, row.status));
+    state.attendanceStatuses = new Map();
+    (statusRes.data || []).forEach((row) => {
+      state.statuses.set(row.student_id, row.status);
+      if (row.attendance_status) state.attendanceStatuses.set(row.student_id, row.attendance_status);
+    });
   }
 
   function onRealtime(payload) {
     const rec = payload.new || payload.old;
     if (!rec || rec.date !== state.today) return;
     state.statuses.set(rec.student_id, rec.status || "WAITING");
+    if (rec.attendance_status) {
+      state.attendanceStatuses.set(rec.student_id, rec.attendance_status);
+    } else {
+      state.attendanceStatuses.delete(rec.student_id);
+    }
     renderTable();
+    renderContextPanel();
   }
 
   function subscribeRealtime() {

@@ -9,6 +9,8 @@
     fetchSchoolToday,
     familyDisplayName,
     normalizeText,
+    attendanceBadgeHtml,
+    attendanceStatusLabel,
     CARPOOL_WEEKDAYS,
     normalizeWeekdays,
     formatWeekdays
@@ -16,8 +18,10 @@
   if (!mustClient) return;
 
   const PERMANENT_END_DATE = "9999-12-31";
+  const RECALL_ANALYTICS_DAYS = 30;
   const STUDENT_AUDIO_BUCKET = "student-call-audio";
   const STUDENT_AUDIO_MAX_MS = 10000;
+  const METERS_PER_MILE = 1609.344;
   const STUDENT_BASE_SELECT = "id,first_name,last_name,class_id,family_id,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)";
   const STUDENT_AUDIO_SELECT = "id,first_name,last_name,class_id,family_id,call_audio_path,call_audio_mime_type,call_audio_updated_at,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)";
   const STUDENT_AUDIO_MIME_CANDIDATES = [
@@ -91,11 +95,23 @@
     families: [],
     students: [],
     dailyStatus: [],
+    callEvents: [],
+    callEventsAvailable: false,
+    callEventsError: "",
+    recallWindowStart: "",
+    recallWindowEnd: "",
+    recallRangeStart: "",
+    recallRangeEnd: "",
+    recallRangeMessage: "",
     pickupAuthorizations: [],
     pickupAuthorizationStudents: [],
     pickupAuthorizationAudit: [],
     carpoolPresets: [],
     carpoolPresetStudents: [],
+    geofenceSettings: defaultGeofenceSettings(),
+    geofenceSettingsError: "",
+    geofenceSaving: false,
+    geofenceLocating: false,
     currentTab: "today",
     channel: null,
     refreshTimer: null,
@@ -148,6 +164,47 @@
     return document.getElementById(id);
   }
 
+  function defaultGeofenceSettings() {
+    return {
+      is_enabled: false,
+      is_configured: false,
+      school_latitude: null,
+      school_longitude: null,
+      radius_meters: 300,
+      updated_at: null
+    };
+  }
+
+  function normalizeGeofenceSettings(settings) {
+    return {
+      ...defaultGeofenceSettings(),
+      ...(settings || {}),
+      school_latitude: settings?.school_latitude == null ? null : Number(settings.school_latitude),
+      school_longitude: settings?.school_longitude == null ? null : Number(settings.school_longitude),
+      radius_meters: Number(settings?.radius_meters || 300)
+    };
+  }
+
+  function trimNumberText(value) {
+    return String(value).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+  }
+
+  function metersToMiles(meters) {
+    return Number(meters || 0) / METERS_PER_MILE;
+  }
+
+  function milesToMeters(miles) {
+    return Math.round(Number(miles || 0) * METERS_PER_MILE);
+  }
+
+  function formatMilesInput(meters) {
+    return trimNumberText(metersToMiles(meters).toFixed(2));
+  }
+
+  function formatMiles(value) {
+    return `${trimNumberText(Number(value || 0).toFixed(2))} mi`;
+  }
+
   function setNodeMessage(nodeId, text, klass) {
     const node = el(nodeId);
     if (!node) return;
@@ -194,6 +251,24 @@
     } catch (error) {
       return fallback;
     }
+  }
+
+  async function fetchGeofenceSettings(client) {
+    const { data, error } = await client.rpc("get_pickup_geofence_settings");
+    if (error) throw error;
+    return normalizeGeofenceSettings(data);
+  }
+
+  async function updateGeofenceSettings(payload) {
+    const client = mustClient();
+    const { data, error } = await client.rpc("update_pickup_geofence_settings", {
+      p_is_enabled: payload.is_enabled,
+      p_school_latitude: payload.school_latitude,
+      p_school_longitude: payload.school_longitude,
+      p_radius_meters: payload.radius_meters
+    });
+    if (error) throw error;
+    return normalizeGeofenceSettings(data);
   }
 
   function checkInSourceLabel(record) {
@@ -702,6 +777,51 @@
     return value;
   }
 
+  function offsetISODate(isoDate, dayOffset) {
+    const [year, month, day] = String(isoDate || "").split("-").map(Number);
+    if (!year || !month || !day) return schoolTodayISO();
+    const date = new Date(Date.UTC(year, month - 1, day));
+    date.setUTCDate(date.getUTCDate() + dayOffset);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function defaultRecallWindowStartDate() {
+    return offsetISODate(state.today, -(RECALL_ANALYTICS_DAYS - 1));
+  }
+
+  function ensureRecallDateRange() {
+    if (!state.recallRangeEnd) state.recallRangeEnd = state.today;
+    if (!state.recallRangeStart) state.recallRangeStart = defaultRecallWindowStartDate();
+  }
+
+  function minISODate(firstDate, secondDate) {
+    return String(firstDate) <= String(secondDate) ? firstDate : secondDate;
+  }
+
+  function maxISODate(firstDate, secondDate) {
+    return String(firstDate) >= String(secondDate) ? firstDate : secondDate;
+  }
+
+  function isCallEventsMissingError(error) {
+    const message = String(error?.message || "").toLowerCase();
+    return error?.code === "42P01"
+      || message.includes("could not find the table")
+      || (message.includes("student_call_events") && message.includes("does not exist"));
+  }
+
+  function attemptTypeLabel(record) {
+    if (!record?.attempt_type) return record?.status || "";
+    return record.attempt_type === "recall" ? "Recall" : "Initial";
+  }
+
+  function formatEventDateTime(value, dateValue) {
+    if (!value) return "-";
+    const time = formatAttemptTime(value);
+    if (!dateValue || dateValue === state.today) return time;
+    const date = new Date(`${dateValue}T00:00:00`);
+    return `${date.toLocaleDateString([], { month: "numeric", day: "numeric" })} ${time}`;
+  }
+
   function authorizationStudentIds(authId) {
     return state.pickupAuthorizationStudents
       .filter((row) => row.authorization_id === authId)
@@ -773,6 +893,50 @@
 
   function dailyStatusMap() {
     return new Map(state.dailyStatus.map((row) => [row.student_id, row]));
+  }
+
+  function attendanceStatusForStudent(studentId) {
+    return dailyStatusMap().get(studentId)?.attendance_status || "";
+  }
+
+  function attendanceBadgeForStatus(status) {
+    return attendanceBadgeHtml ? attendanceBadgeHtml(status) : "";
+  }
+
+  function attendanceStatusText(status) {
+    return attendanceStatusLabel ? attendanceStatusLabel(status) : "";
+  }
+
+  function attendanceActionButton(studentId, status, label, currentStatus) {
+    const isClear = !status;
+    const active = status && currentStatus === status;
+    const disabled = isClear && !currentStatus;
+    return `<button
+      class="attendance-action-btn${active ? " active" : ""}"
+      type="button"
+      data-attendance-student="${escapeHtml(studentId)}"
+      data-attendance-status="${escapeHtml(status)}"
+      aria-pressed="${active ? "true" : "false"}"
+      ${disabled ? "disabled" : ""}
+    >${escapeHtml(label)}</button>`;
+  }
+
+  function attendanceControlsHtml(studentId) {
+    const currentStatus = attendanceStatusForStudent(studentId);
+    return `<div class="attendance-actions">
+      ${attendanceActionButton(studentId, "ABSENT", "Absent", currentStatus)}
+      ${attendanceActionButton(studentId, "LEFT_EARLY", "Left early", currentStatus)}
+      ${attendanceActionButton(studentId, "", "Back", currentStatus)}
+    </div>`;
+  }
+
+  function attendanceCellHtml(studentId) {
+    const currentStatus = attendanceStatusForStudent(studentId);
+    const badge = attendanceBadgeForStatus(currentStatus);
+    return `<div class="attendance-cell">
+      ${badge || '<span class="attendance-cell-empty">In school</span>'}
+      ${attendanceControlsHtml(studentId)}
+    </div>`;
   }
 
   function fitStudentGrid(panel, grid, cardSelector) {
@@ -918,24 +1082,102 @@
     renderToday();
   }
 
+  function applyDailyStatusRecordLocally(record) {
+    if (!record?.student_id) return;
+    const existingIndex = state.dailyStatus.findIndex((row) => row.student_id === record.student_id && row.date === record.date);
+    if (existingIndex >= 0) {
+      state.dailyStatus[existingIndex] = {
+        ...state.dailyStatus[existingIndex],
+        ...record
+      };
+    } else {
+      state.dailyStatus.unshift(record);
+    }
+  }
+
+  async function setStudentAttendanceStatus(studentId, attendanceStatus) {
+    const client = mustClient();
+    const actor = await currentActorLabel(client, "Admin");
+    const { data, error } = await client.rpc("set_student_attendance_status", {
+      p_student_id: studentId,
+      p_attendance_status: attendanceStatus || null,
+      p_actor: actor
+    });
+    if (error) throw error;
+    applyDailyStatusRecordLocally(data);
+    renderToday();
+  }
+
   function formatAttemptTime(value) {
     return value ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-";
   }
 
-  function todayAttemptMatchesSearch({ rec, stu }) {
+  function todayCallEvents() {
+    return state.callEvents.filter((event) => event.date === state.today);
+  }
+
+  function analyticsCallEvents() {
+    ensureRecallDateRange();
+    return state.callEvents.filter((event) =>
+      event.date >= state.recallRangeStart && event.date <= state.recallRangeEnd
+    );
+  }
+
+  function pickupFamilyLabel(record) {
+    if (!record?.pickup_family_id) return record?.pickup_family_label || "";
+    const family = state.families.find((entry) => entry.id === record.pickup_family_id);
+    return family ? familyLabel(family) : (record.pickup_family_label || "");
+  }
+
+  function recentAttemptRows() {
+    const byId = new Map(state.students.map((s) => [s.id, s]));
+    if (state.callEventsAvailable) {
+      return todayCallEvents().map((rec) => ({
+        rec,
+        stu: byId.get(rec.student_id),
+        isEvent: true
+      }));
+    }
+
+    return state.dailyStatus.map((rec) => ({
+      rec,
+      stu: byId.get(rec.student_id),
+      isEvent: false
+    }));
+  }
+
+  function attemptRowTime(row) {
+    return row.isEvent ? row.rec.attempted_at : row.rec.called_at;
+  }
+
+  function attemptRowType(row) {
+    return row.isEvent ? attemptTypeLabel(row.rec) : (row.rec.status || "");
+  }
+
+  function attemptRowClass(row) {
+    if (row.isEvent) {
+      return row.rec.attempt_type === "recall" ? "status status-recall" : "status status-initial";
+    }
+    return row.rec.status === "CALLED" ? "status status-called" : "status status-waiting";
+  }
+
+  function todayAttemptMatchesSearch(row) {
+    const { rec, stu } = row;
     const query = normalizeText(state.todayAttemptSearch);
     if (!query) return true;
 
     const family = stu && stu.families ? stu.families : null;
     const haystack = normalizeText([
-      formatAttemptTime(rec.called_at),
+      formatAttemptTime(attemptRowTime(row)),
       stu ? studentLabel(stu) : "Unknown student",
       stu ? `${stu.first_name} ${stu.last_name}` : "",
       stu && stu.classes ? stu.classes.name : "",
       family ? familyDisplayName(family) : "",
       family ? family.carpool_number : "",
-      rec.status,
-      checkInSourceLabel(rec)
+      attemptRowType(row),
+      stu ? attendanceStatusText(dailyStatusMap().get(stu.id)?.attendance_status) : "",
+      checkInSourceLabel(rec),
+      pickupFamilyLabel(rec)
     ].join(" "));
 
     return query.split(" ").every((term) => haystack.includes(term));
@@ -963,7 +1205,7 @@
       fetchAdminStudents(client),
       client
         .from("daily_status")
-        .select("id,student_id,status,called_at,called_by,checked_in_by,date")
+        .select("id,student_id,status,called_at,called_by,checked_in_by,pickup_family_id,pickup_family_label,date,attendance_status,attendance_marked_at,attendance_marked_by,attendance_cleared_at,attendance_cleared_by")
         .eq("date", state.today)
         .order("called_at", { ascending: false })
     ]);
@@ -986,15 +1228,68 @@
     if (presetsRes.error) throw presetsRes.error;
     if (presetStudentsRes.error) throw presetStudentsRes.error;
 
+    const [callEventsRes, geofenceRes] = await Promise.all([
+      fetchCallEvents(client),
+      fetchGeofenceSettings(client)
+        .then((data) => ({ data, errorMessage: "" }))
+        .catch((error) => ({
+          data: defaultGeofenceSettings(),
+          errorMessage: error.message || "Unable to load pickup location settings."
+        }))
+    ]);
+
     state.classes = classesRes.data || [];
     state.families = (familiesRes.data || []).map(hydrateFamily);
     state.students = (studentsRes.data || []).map(hydrateStudent);
     state.dailyStatus = dailyStatusRes.data || [];
+    state.callEvents = callEventsRes.data;
+    state.callEventsAvailable = callEventsRes.available;
+    state.callEventsError = callEventsRes.errorMessage;
+    state.recallWindowStart = callEventsRes.startDate;
+    state.recallWindowEnd = callEventsRes.endDate;
     state.pickupAuthorizations = pickupAuthRes.data || [];
     state.pickupAuthorizationStudents = pickupAuthStudentsRes.data || [];
     state.pickupAuthorizationAudit = pickupAuditRes.data || [];
     state.carpoolPresets = presetsRes.data || [];
     state.carpoolPresetStudents = presetStudentsRes.data || [];
+    state.geofenceSettings = geofenceRes.data;
+    state.geofenceSettingsError = geofenceRes.errorMessage;
+  }
+
+  async function fetchCallEvents(client) {
+    ensureRecallDateRange();
+    const startDate = state.recallRangeStart;
+    const endDate = state.recallRangeEnd;
+    const queryStartDate = minISODate(startDate, state.today);
+    const queryEndDate = maxISODate(endDate, state.today);
+    const { data, error } = await client
+      .from("student_call_events")
+      .select("id,daily_status_id,student_id,date,attempted_at,attempt_type,called_by,checked_in_by,pickup_family_id,pickup_family_label,previous_called_at,previous_called_by")
+      .gte("date", queryStartDate)
+      .lte("date", queryEndDate)
+      .order("attempted_at", { ascending: false });
+
+    if (!error) {
+      return {
+        data: data || [],
+        available: true,
+        errorMessage: "",
+        startDate,
+        endDate
+      };
+    }
+
+    const message = isCallEventsMissingError(error)
+      ? "Recall tracking migration has not been applied yet."
+      : (error.message || "Recall tracking is unavailable.");
+    console.warn("Unable to load recall events", error);
+    return {
+      data: [],
+      available: false,
+      errorMessage: message,
+      startDate,
+      endDate
+    };
   }
 
   async function fetchAdminStudents(client) {
@@ -1179,26 +1474,31 @@
 
   function renderToday() {
     const calledRows = state.dailyStatus.filter((s) => s.status === "CALLED");
+    const todaysEvents = todayCallEvents();
     const parentRows = state.dailyStatus.filter((s) => (s.called_by || "").toLowerCase() === "parent");
+    const parentAttemptCount = state.callEventsAvailable
+      ? todaysEvents.filter((event) => (event.called_by || "").toLowerCase() === "parent").length
+      : parentRows.length;
     const calledIds = new Set(calledRows.map((s) => s.student_id));
     const waiting = state.students.length - calledIds.size;
 
-    el("today-attempts-count").textContent = String(state.dailyStatus.length);
+    el("today-attempts-count").textContent = String(state.callEventsAvailable ? todaysEvents.length : state.dailyStatus.length);
     el("today-dismissed-count").textContent = String(calledRows.length);
     el("today-waiting-count").textContent = String(Math.max(waiting, 0));
-    el("today-parent-count").textContent = String(parentRows.length);
+    el("today-parent-count").textContent = String(parentAttemptCount);
 
-    const byId = new Map(state.students.map((s) => [s.id, s]));
-    const enriched = state.dailyStatus.map((rec) => ({ rec, stu: byId.get(rec.student_id) }));
+    const enriched = recentAttemptRows();
+    const statusByStudent = dailyStatusMap();
 
     const { col, dir } = sortState.today;
-    const valFn = ({ rec, stu }) => {
-      if (col === "time") return rec.called_at || "";
+    const valFn = (row) => {
+      const { rec, stu } = row;
+      if (col === "time") return attemptRowTime(row) || "";
       if (col === "student") return stu ? `${stu.last_name} ${stu.first_name}` : "";
       if (col === "class") return stu && stu.classes ? stu.classes.name : "";
       if (col === "family") return stu && stu.families ? familyDisplayName(stu.families) : "";
       if (col === "carpool") return stu && stu.families ? stu.families.carpool_number : 0;
-      if (col === "status") return rec.status || "";
+      if (col === "status") return attemptRowType(row);
       if (col === "source") return checkInSourceLabel(rec);
       return "";
     };
@@ -1213,28 +1513,206 @@
     }
 
     const rows = sorted
-      .map(({ rec, stu }) => {
-        const time = formatAttemptTime(rec.called_at);
-        const statusClass = rec.status === "CALLED" ? "status status-called" : "status status-waiting";
+      .map((row) => {
+        const { rec, stu } = row;
+        const time = formatAttemptTime(attemptRowTime(row));
+        const statusClass = attemptRowClass(row);
+        const status = attemptRowType(row);
+        const currentStatus = stu ? statusByStudent.get(stu.id)?.status : "";
+        const actionLabel = currentStatus === "CALLED" ? "Reping student" : "Call student";
+        const toggleAttr = !row.isEvent && stu ? `data-today-student-id="${escapeHtml(stu.id)}"` : "";
+        const toggleClass = !row.isEvent && stu ? " is-toggle" : "";
         return `<tr>
           <td>${escapeHtml(time)}</td>
           <td>${escapeHtml(stu ? studentLabel(stu) : "Unknown student")}</td>
           <td>${escapeHtml(stu && stu.classes ? stu.classes.name : "")}</td>
           <td>${escapeHtml(stu && stu.families ? familyDisplayName(stu.families) : "")}</td>
           <td>${escapeHtml(stu && stu.families ? String(stu.families.carpool_number) : "")}</td>
-          <td><span class="${statusClass}${stu ? " is-toggle" : ""}" ${stu ? `data-today-student-id="${escapeHtml(stu.id)}"` : ""}>${escapeHtml(rec.status)}</span></td>
+          <td><span class="${statusClass}${toggleClass}" ${toggleAttr}>${escapeHtml(status)}</span></td>
+          <td>${stu ? attendanceCellHtml(stu.id) : "-"}</td>
           <td>${escapeHtml(checkInSourceLabel(rec))}</td>
-          <td>${stu ? bellActionButton("data-reping-student", stu.id, rec.status === "CALLED" ? "Reping student" : "Call student") : "-"}</td>
+          <td>${stu ? bellActionButton("data-reping-student", stu.id, actionLabel) : "-"}</td>
         </tr>`;
       })
       .join("");
 
-    const emptyMessage = state.dailyStatus.length
+    const emptyMessage = enriched.length
       ? "No attempts match your search."
-      : "No dismissal attempts yet today.";
-    el("today-attempts-tbody").innerHTML = rows || `<tr><td colspan="8" class="muted">${emptyMessage}</td></tr>`;
+      : (state.callEventsAvailable ? "No call attempts logged yet today." : "No dismissal attempts yet today.");
+    el("today-attempts-tbody").innerHTML = rows || `<tr><td colspan="9" class="muted">${emptyMessage}</td></tr>`;
     applySortHeaders("today-table", col, dir);
     renderTodayStudentGrid();
+  }
+
+  function recallEventsInWindow() {
+    return analyticsCallEvents().filter((event) => event.attempt_type === "recall");
+  }
+
+  function eventSortDescending(a, b) {
+    return new Date(b.lastAt || b.attempted_at || 0).getTime() - new Date(a.lastAt || a.attempted_at || 0).getTime();
+  }
+
+  function recallFamilyRows() {
+    const familyById = new Map(state.families.map((family) => [family.id, family]));
+    const studentById = new Map(state.students.map((student) => [student.id, student]));
+    const grouped = new Map();
+
+    recallEventsInWindow().forEach((event) => {
+      if (!event.pickup_family_id) return;
+      const existing = grouped.get(event.pickup_family_id) || {
+        family: familyById.get(event.pickup_family_id),
+        fallbackLabel: event.pickup_family_label || "Unknown pickup family",
+        count: 0,
+        studentIds: new Set(),
+        lastAt: "",
+        lastDate: ""
+      };
+      existing.count += 1;
+      existing.studentIds.add(event.student_id);
+      if (!existing.lastAt || new Date(event.attempted_at) > new Date(existing.lastAt)) {
+        existing.lastAt = event.attempted_at;
+        existing.lastDate = event.date;
+      }
+      grouped.set(event.pickup_family_id, existing);
+    });
+
+    return Array.from(grouped.values())
+      .map((row) => {
+        const studentNames = Array.from(row.studentIds)
+          .map((studentId) => studentById.get(studentId))
+          .filter(Boolean)
+          .sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name))
+          .map((student) => `${student.first_name} ${student.last_name}`);
+        return {
+          ...row,
+          studentNames
+        };
+      })
+      .sort((a, b) => b.count - a.count || eventSortDescending(a, b))
+      .slice(0, 8);
+  }
+
+  function recallStudentRows() {
+    const studentById = new Map(state.students.map((student) => [student.id, student]));
+    const grouped = new Map();
+
+    recallEventsInWindow().forEach((event) => {
+      const existing = grouped.get(event.student_id) || {
+        student: studentById.get(event.student_id),
+        count: 0,
+        lastAt: "",
+        lastDate: ""
+      };
+      existing.count += 1;
+      if (!existing.lastAt || new Date(event.attempted_at) > new Date(existing.lastAt)) {
+        existing.lastAt = event.attempted_at;
+        existing.lastDate = event.date;
+      }
+      grouped.set(event.student_id, existing);
+    });
+
+    return Array.from(grouped.values())
+      .filter((row) => row.student)
+      .sort((a, b) => b.count - a.count || eventSortDescending(a, b))
+      .slice(0, 8);
+  }
+
+  function compactStudentList(names) {
+    if (!names.length) return "-";
+    const visible = names.slice(0, 3);
+    const remaining = names.length - visible.length;
+    return remaining > 0 ? `${visible.join(", ")} +${remaining}` : visible.join(", ");
+  }
+
+  function renderRecallAnalytics() {
+    const warning = el("recall-tracking-warning");
+    if (!warning) return;
+
+    ensureRecallDateRange();
+    const rangeStartInput = el("recall-start-date");
+    const rangeEndInput = el("recall-end-date");
+    if (rangeStartInput) rangeStartInput.value = state.recallRangeStart;
+    if (rangeEndInput) rangeEndInput.value = state.recallRangeEnd;
+
+    const todaysEvents = todayCallEvents();
+    const todaysRecalls = todaysEvents.filter((event) => event.attempt_type === "recall");
+    const windowEvents = analyticsCallEvents();
+    const windowRecalls = recallEventsInWindow();
+    const windowCallCount = windowEvents.length;
+    const recallRate = windowCallCount ? Math.round((windowRecalls.length / windowCallCount) * 100) : 0;
+    const familyRows = recallFamilyRows();
+    const studentRows = recallStudentRows();
+    const topFamily = familyRows[0];
+
+    warning.textContent = state.recallRangeMessage || (state.callEventsAvailable ? "" : state.callEventsError);
+    warning.classList.toggle("hidden", !warning.textContent);
+
+    el("recall-window-label").textContent = state.callEventsAvailable
+      ? `${state.recallWindowStart} to ${state.recallWindowEnd}`
+      : "Recall tracking unavailable";
+    el("recall-today-call-count").textContent = state.callEventsAvailable ? String(todaysEvents.length) : "-";
+    el("recall-today-recall-count").textContent = state.callEventsAvailable ? String(todaysRecalls.length) : "-";
+    el("recall-window-recall-count").textContent = state.callEventsAvailable ? String(windowRecalls.length) : "-";
+    el("recall-rate").textContent = state.callEventsAvailable ? `${recallRate}%` : "-";
+    el("recall-top-family").textContent = state.callEventsAvailable && topFamily
+      ? `${topFamily.family ? familyLabel(topFamily.family) : topFamily.fallbackLabel} (${topFamily.count})`
+      : "None";
+
+    const familyRowsHtml = familyRows.map((row) => {
+      const familyText = row.family ? familyLabel(row.family) : row.fallbackLabel;
+      return `<tr>
+        <td>${escapeHtml(familyText)}</td>
+        <td>${escapeHtml(String(row.count))}</td>
+        <td>${escapeHtml(compactStudentList(row.studentNames))}</td>
+        <td>${escapeHtml(formatEventDateTime(row.lastAt, row.lastDate))}</td>
+      </tr>`;
+    }).join("");
+    el("recall-families-tbody").innerHTML = familyRowsHtml
+      || `<tr><td colspan="4" class="muted">${state.callEventsAvailable ? "No recalls logged in this window." : "Apply the recall tracking migration to populate this table."}</td></tr>`;
+
+    const studentRowsHtml = studentRows.map((row) => {
+      const student = row.student;
+      const family = student?.families;
+      return `<tr>
+        <td>${escapeHtml(student ? `${student.last_name}, ${student.first_name}` : "Unknown student")}</td>
+        <td>${escapeHtml(family ? familyDisplayName(family) : "")}</td>
+        <td>${escapeHtml(student?.classes ? student.classes.name : "")}</td>
+        <td>${escapeHtml(String(row.count))}</td>
+        <td>${escapeHtml(formatEventDateTime(row.lastAt, row.lastDate))}</td>
+      </tr>`;
+    }).join("");
+    el("recall-students-tbody").innerHTML = studentRowsHtml
+      || `<tr><td colspan="5" class="muted">${state.callEventsAvailable ? "No students have recalls in this window." : "Apply the recall tracking migration to populate this table."}</td></tr>`;
+  }
+
+  async function applyRecallDateRange(event) {
+    event?.preventDefault();
+    const startDate = el("recall-start-date")?.value || "";
+    const endDate = el("recall-end-date")?.value || "";
+
+    if (!startDate || !endDate) {
+      state.recallRangeMessage = "Choose both a start date and an end date.";
+      renderRecallAnalytics();
+      return;
+    }
+
+    if (startDate > endDate) {
+      state.recallRangeMessage = "Start date must be before end date.";
+      renderRecallAnalytics();
+      return;
+    }
+
+    state.recallRangeStart = startDate;
+    state.recallRangeEnd = endDate;
+    state.recallRangeMessage = "";
+    await refreshAndRender();
+  }
+
+  async function resetRecallDateRange() {
+    state.recallRangeStart = defaultRecallWindowStartDate();
+    state.recallRangeEnd = state.today;
+    state.recallRangeMessage = "";
+    await refreshAndRender();
   }
 
   function renderTodayStudentGrid() {
@@ -1263,6 +1741,7 @@
       .map((student) => {
         const rec = statusByStudent.get(student.id);
         const status = rec ? rec.status : "WAITING";
+        const attendanceStatus = rec?.attendance_status || "";
         const cardClass = status === "CALLED" ? "all-students-card called" : "all-students-card";
         const className = student.classes ? student.classes.name : "";
         return `<div class="${cardClass}" data-today-grid-student-id="${escapeHtml(student.id)}">
@@ -1270,6 +1749,8 @@
             <span class="all-students-name">${escapeHtml(student.first_name)} ${escapeHtml(student.last_name)}</span>
             <span class="all-students-meta">${escapeHtml(className)}</span>
           </div>
+          ${attendanceBadgeForStatus(attendanceStatus)}
+          ${attendanceControlsHtml(student.id)}
         </div>`;
       })
       .join("");
@@ -1278,13 +1759,168 @@
     scheduleTodayGridFit();
   }
 
+  function setGeofenceMessage(message, klass) {
+    const node = el("geofence-settings-message");
+    if (!node) return;
+    node.className = `settings-message${klass ? ` ${klass}` : ""}`;
+    node.textContent = message || "";
+    show("geofence-settings-message", Boolean(message));
+  }
+
+  function renderGeofenceSettings() {
+    const settings = state.geofenceSettings || defaultGeofenceSettings();
+    const latitude = el("geofence-latitude");
+    const longitude = el("geofence-longitude");
+    const radius = el("geofence-radius-miles");
+    const enabled = el("geofence-enabled");
+    const save = el("geofence-save-btn");
+    const current = el("geofence-use-current-btn");
+    const summary = el("geofence-settings-summary");
+
+    if (enabled) enabled.checked = Boolean(settings.is_enabled);
+    if (latitude && document.activeElement !== latitude) {
+      latitude.value = settings.school_latitude == null ? "" : Number(settings.school_latitude).toFixed(6);
+    }
+    if (longitude && document.activeElement !== longitude) {
+      longitude.value = settings.school_longitude == null ? "" : Number(settings.school_longitude).toFixed(6);
+    }
+    if (radius && document.activeElement !== radius) {
+      radius.value = formatMilesInput(settings.radius_meters || 300);
+    }
+    if (save) {
+      save.disabled = state.geofenceSaving;
+      save.textContent = state.geofenceSaving ? "Saving..." : "Save Location";
+    }
+    if (current) {
+      current.disabled = state.geofenceLocating || state.geofenceSaving || !navigator.geolocation;
+      current.textContent = state.geofenceLocating ? "Locating..." : "Use Current Location";
+    }
+
+    if (summary) {
+      const status = settings.is_enabled ? "Auto call is enabled." : "Auto call is disabled.";
+      const configured = settings.is_configured
+        ? `School point: ${Number(settings.school_latitude).toFixed(6)}, ${Number(settings.school_longitude).toFixed(6)}.`
+        : "School point is not configured.";
+      const radiusText = `Radius: ${formatMiles(metersToMiles(settings.radius_meters || 300))}.`;
+      const updated = settings.updated_at ? `Updated ${new Date(settings.updated_at).toLocaleString()}.` : "";
+      summary.innerHTML = [status, configured, radiusText, updated].filter(Boolean).map(escapeHtml).join("<br>");
+    }
+
+    if (state.geofenceSettingsError) {
+      setGeofenceMessage(state.geofenceSettingsError, "error");
+    }
+  }
+
+  function geofenceNumberValue(id) {
+    const value = el(id)?.value;
+    if (value == null || String(value).trim() === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : NaN;
+  }
+
+  async function saveGeofenceSettings(event) {
+    event?.preventDefault();
+    if (state.geofenceSaving) return;
+
+    const isEnabled = Boolean(el("geofence-enabled")?.checked);
+    const latitude = geofenceNumberValue("geofence-latitude");
+    const longitude = geofenceNumberValue("geofence-longitude");
+    const radiusMiles = geofenceNumberValue("geofence-radius-miles");
+
+    if (Number.isNaN(latitude) || Number.isNaN(longitude) || Number.isNaN(radiusMiles)) {
+      setGeofenceMessage("Enter valid numeric location settings.", "error");
+      return;
+    }
+    if (latitude != null && (latitude < -90 || latitude > 90)) {
+      setGeofenceMessage("Latitude must be between -90 and 90.", "error");
+      return;
+    }
+    if (longitude != null && (longitude < -180 || longitude > 180)) {
+      setGeofenceMessage("Longitude must be between -180 and 180.", "error");
+      return;
+    }
+    if (isEnabled && (latitude == null || longitude == null)) {
+      setGeofenceMessage("Latitude and longitude are required before enabling auto call.", "error");
+      return;
+    }
+
+    const radiusMeters = milesToMeters(radiusMiles || metersToMiles(state.geofenceSettings?.radius_meters || 300));
+    if (radiusMeters < 15 || radiusMeters > 5000) {
+      setGeofenceMessage("Radius must be between 0.05 and 3 miles.", "error");
+      return;
+    }
+
+    state.geofenceSaving = true;
+    state.geofenceSettingsError = "";
+    setGeofenceMessage("Saving pickup location...", "pending");
+    renderGeofenceSettings();
+
+    try {
+      state.geofenceSettings = await updateGeofenceSettings({
+        is_enabled: isEnabled,
+        school_latitude: latitude,
+        school_longitude: longitude,
+        radius_meters: radiusMeters
+      });
+      setGeofenceMessage("Pickup location saved.", "success");
+    } catch (error) {
+      setGeofenceMessage(error.message || "Unable to save pickup location.", "error");
+    } finally {
+      state.geofenceSaving = false;
+      renderGeofenceSettings();
+    }
+  }
+
+  function useCurrentLocationForGeofence() {
+    if (state.geofenceLocating || !navigator.geolocation) {
+      setGeofenceMessage("This browser cannot provide a location.", "error");
+      return;
+    }
+
+    state.geofenceLocating = true;
+    setGeofenceMessage("Getting current location...", "pending");
+    renderGeofenceSettings();
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        state.geofenceLocating = false;
+        const latitude = el("geofence-latitude");
+        const longitude = el("geofence-longitude");
+        const current = el("geofence-use-current-btn");
+        if (latitude) latitude.value = Number(position.coords.latitude).toFixed(6);
+        if (longitude) longitude.value = Number(position.coords.longitude).toFixed(6);
+        if (current) {
+          current.disabled = false;
+          current.textContent = "Use Current Location";
+        }
+        setGeofenceMessage("Location filled. Save when ready.", "success");
+      },
+      (error) => {
+        state.geofenceLocating = false;
+        const current = el("geofence-use-current-btn");
+        if (current) {
+          current.disabled = false;
+          current.textContent = "Use Current Location";
+        }
+        setGeofenceMessage(error.message || "Unable to get this device location.", "error");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
+    );
+  }
+
   function renderAll() {
     renderToday();
+    renderRecallAnalytics();
     renderFamilies();
     renderClasses();
     renderStudents();
     renderPermissions();
     renderImportPreview();
+    renderGeofenceSettings();
   }
 
   function renderPermissions() {
@@ -2729,6 +3365,8 @@
     el("open-add-student").addEventListener("click", () => openModal("add-student"));
     el("open-add-permission").addEventListener("click", () => openModal("add-permission"));
     el("open-add-preset").addEventListener("click", () => openModal("add-preset"));
+    el("recall-date-range-form")?.addEventListener("submit", applyRecallDateRange);
+    el("recall-last-30-btn")?.addEventListener("click", resetRecallDateRange);
     el("open-csv-import").addEventListener("click", () => {
       setTab("imports");
       el("imports-file-input").click();
@@ -2742,6 +3380,8 @@
     });
     el("imports-cancel-btn").addEventListener("click", clearImportPreviewRows);
     el("imports-confirm-btn").addEventListener("click", confirmImportPreview);
+    el("geofence-settings-form").addEventListener("submit", saveGeofenceSettings);
+    el("geofence-use-current-btn").addEventListener("click", useCurrentLocationForGeofence);
     el("imports-preview-tbody").addEventListener("change", (event) => {
       const input = event.target.closest("[data-import-field]");
       if (input) {
@@ -2776,6 +3416,18 @@
     });
 
     el("today-attempts-tbody").addEventListener("click", async (event) => {
+      const attendanceBtn = event.target.closest("[data-attendance-student]");
+      if (attendanceBtn) {
+        const studentId = attendanceBtn.dataset.attendanceStudent;
+        if (!studentId) return;
+        try {
+          await setStudentAttendanceStatus(studentId, attendanceBtn.dataset.attendanceStatus || null);
+        } catch (error) {
+          alert(error.message || "Unable to update attendance status.");
+        }
+        return;
+      }
+
       const repingBtn = event.target.closest("[data-reping-student]");
       if (repingBtn) {
         const studentId = repingBtn.dataset.repingStudent;
@@ -2805,6 +3457,18 @@
     });
 
     el("today-student-grid").addEventListener("click", async (event) => {
+      const attendanceBtn = event.target.closest("[data-attendance-student]");
+      if (attendanceBtn) {
+        const studentId = attendanceBtn.dataset.attendanceStudent;
+        if (!studentId) return;
+        try {
+          await setStudentAttendanceStatus(studentId, attendanceBtn.dataset.attendanceStatus || null);
+        } catch (error) {
+          alert(error.message || "Unable to update attendance status.");
+        }
+        return;
+      }
+
       const card = event.target.closest("[data-today-grid-student-id]");
       if (!card) return;
       const studentId = card.dataset.todayGridStudentId;
@@ -2930,6 +3594,7 @@
       show("admin-dashboard", true);
 
       state.today = await fetchSchoolToday();
+      ensureRecallDateRange();
       await refreshAndRender();
       startRealtime();
       setTab("today");

@@ -23,6 +23,20 @@ begin
     select 1
     from pg_type t
     join pg_namespace n on n.oid = t.typnamespace
+    where t.typname = 'attendance_status_enum'
+      and n.nspname = 'public'
+  ) then
+    create type public.attendance_status_enum as enum ('ABSENT', 'LEFT_EARLY');
+  end if;
+end
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_type t
+    join pg_namespace n on n.oid = t.typnamespace
     where t.typname = 'app_role'
       and n.nspname = 'public'
   ) then
@@ -114,7 +128,30 @@ create table if not exists public.daily_status (
 alter table public.daily_status
   add column if not exists checked_in_by text,
   add column if not exists pickup_family_id uuid references public.families(id) on delete set null,
-  add column if not exists pickup_family_label text;
+  add column if not exists pickup_family_label text,
+  add column if not exists attendance_status public.attendance_status_enum,
+  add column if not exists attendance_marked_at timestamptz,
+  add column if not exists attendance_marked_by text,
+  add column if not exists attendance_cleared_at timestamptz,
+  add column if not exists attendance_cleared_by text;
+
+create table if not exists public.student_call_events (
+  id uuid primary key default gen_random_uuid(),
+  daily_status_id uuid references public.daily_status(id) on delete set null,
+  student_id uuid not null references public.students(id) on delete cascade,
+  date date not null,
+  attempted_at timestamptz not null default now(),
+  attempt_type text not null,
+  called_by text,
+  checked_in_by text,
+  pickup_family_id uuid references public.families(id) on delete set null,
+  pickup_family_label text,
+  previous_called_at timestamptz,
+  previous_called_by text,
+  created_at timestamptz not null default now(),
+  constraint student_call_events_attempt_type_check
+    check (attempt_type in ('initial', 'recall'))
+);
 
 create table if not exists public.app_users (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -226,10 +263,52 @@ create table if not exists public.scheduled_pickup_requests (
     check (target_count > 0)
 );
 
+create table if not exists public.pickup_geofence_settings (
+  id boolean primary key default true,
+  is_enabled boolean not null default false,
+  school_latitude numeric(9,6),
+  school_longitude numeric(9,6),
+  radius_meters integer not null default 300,
+  updated_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint pickup_geofence_settings_singleton check (id),
+  constraint pickup_geofence_settings_latitude_check
+    check (school_latitude is null or (school_latitude >= -90 and school_latitude <= 90)),
+  constraint pickup_geofence_settings_longitude_check
+    check (school_longitude is null or (school_longitude >= -180 and school_longitude <= 180)),
+  constraint pickup_geofence_settings_radius_check
+    check (radius_meters between 15 and 5000),
+  constraint pickup_geofence_settings_enabled_check
+    check (
+      not is_enabled
+      or (
+        school_latitude is not null
+        and school_longitude is not null
+        and radius_meters between 15 and 5000
+      )
+    )
+);
+
+insert into public.pickup_geofence_settings (id, is_enabled, radius_meters)
+values (true, false, 300)
+on conflict (id) do nothing;
+
 create index if not exists idx_students_class_id on public.students(class_id);
 create index if not exists idx_students_family_id on public.students(family_id);
 create index if not exists idx_daily_status_date on public.daily_status(date);
 create index if not exists idx_daily_status_student_date on public.daily_status(student_id, date);
+create index if not exists idx_daily_status_attendance_date
+  on public.daily_status(date, attendance_status)
+  where attendance_status is not null;
+create index if not exists idx_student_call_events_date_attempted
+  on public.student_call_events(date, attempted_at desc);
+create index if not exists idx_student_call_events_student_date
+  on public.student_call_events(student_id, date, attempted_at desc);
+create index if not exists idx_student_call_events_pickup_family_date
+  on public.student_call_events(pickup_family_id, date, attempted_at desc);
+create index if not exists idx_student_call_events_type_date
+  on public.student_call_events(attempt_type, date);
 create index if not exists idx_pickup_authorizations_receiver_dates
   on public.pickup_authorizations(receiving_family_id, starts_on, ends_on)
   where is_revoked = false;
@@ -437,6 +516,11 @@ create trigger trg_scheduled_pickup_requests_updated_at
 before update on public.scheduled_pickup_requests
 for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_pickup_geofence_settings_updated_at on public.pickup_geofence_settings;
+create trigger trg_pickup_geofence_settings_updated_at
+before update on public.pickup_geofence_settings
+for each row execute function public.set_updated_at();
+
 create or replace function public.school_today()
 returns date
 language sql
@@ -496,6 +580,93 @@ as $$
     from public.app_users u
     where u.id = auth.uid() and u.role in ('spotter', 'admin')
   );
+$$;
+
+create or replace function public.get_pickup_geofence_settings()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'is_enabled',
+      coalesce(settings.is_enabled, false)
+      and settings.school_latitude is not null
+      and settings.school_longitude is not null
+      and settings.radius_meters between 15 and 5000,
+    'is_configured',
+      settings.school_latitude is not null
+      and settings.school_longitude is not null
+      and settings.radius_meters between 15 and 5000,
+    'school_latitude', settings.school_latitude,
+    'school_longitude', settings.school_longitude,
+    'radius_meters', settings.radius_meters,
+    'updated_at', settings.updated_at
+  )
+  from public.pickup_geofence_settings settings
+  where settings.id = true;
+$$;
+
+create or replace function public.update_pickup_geofence_settings(
+  p_is_enabled boolean,
+  p_school_latitude numeric,
+  p_school_longitude numeric,
+  p_radius_meters integer
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_radius_meters integer := coalesce(p_radius_meters, 300);
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  if p_school_latitude is not null and (p_school_latitude < -90 or p_school_latitude > 90) then
+    raise exception 'Latitude must be between -90 and 90';
+  end if;
+
+  if p_school_longitude is not null and (p_school_longitude < -180 or p_school_longitude > 180) then
+    raise exception 'Longitude must be between -180 and 180';
+  end if;
+
+  if v_radius_meters < 15 or v_radius_meters > 5000 then
+    raise exception 'Radius must be between 15 and 5000 meters';
+  end if;
+
+  if coalesce(p_is_enabled, false) and (p_school_latitude is null or p_school_longitude is null) then
+    raise exception 'School latitude and longitude are required before enabling auto call';
+  end if;
+
+  insert into public.pickup_geofence_settings (
+    id,
+    is_enabled,
+    school_latitude,
+    school_longitude,
+    radius_meters,
+    updated_by
+  ) values (
+    true,
+    coalesce(p_is_enabled, false),
+    p_school_latitude,
+    p_school_longitude,
+    v_radius_meters,
+    auth.uid()
+  )
+  on conflict (id) do update
+  set
+    is_enabled = excluded.is_enabled,
+    school_latitude = excluded.school_latitude,
+    school_longitude = excluded.school_longitude,
+    radius_meters = excluded.radius_meters,
+    updated_by = excluded.updated_by;
+
+  return public.get_pickup_geofence_settings();
+end;
 $$;
 
 create or replace function public.family_id_for_carpool(p_carpool_number integer)
@@ -561,6 +732,222 @@ as $$
     and ds.called_at is not null
     and ds.called_at > now() - interval '3 minutes';
 $$;
+
+create or replace function public.set_student_attendance_status(
+  p_student_id uuid,
+  p_attendance_status text,
+  p_actor text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_today date := public.school_today();
+  v_actor text := coalesce(nullif(btrim(p_actor), ''), 'Staff');
+  v_attendance_status public.attendance_status_enum := null;
+  v_row public.daily_status%rowtype;
+begin
+  if not public.is_spotter_or_admin() then
+    raise exception 'Staff authentication required';
+  end if;
+
+  if p_student_id is null then
+    raise exception 'Student is required';
+  end if;
+
+  if not exists (select 1 from public.students s where s.id = p_student_id) then
+    raise exception 'Student not found';
+  end if;
+
+  if nullif(btrim(coalesce(p_attendance_status, '')), '') is not null then
+    case upper(btrim(p_attendance_status))
+      when 'ABSENT' then v_attendance_status := 'ABSENT';
+      when 'LEFT_EARLY' then v_attendance_status := 'LEFT_EARLY';
+      else raise exception 'Invalid attendance status';
+    end case;
+  end if;
+
+  if v_attendance_status is null then
+    update public.daily_status ds
+    set
+      attendance_status = null,
+      attendance_cleared_at = now(),
+      attendance_cleared_by = v_actor
+    where ds.student_id = p_student_id
+      and ds.date = v_today
+    returning ds.* into v_row;
+
+    if not found then
+      insert into public.daily_status (
+        student_id,
+        date,
+        status,
+        attendance_cleared_at,
+        attendance_cleared_by
+      ) values (
+        p_student_id,
+        v_today,
+        'WAITING',
+        now(),
+        v_actor
+      )
+      returning * into v_row;
+    end if;
+  else
+    insert into public.daily_status (
+      student_id,
+      date,
+      status,
+      attendance_status,
+      attendance_marked_at,
+      attendance_marked_by,
+      attendance_cleared_at,
+      attendance_cleared_by
+    ) values (
+      p_student_id,
+      v_today,
+      'WAITING',
+      v_attendance_status,
+      now(),
+      v_actor,
+      null,
+      null
+    )
+    on conflict (student_id, date)
+    do update set
+      attendance_status = excluded.attendance_status,
+      attendance_marked_at = excluded.attendance_marked_at,
+      attendance_marked_by = excluded.attendance_marked_by,
+      attendance_cleared_at = null,
+      attendance_cleared_by = null
+    returning * into v_row;
+  end if;
+
+  return jsonb_build_object(
+    'id', v_row.id,
+    'student_id', v_row.student_id,
+    'date', v_row.date,
+    'status', v_row.status,
+    'called_at', v_row.called_at,
+    'called_by', v_row.called_by,
+    'checked_in_by', v_row.checked_in_by,
+    'pickup_family_id', v_row.pickup_family_id,
+    'pickup_family_label', v_row.pickup_family_label,
+    'attendance_status', v_row.attendance_status,
+    'attendance_marked_at', v_row.attendance_marked_at,
+    'attendance_marked_by', v_row.attendance_marked_by,
+    'attendance_cleared_at', v_row.attendance_cleared_at,
+    'attendance_cleared_by', v_row.attendance_cleared_by
+  );
+end;
+$$;
+
+create or replace function public.record_student_call_event()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_attempt_type text;
+  v_previous_called_at timestamptz;
+  v_previous_called_by text;
+begin
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+
+  if new.status <> 'CALLED' then
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' then
+    if old.status = 'CALLED'
+      and new.status = 'CALLED'
+      and old.called_at is not distinct from new.called_at
+      and old.called_by is not distinct from new.called_by
+      and old.checked_in_by is not distinct from new.checked_in_by
+      and old.pickup_family_id is not distinct from new.pickup_family_id
+      and old.pickup_family_label is not distinct from new.pickup_family_label
+    then
+      return new;
+    end if;
+
+    v_previous_called_at := old.called_at;
+    v_previous_called_by := old.called_by;
+    v_attempt_type := case when old.status = 'CALLED' then 'recall' else 'initial' end;
+  else
+    v_attempt_type := 'initial';
+  end if;
+
+  insert into public.student_call_events (
+    daily_status_id,
+    student_id,
+    date,
+    attempted_at,
+    attempt_type,
+    called_by,
+    checked_in_by,
+    pickup_family_id,
+    pickup_family_label,
+    previous_called_at,
+    previous_called_by
+  ) values (
+    new.id,
+    new.student_id,
+    new.date,
+    coalesce(new.called_at, now()),
+    v_attempt_type,
+    new.called_by,
+    new.checked_in_by,
+    new.pickup_family_id,
+    new.pickup_family_label,
+    v_previous_called_at,
+    v_previous_called_by
+  );
+
+  return new;
+end;
+$$;
+
+insert into public.student_call_events (
+  daily_status_id,
+  student_id,
+  date,
+  attempted_at,
+  attempt_type,
+  called_by,
+  checked_in_by,
+  pickup_family_id,
+  pickup_family_label
+)
+select
+  ds.id,
+  ds.student_id,
+  ds.date,
+  coalesce(ds.called_at, ds.created_at, now()),
+  'initial',
+  ds.called_by,
+  ds.checked_in_by,
+  ds.pickup_family_id,
+  ds.pickup_family_label
+from public.daily_status ds
+where ds.status = 'CALLED'
+  and not exists (
+    select 1
+    from public.student_call_events existing
+    where existing.daily_status_id = ds.id
+      and existing.attempt_type = 'initial'
+  );
+
+drop trigger if exists daily_status_student_call_event on public.daily_status;
+create trigger daily_status_student_call_event
+after insert or update of status, called_at, called_by, checked_in_by, pickup_family_id, pickup_family_label
+on public.daily_status
+for each row
+execute function public.record_student_call_event();
 
 create or replace function public.scheduled_pickup_target_count(p_targets jsonb)
 returns integer
@@ -813,6 +1200,11 @@ begin
         'is_checked_in', coalesce(ds.status = 'CALLED', false),
         'called_at', ds.called_at,
         'called_by', ds.called_by,
+        'attendance_status', ds.attendance_status,
+        'attendance_marked_at', ds.attendance_marked_at,
+        'attendance_marked_by', ds.attendance_marked_by,
+        'attendance_cleared_at', ds.attendance_cleared_at,
+        'attendance_cleared_by', ds.attendance_cleared_by,
         'retry_at', case
           when ds.status = 'CALLED' and ds.called_at is not null then ds.called_at + interval '3 minutes'
           else null
@@ -864,6 +1256,11 @@ begin
           'is_checked_in', coalesce(ds.status = 'CALLED', false),
           'called_at', ds.called_at,
           'called_by', ds.called_by,
+          'attendance_status', ds.attendance_status,
+          'attendance_marked_at', ds.attendance_marked_at,
+          'attendance_marked_by', ds.attendance_marked_by,
+          'attendance_cleared_at', ds.attendance_cleared_at,
+          'attendance_cleared_by', ds.attendance_cleared_by,
           'retry_at', case
             when ds.status = 'CALLED' and ds.called_at is not null then ds.called_at + interval '3 minutes'
             else null
@@ -3096,6 +3493,9 @@ grant execute on function public.cancel_parent_check_in_request(integer, uuid[])
 grant execute on function public.get_pending_scheduled_pickup_request(integer) to anon, authenticated;
 grant execute on function public.create_scheduled_pickup_request(integer, jsonb, timestamptz, text) to anon, authenticated;
 grant execute on function public.cancel_scheduled_pickup_request(uuid, integer) to anon, authenticated;
+grant execute on function public.get_pickup_geofence_settings() to anon, authenticated;
+grant execute on function public.update_pickup_geofence_settings(boolean, numeric, numeric, integer) to authenticated;
+grant execute on function public.set_student_attendance_status(uuid, text, text) to authenticated;
 revoke execute on function public.scheduled_pickup_request_response(uuid) from public, anon, authenticated;
 revoke execute on function public.process_due_scheduled_pickup_requests(integer) from public, anon, authenticated;
 grant execute on function public.process_due_scheduled_pickup_requests(integer) to service_role;
@@ -3115,6 +3515,7 @@ grant execute on function public.admin_revoke_pickup_authorization(uuid) to auth
 grant execute on function public.admin_create_carpool_preset(uuid, text, uuid[], text[]) to authenticated;
 grant execute on function public.admin_update_carpool_preset(uuid, uuid, text, uuid[], text[]) to authenticated;
 grant execute on function public.admin_delete_carpool_preset(uuid) to authenticated;
+grant select on public.student_call_events to authenticated;
 
 alter table public.daily_status replica identity full;
 
@@ -3136,6 +3537,7 @@ alter table public.families enable row level security;
 alter table public.classes enable row level security;
 alter table public.students enable row level security;
 alter table public.daily_status enable row level security;
+alter table public.student_call_events enable row level security;
 alter table public.app_users enable row level security;
 alter table public.pickup_authorizations enable row level security;
 alter table public.pickup_authorization_students enable row level security;
@@ -3144,6 +3546,7 @@ alter table public.pickup_notification_queue enable row level security;
 alter table public.carpool_presets enable row level security;
 alter table public.carpool_preset_students enable row level security;
 alter table public.scheduled_pickup_requests enable row level security;
+alter table public.pickup_geofence_settings enable row level security;
 
 drop policy if exists families_select_staff on public.families;
 drop policy if exists families_admin_all on public.families;
@@ -3155,6 +3558,7 @@ drop policy if exists daily_status_select_public on public.daily_status;
 drop policy if exists daily_status_write_staff on public.daily_status;
 drop policy if exists daily_status_update_staff on public.daily_status;
 drop policy if exists daily_status_delete_admin on public.daily_status;
+drop policy if exists student_call_events_select_admin on public.student_call_events;
 drop policy if exists app_users_self_read on public.app_users;
 drop policy if exists app_users_admin_all on public.app_users;
 drop policy if exists pickup_authorizations_select_staff on public.pickup_authorizations;
@@ -3171,6 +3575,8 @@ drop policy if exists carpool_preset_students_select_staff on public.carpool_pre
 drop policy if exists carpool_preset_students_admin_all on public.carpool_preset_students;
 drop policy if exists scheduled_pickup_requests_select_admin on public.scheduled_pickup_requests;
 drop policy if exists scheduled_pickup_requests_admin_all on public.scheduled_pickup_requests;
+drop policy if exists pickup_geofence_settings_admin_select on public.pickup_geofence_settings;
+drop policy if exists pickup_geofence_settings_admin_all on public.pickup_geofence_settings;
 drop policy if exists student_call_audio_select_public on storage.objects;
 drop policy if exists student_call_audio_insert_admin on storage.objects;
 drop policy if exists student_call_audio_update_admin on storage.objects;
@@ -3208,6 +3614,9 @@ for update using (public.is_spotter_or_admin()) with check (public.is_spotter_or
 
 create policy daily_status_delete_admin on public.daily_status
 for delete using (public.is_admin());
+
+create policy student_call_events_select_admin on public.student_call_events
+for select using (public.is_admin());
 
 -- app_users visibility
 create policy app_users_self_read on public.app_users
@@ -3256,6 +3665,12 @@ create policy scheduled_pickup_requests_select_admin on public.scheduled_pickup_
 for select using (public.is_admin());
 
 create policy scheduled_pickup_requests_admin_all on public.scheduled_pickup_requests
+for all using (public.is_admin()) with check (public.is_admin());
+
+create policy pickup_geofence_settings_admin_select on public.pickup_geofence_settings
+for select using (public.is_admin());
+
+create policy pickup_geofence_settings_admin_all on public.pickup_geofence_settings
 for all using (public.is_admin()) with check (public.is_admin());
 
 create policy student_call_audio_select_public on storage.objects

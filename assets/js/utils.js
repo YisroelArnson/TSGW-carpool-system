@@ -91,6 +91,25 @@
     return weekdayKeyForISO(schoolTodayISO());
   }
 
+  function normalizedAttendanceStatus(value) {
+    const status = String(value || "").trim().toUpperCase();
+    return status === "ABSENT" || status === "LEFT_EARLY" ? status : "";
+  }
+
+  function attendanceStatusLabel(value) {
+    const status = normalizedAttendanceStatus(value);
+    if (status === "ABSENT") return "Absent";
+    if (status === "LEFT_EARLY") return "Left early";
+    return "";
+  }
+
+  function attendanceBadgeHtml(value) {
+    const status = normalizedAttendanceStatus(value);
+    const label = attendanceStatusLabel(status);
+    if (!status || !label) return "";
+    return `<span class="attendance-badge attendance-${status.toLowerCase().replace("_", "-")}">${escapeHtml(label)}</span>`;
+  }
+
   function cleanedText(value) {
     const text = String(value || "").trim();
     return text ? text : "";
@@ -216,6 +235,9 @@
     formatWeekdays,
     weekdayKeyForISO,
     schoolTodayWeekday,
+    normalizedAttendanceStatus,
+    attendanceStatusLabel,
+    attendanceBadgeHtml,
     familyDisplayName,
     familySearchText,
     csvToArrays,

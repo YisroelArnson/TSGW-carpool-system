@@ -1,12 +1,15 @@
 (function parentPage() {
-  const { mustClient, show, escapeHtml, familyDisplayName, formatWeekdays, fetchSchoolToday } = window.carpoolUtils || {};
+  const { mustClient, show, escapeHtml, familyDisplayName, formatWeekdays, fetchSchoolToday, attendanceBadgeHtml } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const STORAGE_KEY = "tsgw_carpool_number";
   const REPING_COOLDOWN_MS = 3 * 60 * 1000;
+  const METERS_PER_FOOT = 0.3048;
+  const METERS_PER_MILE = 1609.344;
   const state = {
     number: null,
     context: null,
+    geofenceSettings: defaultGeofenceSettings(),
     selectedByFamily: new Map(),
     manualSelectedByFamily: new Map(),
     activePresetIds: new Set(),
@@ -19,11 +22,42 @@
     lastSubmittedStudents: [],
     repingBusyIds: new Set(),
     cancelBusyIds: new Set(),
-    repingTimer: null
+    repingTimer: null,
+    autoCall: {
+      status: "idle",
+      watchId: null,
+      wakeLock: null,
+      targets: [],
+      message: "",
+      note: "",
+      lastDistanceMeters: null,
+      lastAccuracyMeters: null,
+      submitting: false
+    }
   };
 
   function el(id) {
     return document.getElementById(id);
+  }
+
+  function defaultGeofenceSettings() {
+    return {
+      is_enabled: false,
+      is_configured: false,
+      school_latitude: null,
+      school_longitude: null,
+      radius_meters: 300
+    };
+  }
+
+  function normalizeGeofenceSettings(settings) {
+    return {
+      ...defaultGeofenceSettings(),
+      ...(settings || {}),
+      school_latitude: settings?.school_latitude == null ? null : Number(settings.school_latitude),
+      school_longitude: settings?.school_longitude == null ? null : Number(settings.school_longitude),
+      radius_meters: Number(settings?.radius_meters || 300)
+    };
   }
 
   function setBootPending(isPending) {
@@ -121,6 +155,13 @@
     });
     if (error) throw error;
     return data;
+  }
+
+  async function getPickupGeofenceSettings() {
+    const client = mustClient();
+    const { data, error } = await client.rpc("get_pickup_geofence_settings");
+    if (error) throw error;
+    return normalizeGeofenceSettings(data);
   }
 
   async function cancelScheduledPickupRequest(requestId) {
@@ -241,6 +282,31 @@
       hour: "numeric",
       minute: "2-digit"
     }).format(date);
+  }
+
+  function metersToFeet(meters) {
+    return Math.round(Number(meters || 0) / METERS_PER_FOOT);
+  }
+
+  function formatDistance(meters) {
+    const value = Number(meters);
+    if (!Number.isFinite(value)) return "";
+    if (value >= METERS_PER_MILE * 0.25) {
+      return `${(value / METERS_PER_MILE).toFixed(1)} mi`;
+    }
+    return `${Math.max(1, Math.round(value / METERS_PER_FOOT))} ft`;
+  }
+
+  function distanceMeters(aLat, aLng, bLat, bLng) {
+    const toRad = (deg) => deg * Math.PI / 180;
+    const radius = 6371000;
+    const dLat = toRad(bLat - aLat);
+    const dLng = toRad(bLng - aLng);
+    const lat1 = toRad(aLat);
+    const lat2 = toRad(bLat);
+    const h = Math.sin(dLat / 2) ** 2
+      + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * radius * Math.asin(Math.min(1, Math.sqrt(h)));
   }
 
   function allCheckinStudents() {
@@ -376,6 +442,23 @@
       });
     });
     return targets;
+  }
+
+  function collectAutoCallTargets() {
+    return collectTargets();
+  }
+
+  function autoCallTargetStudents(targets) {
+    const targetIds = new Set((targets || []).flatMap((target) => target.student_ids || []).map(String));
+    return allCheckinStudents().filter((student) => targetIds.has(String(student.student_id)));
+  }
+
+  function autoCallTargetLabel(targets) {
+    const students = autoCallTargetStudents(targets);
+    const names = students.map((student) => `${student.first_name} ${student.last_name}`);
+    if (!names.length) return "selected children";
+    if (names.length <= 2) return names.join(", ");
+    return `${names.slice(0, 2).join(", ")} + ${names.length - 2} more`;
   }
 
   function rebuildSelections() {
@@ -609,6 +692,7 @@
             <span class="student-pick-name">${escapeHtml(studentName)}</span>
             <span class="student-pick-meta-row">
               ${student.class_name ? `<small class="student-pick-grade">${escapeHtml(student.class_name)}</small>` : ""}
+              ${attendanceBadgeHtml ? attendanceBadgeHtml(student.attendance_status) : ""}
               ${calledByLabel ? `<small class="student-pick-called-by">Called By: ${escapeHtml(calledByLabel)}</small>` : ""}
             </span>
             ${isScheduled ? `<small class="student-pick-scheduled">${escapeHtml(studentScheduleText())}</small>` : ""}
@@ -723,19 +807,124 @@
     show("sticky-schedule-status", true);
   }
 
+  function geofenceIsReady() {
+    const settings = state.geofenceSettings || defaultGeofenceSettings();
+    return Boolean(
+      settings.is_enabled
+      && settings.is_configured
+      && Number.isFinite(Number(settings.school_latitude))
+      && Number.isFinite(Number(settings.school_longitude))
+      && Number(settings.radius_meters) > 0
+    );
+  }
+
+  function isAutoCallActive() {
+    return ["arming", "watching", "submitting"].includes(state.autoCall.status);
+  }
+
+  function clearAutoCallWatch() {
+    if (state.autoCall.watchId != null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(state.autoCall.watchId);
+    }
+    state.autoCall.watchId = null;
+  }
+
+  async function releaseAutoCallWakeLock() {
+    const wakeLock = state.autoCall.wakeLock;
+    state.autoCall.wakeLock = null;
+    if (!wakeLock) return;
+    try {
+      await wakeLock.release();
+    } catch (_error) {
+      // The browser may release the wake lock before our cleanup runs.
+    }
+  }
+
+  async function requestAutoCallWakeLock() {
+    if (!navigator.wakeLock || document.visibilityState !== "visible") return false;
+    try {
+      const wakeLock = await navigator.wakeLock.request("screen");
+      state.autoCall.wakeLock = wakeLock;
+      wakeLock.addEventListener("release", () => {
+        if (state.autoCall.wakeLock === wakeLock) state.autoCall.wakeLock = null;
+        if (isAutoCallActive() && document.visibilityState === "visible") {
+          state.autoCall.note = "Please keep this screen open. Students will be called automatically when you are close enough.";
+          renderStickyBar();
+        }
+      });
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function setAutoCallStatus(status, message, note) {
+    state.autoCall.status = status;
+    state.autoCall.message = message || "";
+    state.autoCall.note = note || "";
+    renderStickyBar();
+  }
+
+  function stopAutoCall(options = {}) {
+    clearAutoCallWatch();
+    releaseAutoCallWakeLock();
+    state.autoCall = {
+      status: options.status || "idle",
+      watchId: null,
+      wakeLock: null,
+      targets: options.targets || [],
+      message: options.message || "",
+      note: options.note || "",
+      lastDistanceMeters: null,
+      lastAccuracyMeters: null,
+      submitting: false
+    };
+    renderStickyBar();
+  }
+
+  function renderAutoCallStatus() {
+    const wrapper = el("auto-call-overlay");
+    const title = el("auto-call-overlay-title");
+    const meta = el("auto-call-overlay-copy");
+    const detail = el("auto-call-overlay-detail");
+    const cancel = el("auto-call-overlay-cancel");
+    if (!wrapper || !title || !meta || !cancel) return;
+
+    if (state.autoCall.status === "idle" || !state.autoCall.message) {
+      show("auto-call-overlay", false);
+      return;
+    }
+
+    title.textContent = state.autoCall.message;
+    meta.textContent = state.autoCall.note || "Please keep this screen open. Students will be called automatically when you are close enough.";
+    if (detail) {
+      const radiusText = formatDistance(state.geofenceSettings?.radius_meters || 0);
+      const distanceText = formatDistance(state.autoCall.lastDistanceMeters);
+      detail.textContent = state.autoCall.status === "watching" && distanceText
+        ? `Current distance: ${distanceText}. Call radius: ${radiusText}.`
+        : `Call radius: ${radiusText}.`;
+    }
+    cancel.textContent = state.autoCall.status === "done" || state.autoCall.status === "error" ? "Dismiss" : "Cancel";
+    cancel.disabled = state.autoCall.status === "submitting";
+    wrapper.classList.toggle("success", state.autoCall.status === "done");
+    wrapper.classList.toggle("error", state.autoCall.status === "error");
+    show("auto-call-overlay", true);
+  }
+
   function renderStickyBar() {
     const count = selectedCount();
     const submit = el("students-submit");
-    const clearBtn = el("sticky-clear");
     const scheduleBtn = el("schedule-pickup-open");
+    const locationBtn = el("auto-call-location");
     const isStudentsStepActive = document.documentElement.classList.contains("parent-checkin-active");
     if (submit) {
       submit.disabled = !count || state.loading;
       submit.textContent = `I'm Here For ${count} ${count === 1 ? "Child" : "Children"}`;
     }
-    if (clearBtn) clearBtn.disabled = !count || state.loading;
     if (scheduleBtn) scheduleBtn.disabled = (!count && !state.scheduledPickup) || state.loading || state.scheduleBusy;
+    if (locationBtn) locationBtn.disabled = !count || !geofenceIsReady() || state.loading || state.scheduleBusy || isAutoCallActive();
     renderScheduleStatus();
+    renderAutoCallStatus();
     show("sticky-checkin-bar", isStudentsStepActive && state.number && Boolean(state.context));
   }
 
@@ -765,7 +954,12 @@
   }
 
   async function loadFamily(number) {
-    state.context = await getCheckinContext(number);
+    const [context, geofenceSettings] = await Promise.all([
+      getCheckinContext(number),
+      getPickupGeofenceSettings().catch(() => defaultGeofenceSettings())
+    ]);
+    state.context = context;
+    state.geofenceSettings = geofenceSettings;
     await applyStudentCallLabels(state.context);
     state.scheduledPickup = state.context?.scheduled_pickup || await getPendingScheduledPickup();
     resetSelections();
@@ -1039,6 +1233,189 @@
     show("done-reping-section", true);
   }
 
+  async function submitAutoCallTargets() {
+    if (state.autoCall.submitting) return;
+    const targets = state.autoCall.targets || [];
+    if (!targets.length) {
+      stopAutoCall({
+        status: "error",
+        message: "Choose at least one child.",
+        note: "Auto call was not started."
+      });
+      return;
+    }
+
+    state.autoCall.submitting = true;
+    clearAutoCallWatch();
+    setAutoCallStatus("submitting", "Sending pickup request...", "The school will be notified shortly.");
+
+    try {
+      let result;
+      try {
+        result = await submitCheckInRequest(targets);
+      } catch (error) {
+        if (!isRepingCooldownError(error)) throw error;
+        result = await submitTargetsIndividually(targets);
+      }
+
+      const pendingRequestId = state.scheduledPickup?.status === "pending" ? state.scheduledPickup.request_id : null;
+      if (pendingRequestId) {
+        await cancelScheduledPickupRequest(pendingRequestId).catch(() => {});
+        state.scheduledPickup = null;
+      }
+
+      rememberLastSubmittedStudents(result);
+      const doneCopy = buildDoneCopy(result, "The school has been notified automatically.");
+      state.checkinNotice = {
+        message: doneCopy.message,
+        note: "Triggered automatically when you got near school."
+      };
+      await releaseAutoCallWakeLock();
+      state.autoCall.submitting = false;
+      state.autoCall.status = "done";
+      state.autoCall.message = doneCopy.message;
+      state.autoCall.note = "Triggered automatically when you got near school.";
+      await loadFamily(state.number).catch(() => {});
+    } catch (error) {
+      await releaseAutoCallWakeLock();
+      state.autoCall.submitting = false;
+      stopAutoCall({
+        status: "error",
+        targets,
+        message: "Auto call could not send.",
+        note: error.message || "Use the I'm Here button or timer instead."
+      });
+      return;
+    }
+
+    renderCheckinPage();
+  }
+
+  function handleAutoCallPosition(position) {
+    if (!isAutoCallActive() || state.autoCall.status === "submitting") return;
+
+    const settings = state.geofenceSettings || defaultGeofenceSettings();
+    const coords = position.coords;
+    const distance = distanceMeters(
+      coords.latitude,
+      coords.longitude,
+      Number(settings.school_latitude),
+      Number(settings.school_longitude)
+    );
+    const accuracy = Number(coords.accuracy || 0);
+    const radius = Number(settings.radius_meters || 300);
+    const accuracyLimit = Math.max(200, radius * 2);
+
+    state.autoCall.lastDistanceMeters = distance;
+    state.autoCall.lastAccuracyMeters = accuracy;
+
+    if (distance <= radius && (!accuracy || accuracy <= accuracyLimit)) {
+      submitAutoCallTargets();
+      return;
+    }
+
+    const label = autoCallTargetLabel(state.autoCall.targets);
+    const accuracyText = accuracy ? ` Accuracy ${formatDistance(accuracy)}.` : "";
+    const accuracyWaiting = distance <= radius && accuracy > accuracyLimit
+      ? " Near school, waiting for a more accurate location."
+      : "";
+    setAutoCallStatus(
+      "watching",
+      `Auto call is on for ${label}.`,
+      `Please keep this screen open. Students will be called automatically when you are close enough.${accuracyWaiting}${accuracyText}`
+    );
+  }
+
+  function handleAutoCallError(error) {
+    let message = "Unable to watch your location.";
+    let note = "Use the I'm Here button or timer instead.";
+    if (error.code === 1) {
+      message = "Location access was denied.";
+      note = "Use the I'm Here button or timer instead.";
+    } else if (error.code === 2) {
+      note = "Check that location services are enabled, or use the timer.";
+    } else if (error.code === 3) {
+      note = "Still waiting for GPS. Keep this page open, or use the timer.";
+    }
+
+    if (error.code === 3 && isAutoCallActive()) {
+      setAutoCallStatus("watching", state.autoCall.message || "Auto call armed.", note);
+      return;
+    }
+
+    stopAutoCall({
+      status: "error",
+      targets: state.autoCall.targets,
+      message,
+      note
+    });
+  }
+
+  async function startAutoCall() {
+    clearError("students-error");
+
+    if (!geofenceIsReady()) {
+      showError("students-error", "Auto call is not set up yet. Please use I'm Here or the timer.");
+      return;
+    }
+    if (!navigator.geolocation) {
+      showError("students-error", "This browser cannot use location. Please use I'm Here or the timer.");
+      return;
+    }
+    if (!window.isSecureContext) {
+      showError("students-error", "Location requires the secure school website. Please use I'm Here or the timer.");
+      return;
+    }
+
+    const targets = collectAutoCallTargets();
+    if (!targets.length) {
+      showError("students-error", "Choose at least one child before using auto call.");
+      return;
+    }
+
+    const label = autoCallTargetLabel(targets);
+    state.autoCall = {
+      status: "arming",
+      watchId: null,
+      wakeLock: null,
+      targets,
+      message: `Auto call is on for ${label}.`,
+      note: "Please keep this screen open. Students will be called automatically when you are close enough.",
+      lastDistanceMeters: null,
+      lastAccuracyMeters: null,
+      submitting: false
+    };
+    renderStickyBar();
+
+    const hasWakeLock = await requestAutoCallWakeLock();
+    state.autoCall.note = hasWakeLock
+      ? "Please keep this screen open. We are watching for when you get close enough."
+      : "Please keep this screen open. Students will be called automatically when you are close enough.";
+
+    try {
+      const watchId = navigator.geolocation.watchPosition(
+        handleAutoCallPosition,
+        handleAutoCallError,
+        {
+          enableHighAccuracy: true,
+          maximumAge: 10000,
+          timeout: 20000
+        }
+      );
+      state.autoCall.watchId = watchId;
+      state.autoCall.status = "watching";
+      renderStickyBar();
+    } catch (error) {
+      await releaseAutoCallWakeLock();
+      stopAutoCall({
+        status: "error",
+        targets,
+        message: "Unable to start auto call.",
+        note: error.message || "Use the I'm Here button or timer instead."
+      });
+    }
+  }
+
   async function repingLastSubmittedStudent(studentId, familyId) {
     const target = state.lastSubmittedStudents.find((student) => student.student_id === studentId)
       || allCheckinStudents().find((student) => String(student.student_id) === String(studentId));
@@ -1246,11 +1623,13 @@
   }
 
   function clearParentSession() {
+    stopAutoCall();
     localStorage.removeItem(STORAGE_KEY);
     state.number = null;
     state.context = null;
     state.checkinNotice = null;
     state.scheduledPickup = null;
+    state.geofenceSettings = defaultGeofenceSettings();
     state.lastSubmittedStudents = [];
     state.repingBusyIds = new Set();
     state.cancelBusyIds = new Set();
@@ -1339,14 +1718,11 @@
       selectEntireFamily(familyId);
     });
 
-    el("sticky-clear").addEventListener("click", () => {
-      resetSelections();
-      renderCheckinPage();
-      clearError("students-error");
-    });
     el("students-submit").addEventListener("click", submitSelectedStudents);
     el("schedule-pickup-open").addEventListener("click", openScheduleModal);
     el("sticky-schedule-cancel").addEventListener("click", () => cancelScheduledPickup());
+    el("auto-call-location").addEventListener("click", startAutoCall);
+    el("auto-call-overlay-cancel").addEventListener("click", () => stopAutoCall());
     el("schedule-modal-close").addEventListener("click", closeScheduleModal);
     el("schedule-submit").addEventListener("click", submitScheduledPickup);
     el("schedule-minus").addEventListener("click", () => {
@@ -1370,6 +1746,16 @@
       if (event.key === "Escape" && !el("schedule-modal").classList.contains("hidden")) {
         closeScheduleModal();
       }
+    });
+    document.addEventListener("visibilitychange", async () => {
+      if (!isAutoCallActive()) return;
+      if (document.visibilityState === "visible") {
+        if (!state.autoCall.wakeLock) await requestAutoCallWakeLock();
+        state.autoCall.note = "Please keep this screen open. We are watching for when you get close enough.";
+      } else {
+        state.autoCall.note = "Auto call may pause while this page is not visible.";
+      }
+      renderStickyBar();
     });
   }
 
@@ -1420,6 +1806,8 @@
 
   window.addEventListener("beforeunload", () => {
     if (state.repingTimer) clearInterval(state.repingTimer);
+    clearAutoCallWatch();
+    releaseAutoCallWakeLock();
   });
 
   init();
