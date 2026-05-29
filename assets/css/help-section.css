@@ -345,6 +345,96 @@ body.help-section-page {
   margin-top: 10px;
 }
 
+.faq-walkthrough {
+  display: grid;
+  gap: 24px;
+}
+
+.faq-parent-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.faq-flow-step,
+.faq-classroom-flow {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.faq-classroom-flow {
+  padding-top: 22px;
+  border-top: 1px solid rgba(226, 222, 216, 0.85);
+}
+
+.faq-flow-copy {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 10px;
+  align-items: start;
+}
+
+.faq-step-number {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-maroon);
+  color: #fff;
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.faq-flow-copy h3 {
+  margin: 0;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 1.18rem;
+  line-height: 1.18;
+  color: var(--text-dark);
+}
+
+.faq-flow-copy p {
+  grid-column: 2;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.faq-shot {
+  margin: 0;
+  min-width: 0;
+}
+
+.faq-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid rgba(226, 222, 216, 0.95);
+  background: #fff;
+  box-shadow:
+    0 1px 2px rgba(107, 45, 91, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.faq-phone-shot {
+  width: min(100%, 260px);
+  margin: 0 auto;
+}
+
+.faq-phone-shot img {
+  border-radius: 16px;
+}
+
+.faq-classroom-shot img {
+  border-radius: 16px;
+}
+
 @media (max-width: 720px) {
   .help-brand-bar {
     padding: 8px 14px;
@@ -374,6 +464,25 @@ body.help-section-page {
   .help-card-grid,
   .help-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .faq-parent-flow {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .faq-flow-step {
+    padding-top: 20px;
+    border-top: 1px solid rgba(226, 222, 216, 0.85);
+  }
+
+  .faq-flow-step:first-child {
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .faq-phone-shot {
+    width: min(100%, 320px);
   }
 }
 
