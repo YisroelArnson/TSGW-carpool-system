@@ -633,14 +633,6 @@
         line-height: 1.35;
       }
 
-      .selection-row-count {
-        color: var(--text-muted);
-        font-size: 0.72rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        font-weight: 700;
-      }
-
       .selection-row-stack {
         display: grid;
         gap: 8px;
@@ -1042,6 +1034,11 @@
       .students-submit {
         background: var(--brand-maroon);
         color: #fff;
+        min-height: 56px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.08rem;
       }
 
       .students-submit:disabled {
@@ -1073,20 +1070,25 @@
 
       .sticky-checkin-actions {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.85fr) minmax(0, 0.85fr);
         gap: 10px;
         align-items: stretch;
       }
 
       .schedule-pickup-btn,
       .auto-call-location-btn {
-        width: 48px;
-        min-width: 48px;
-        padding: 0;
+        width: 100%;
+        min-width: 0;
+        min-height: 54px;
+        padding: 11px 12px;
         border-radius: 12px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        gap: 7px;
+        font-size: 0.86rem;
+        line-height: 1.1;
+        white-space: nowrap;
       }
 
       .schedule-pickup-btn svg,
@@ -1098,6 +1100,7 @@
         fill: none;
         stroke-linecap: round;
         stroke-linejoin: round;
+        flex: 0 0 auto;
       }
 
       .schedule-pickup-btn:disabled,
@@ -1367,6 +1370,155 @@
         line-height: 1.35;
       }
 
+      .auto-call-students {
+        max-width: 100%;
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border: 1px solid rgba(107, 45, 91, 0.16);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--text-dark);
+        box-shadow: 0 10px 28px rgba(107, 45, 91, 0.08);
+        font-family: "Open Sans", sans-serif;
+      }
+
+      .auto-call-students-name {
+        min-width: 0;
+        font-size: clamp(0.98rem, 4vw, 1.12rem);
+        font-weight: 800;
+        line-height: 1.22;
+        overflow-wrap: anywhere;
+      }
+
+      .auto-call-distance {
+        --auto-call-distance-progress: 0%;
+        --auto-call-distance-threshold: 84%;
+        width: min(380px, 100%);
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 16px;
+        border: 1px solid rgba(107, 45, 91, 0.14);
+        border-radius: 10px;
+        background: #fff;
+        box-shadow: 0 12px 30px rgba(107, 45, 91, 0.08);
+      }
+
+      .auto-call-distance-meter {
+        min-width: 0;
+        padding: 0 8px;
+      }
+
+      .auto-call-distance-track {
+        position: relative;
+        display: block;
+        width: 100%;
+        height: 5px;
+        border-radius: 999px;
+        background: rgba(42, 125, 49, 0.16);
+      }
+
+      .auto-call-distance-fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: var(--auto-call-distance-progress);
+        border-radius: inherit;
+        background: rgba(42, 125, 49, 0.7);
+        transition: width 0.35s ease, background 0.25s ease;
+      }
+
+      .auto-call-distance-marker {
+        position: absolute;
+        left: var(--auto-call-distance-threshold);
+        top: 50%;
+        width: 4px;
+        height: 24px;
+        border-radius: 999px;
+        background: var(--brand-maroon);
+        box-shadow:
+          0 0 0 4px #fff,
+          0 7px 14px rgba(107, 45, 91, 0.2);
+        transform: translate(-50%, -50%);
+      }
+
+      .auto-call-distance-dot {
+        position: absolute;
+        left: var(--auto-call-distance-progress);
+        top: 50%;
+        width: 18px;
+        height: 18px;
+        border: 4px solid var(--brand-maroon);
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 6px 14px rgba(107, 45, 91, 0.2);
+        transform: translate(-50%, -50%);
+        transition: left 0.35s ease, border-color 0.25s ease, background 0.25s ease;
+      }
+
+      .auto-call-distance-value {
+        min-width: 82px;
+        color: var(--text-dark);
+        font: 800 0.96rem "Open Sans", sans-serif;
+        line-height: 1.15;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .auto-call-distance.locating {
+        opacity: 0.72;
+      }
+
+      .auto-call-distance.locating .auto-call-distance-track {
+        background: rgba(82, 82, 82, 0.16);
+      }
+
+      .auto-call-distance.locating .auto-call-distance-fill {
+        background: rgba(82, 82, 82, 0.28);
+      }
+
+      .auto-call-distance.locating .auto-call-distance-marker {
+        background: #9a9a9a;
+        box-shadow:
+          0 0 0 4px #fff,
+          0 7px 14px rgba(82, 82, 82, 0.12);
+      }
+
+      .auto-call-distance.locating .auto-call-distance-dot {
+        left: 0%;
+        border-color: #a6a6a6;
+        box-shadow: 0 6px 14px rgba(82, 82, 82, 0.12);
+      }
+
+      .auto-call-distance.locating .auto-call-distance-value {
+        color: #777;
+      }
+
+      .auto-call-distance.reached .auto-call-distance-fill {
+        background: #2a7d31;
+      }
+
+      .auto-call-distance.reached .auto-call-distance-marker {
+        background: #2a7d31;
+        box-shadow:
+          0 0 0 4px #fff,
+          0 7px 16px rgba(42, 125, 49, 0.24);
+      }
+
+      .auto-call-distance.reached .auto-call-distance-dot {
+        border-color: #2a7d31;
+        background: #2a7d31;
+        box-shadow: 0 6px 16px rgba(42, 125, 49, 0.24);
+      }
+
+      .auto-call-distance.reached .auto-call-distance-value {
+        color: #2a7d31;
+      }
+
       .auto-call-detail {
         margin: -4px 0 0;
         color: var(--text-muted);
@@ -1391,6 +1543,18 @@
       }
 
       .auto-call-overlay.error .auto-call-pin {
+        background: var(--status-danger);
+      }
+
+      .auto-call-overlay.error .auto-call-distance-fill {
+        background: rgba(154, 55, 55, 0.44);
+      }
+
+      .auto-call-overlay.error .auto-call-distance-dot {
+        border-color: var(--status-danger);
+      }
+
+      .auto-call-overlay.error .auto-call-distance-marker {
         background: var(--status-danger);
       }
 
@@ -1698,7 +1862,18 @@
         }
 
         .sticky-checkin-actions {
-          grid-template-columns: minmax(0, 1fr) auto auto;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .students-submit {
+          grid-column: 1 / -1;
+        }
+
+        .schedule-pickup-btn,
+        .auto-call-location-btn {
+          min-height: 50px;
+          padding: 11px 10px;
+          font-size: 0.84rem;
         }
 
         .section-head-row {
@@ -1774,7 +1949,7 @@
           <div class="number-intro">
             <span class="input-eyebrow">Parent Pickup</span>
             <h1>What is your Family Number?</h1>
-            <p>Enter your family number to get started. Then choose the child or children you are here for.</p>
+            <p>Enter your family number to get started. Then choose the child or children you are picking up.</p>
           </div>
           <ol class="quick-steps" aria-label="Pickup steps">
             <li class="quick-step">
@@ -1787,7 +1962,7 @@
             </li>
             <li class="quick-step">
               <span class="quick-step-number" aria-hidden="true">3.</span>
-              <span class="quick-step-copy">Press "I'm Here" to alert the school.</span>
+              <span class="quick-step-copy">Press "Call Now" to alert the school.</span>
             </li>
           </ol>
           <label class="input-eyebrow" for="carpool-number">Family Number</label>
@@ -1804,14 +1979,13 @@
         <div class="parent-card module-card">
           <div class="checkin-shell">
             <h2 class="students-heading">Who are you picking up today?</h2>
-            <p class="students-subtitle">Tap each child once, then use the button at the bottom to let the school know you are here.</p>
             <div id="checkin-notice" class="checkin-notice hidden" aria-live="polite">
               <span id="checkin-notice-title" class="checkin-notice-title"></span>
               <span id="checkin-notice-copy" class="checkin-notice-copy"></span>
             </div>
             <div id="students-buttons" class="checkin-stack">
               <section id="saved-carpools-section">
-                <p class="section-kicker">Quick Picks</p>
+                <p class="section-kicker">Carpools</p>
                 <div id="saved-carpools-list" class="preset-grid"></div>
               </section>
 
@@ -1827,7 +2001,7 @@
               </section>
 
               <section id="authorized-students-section" class="hidden">
-                <p class="section-kicker">Also Approved For Pickup</p>
+                <p class="section-kicker">Approved to Pick Up</p>
                 <div id="authorized-students-list" class="authorization-grid"></div>
               </section>
             </div>
@@ -1875,18 +2049,20 @@
           <button type="button" id="sticky-schedule-cancel" class="sticky-schedule-cancel">Cancel</button>
         </div>
         <div class="sticky-checkin-actions">
-          <button type="button" id="students-submit" class="btn-w btn-maroon students-submit">I'm Here For 0 Children</button>
-          <button type="button" id="schedule-pickup-open" class="btn-w btn-maroon schedule-pickup-btn" aria-label="Schedule pickup request">
+          <button type="button" id="students-submit" class="btn-w btn-maroon students-submit">Call Now</button>
+          <button type="button" id="schedule-pickup-open" class="btn-w btn-maroon schedule-pickup-btn" aria-label="Call later" title="Call later">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <circle cx="12" cy="12" r="9"></circle>
               <path d="M12 7v5l3 2"></path>
             </svg>
+            <span>Call Later</span>
           </button>
           <button type="button" id="auto-call-location" class="btn-w btn-maroon auto-call-location-btn" aria-label="Auto call near school" title="Auto call near school">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11Z"></path>
               <circle cx="12" cy="10" r="2.5"></circle>
             </svg>
+            <span>Auto Call</span>
           </button>
         </div>
       </div>
@@ -1903,8 +2079,19 @@
               </svg>
             </div>
           </div>
-          <h2 id="auto-call-overlay-title">Auto call is on</h2>
+          <h2 id="auto-call-overlay-title">Auto Call is ready</h2>
+          <div id="auto-call-overlay-students" class="auto-call-students"></div>
           <p id="auto-call-overlay-copy" class="auto-call-copy">Please keep this screen open.</p>
+          <div id="auto-call-distance" class="auto-call-distance" role="status" aria-live="polite">
+            <div class="auto-call-distance-meter" aria-hidden="true">
+              <span class="auto-call-distance-track">
+                <span class="auto-call-distance-fill"></span>
+                <span class="auto-call-distance-marker"></span>
+                <span class="auto-call-distance-dot"></span>
+              </span>
+            </div>
+            <span id="auto-call-distance-value" class="auto-call-distance-value">Locating...</span>
+          </div>
           <p id="auto-call-overlay-detail" class="auto-call-detail"></p>
         </div>
         <button type="button" id="auto-call-overlay-cancel" class="auto-call-cancel">Cancel Auto Call</button>
@@ -1938,7 +2125,7 @@
     <script src="assets/js/config.js"></script>
     <script src="assets/js/supabase-client.js"></script>
     <script src="assets/js/utils.js?v=attendance-markers-20260529"></script>
-    <script src="assets/js/parent.js?v=attendance-markers-20260529"></script>
+    <script src="assets/js/parent.js?v=auto-call-distance-20260603"></script>
     <script>
       // Fallback: if no parent state is visible after load, restore the number entry card.
       (function () {

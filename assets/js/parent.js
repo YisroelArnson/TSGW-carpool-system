@@ -5,7 +5,7 @@
   const STORAGE_KEY = "tsgw_carpool_number";
   const REPING_COOLDOWN_MS = 3 * 60 * 1000;
   const METERS_PER_FOOT = 0.3048;
-  const METERS_PER_MILE = 1609.344;
+  const AUTO_CALL_TRIGGER_MARK_PROGRESS = 0.84;
   const state = {
     number: null,
     context: null,
@@ -288,13 +288,20 @@
     return Math.round(Number(meters || 0) / METERS_PER_FOOT);
   }
 
-  function formatDistance(meters) {
+  function formatFeetAway(meters) {
     const value = Number(meters);
     if (!Number.isFinite(value)) return "";
-    if (value >= METERS_PER_MILE * 0.25) {
-      return `${(value / METERS_PER_MILE).toFixed(1)} mi`;
-    }
-    return `${Math.max(1, Math.round(value / METERS_PER_FOOT))} ft`;
+    const feet = Math.max(0, metersToFeet(value));
+    return `${feet} ft away`;
+  }
+
+  function autoCallDistanceProgress(distanceMetersValue, radiusMetersValue) {
+    const distance = Number(distanceMetersValue);
+    if (!Number.isFinite(distance)) return 0;
+
+    const radius = Math.max(1, Number(radiusMetersValue) || 0);
+    const visualRange = radius / (1 - AUTO_CALL_TRIGGER_MARK_PROGRESS);
+    return Math.max(0, Math.min(1, 1 - (Math.max(0, distance) / visualRange)));
   }
 
   function distanceMeters(aLat, aLng, bLat, bLng) {
@@ -552,7 +559,6 @@
         .map((student) => `${student.first_name} ${student.last_name}`)
         .join(", ");
       const dayText = formatWeekdays(preset.weekdays || [], true);
-      const count = Number(preset.student_count || 0);
 
       return `
         <button
@@ -564,11 +570,10 @@
           <span class="selection-row-main">
             <span class="selection-row-toggle">${isActive ? "✓" : "+"}</span>
             <span class="selection-row-copy">
-              <span class="selection-row-name">${escapeHtml(preset.name || "Quick Pick")}</span>
+              <span class="selection-row-name">${escapeHtml(preset.name || "Carpool")}</span>
               <span class="selection-row-meta">${escapeHtml(`${dayText} | ${preview || "No children"}`)}</span>
             </span>
           </span>
-          <span class="selection-row-count">${escapeHtml(String(count))} ${count === 1 ? "child" : "children"}</span>
         </button>
       `;
     }).join("");
@@ -848,7 +853,7 @@
       wakeLock.addEventListener("release", () => {
         if (state.autoCall.wakeLock === wakeLock) state.autoCall.wakeLock = null;
         if (isAutoCallActive() && document.visibilityState === "visible") {
-          state.autoCall.note = "Please keep this screen open. Students will be called automatically when you are close enough.";
+          state.autoCall.note = "Keep this screen open. We will call the students when you get close enough.";
           renderStickyBar();
         }
       });
@@ -885,7 +890,10 @@
   function renderAutoCallStatus() {
     const wrapper = el("auto-call-overlay");
     const title = el("auto-call-overlay-title");
+    const students = el("auto-call-overlay-students");
     const meta = el("auto-call-overlay-copy");
+    const distanceBox = el("auto-call-distance");
+    const distanceValue = el("auto-call-distance-value");
     const detail = el("auto-call-overlay-detail");
     const cancel = el("auto-call-overlay-cancel");
     if (!wrapper || !title || !meta || !cancel) return;
@@ -895,14 +903,57 @@
       return;
     }
 
-    title.textContent = state.autoCall.message;
-    meta.textContent = state.autoCall.note || "Please keep this screen open. Students will be called automatically when you are close enough.";
+    if (state.autoCall.status === "arming") {
+      title.textContent = "Getting your location";
+    } else if (state.autoCall.status === "submitting") {
+      title.textContent = "Sending pickup request";
+    } else if (state.autoCall.status === "done") {
+      title.textContent = "Pickup request sent";
+    } else if (state.autoCall.status === "error") {
+      title.textContent = state.autoCall.message || "Auto Call needs attention";
+    } else {
+      title.textContent = "Auto Call is ready";
+    }
+
+    if (students) {
+      students.innerHTML = `
+        <span class="auto-call-students-name">${escapeHtml(autoCallTargetLabel(state.autoCall.targets))}</span>
+      `;
+      show("auto-call-overlay-students", true);
+    }
+
+    meta.textContent = state.autoCall.note || "Keep this screen open. We will call the students when you get close enough.";
+
+    const radius = Number(state.geofenceSettings?.radius_meters || 0);
+    const rawDistance = state.autoCall.lastDistanceMeters;
+    const distance = Number(rawDistance);
+    const accuracy = Number(state.autoCall.lastAccuracyMeters || 0);
+    const accuracyLimit = Math.max(200, radius * 2);
+    const hasDistance = rawDistance != null && Number.isFinite(distance);
+    const passedTrigger = hasDistance && distance <= Math.max(1, radius);
+    const triggerConfirmed = passedTrigger && (!accuracy || accuracy <= accuracyLimit);
+
+    if (distanceBox && distanceValue) {
+      const distanceText = hasDistance ? formatFeetAway(distance) : "Locating...";
+      const progress = hasDistance ? autoCallDistanceProgress(distance, radius) : 0;
+      distanceBox.style.setProperty("--auto-call-distance-progress", `${Math.round(progress * 100)}%`);
+      distanceBox.style.setProperty("--auto-call-distance-threshold", `${AUTO_CALL_TRIGGER_MARK_PROGRESS * 100}%`);
+      distanceBox.classList.toggle("reached", triggerConfirmed || state.autoCall.status === "done");
+      distanceBox.classList.toggle("locating", !hasDistance);
+      distanceBox.setAttribute(
+        "aria-label",
+        hasDistance ? `Current distance: ${distanceText}` : "Getting your current distance"
+      );
+      distanceValue.textContent = distanceText;
+      show("auto-call-distance", state.autoCall.status !== "error" || hasDistance);
+    }
+
     if (detail) {
-      const radiusText = formatDistance(state.geofenceSettings?.radius_meters || 0);
-      const distanceText = formatDistance(state.autoCall.lastDistanceMeters);
-      detail.textContent = state.autoCall.status === "watching" && distanceText
-        ? `Current distance: ${distanceText}. Call radius: ${radiusText}.`
-        : `Call radius: ${radiusText}.`;
+      const detailText = state.autoCall.status === "watching" && passedTrigger && !triggerConfirmed
+        ? "You are close. Your phone is still confirming your location."
+        : "";
+      detail.textContent = detailText;
+      show("auto-call-overlay-detail", Boolean(detailText));
     }
     cancel.textContent = state.autoCall.status === "done" || state.autoCall.status === "error" ? "Dismiss" : "Cancel";
     cancel.disabled = state.autoCall.status === "submitting";
@@ -919,7 +970,8 @@
     const isStudentsStepActive = document.documentElement.classList.contains("parent-checkin-active");
     if (submit) {
       submit.disabled = !count || state.loading;
-      submit.textContent = `I'm Here For ${count} ${count === 1 ? "Child" : "Children"}`;
+      submit.textContent = "Call Now";
+      submit.setAttribute("aria-label", count ? `Call Now for ${count} ${count === 1 ? "child" : "children"}` : "Call Now");
     }
     if (scheduleBtn) scheduleBtn.disabled = (!count && !state.scheduledPickup) || state.loading || state.scheduleBusy;
     if (locationBtn) locationBtn.disabled = !count || !geofenceIsReady() || state.loading || state.scheduleBusy || isAutoCallActive();
@@ -1283,7 +1335,7 @@
         status: "error",
         targets,
         message: "Auto call could not send.",
-        note: error.message || "Use the I'm Here button or timer instead."
+        note: error.message || "Use the Call Now button or timer instead."
       });
       return;
     }
@@ -1314,24 +1366,19 @@
       return;
     }
 
-    const label = autoCallTargetLabel(state.autoCall.targets);
-    const accuracyText = accuracy ? ` Accuracy ${formatDistance(accuracy)}.` : "";
-    const accuracyWaiting = distance <= radius && accuracy > accuracyLimit
-      ? " Near school, waiting for a more accurate location."
-      : "";
     setAutoCallStatus(
       "watching",
-      `Auto call is on for ${label}.`,
-      `Please keep this screen open. Students will be called automatically when you are close enough.${accuracyWaiting}${accuracyText}`
+      "Auto Call is ready.",
+      "Keep this screen open. We will call the students when you get close enough."
     );
   }
 
   function handleAutoCallError(error) {
     let message = "Unable to watch your location.";
-    let note = "Use the I'm Here button or timer instead.";
+    let note = "Use the Call Now button or timer instead.";
     if (error.code === 1) {
       message = "Location access was denied.";
-      note = "Use the I'm Here button or timer instead.";
+      note = "Use the Call Now button or timer instead.";
     } else if (error.code === 2) {
       note = "Check that location services are enabled, or use the timer.";
     } else if (error.code === 3) {
@@ -1339,7 +1386,7 @@
     }
 
     if (error.code === 3 && isAutoCallActive()) {
-      setAutoCallStatus("watching", state.autoCall.message || "Auto call armed.", note);
+      setAutoCallStatus("watching", state.autoCall.message || "Auto Call is ready.", note);
       return;
     }
 
@@ -1355,15 +1402,15 @@
     clearError("students-error");
 
     if (!geofenceIsReady()) {
-      showError("students-error", "Auto call is not set up yet. Please use I'm Here or the timer.");
+      showError("students-error", "Auto call is not set up yet. Please use Call Now or the timer.");
       return;
     }
     if (!navigator.geolocation) {
-      showError("students-error", "This browser cannot use location. Please use I'm Here or the timer.");
+      showError("students-error", "This browser cannot use location. Please use Call Now or the timer.");
       return;
     }
     if (!window.isSecureContext) {
-      showError("students-error", "Location requires the secure school website. Please use I'm Here or the timer.");
+      showError("students-error", "Location requires the secure school website. Please use Call Now or the timer.");
       return;
     }
 
@@ -1373,24 +1420,21 @@
       return;
     }
 
-    const label = autoCallTargetLabel(targets);
     state.autoCall = {
       status: "arming",
       watchId: null,
       wakeLock: null,
       targets,
-      message: `Auto call is on for ${label}.`,
-      note: "Please keep this screen open. Students will be called automatically when you are close enough.",
+      message: "Auto Call is ready.",
+      note: "Keep this screen open. We will call the students when you get close enough.",
       lastDistanceMeters: null,
       lastAccuracyMeters: null,
       submitting: false
     };
     renderStickyBar();
 
-    const hasWakeLock = await requestAutoCallWakeLock();
-    state.autoCall.note = hasWakeLock
-      ? "Please keep this screen open. We are watching for when you get close enough."
-      : "Please keep this screen open. Students will be called automatically when you are close enough.";
+    await requestAutoCallWakeLock();
+    state.autoCall.note = "Keep this screen open. We will call the students when you get close enough.";
 
     try {
       const watchId = navigator.geolocation.watchPosition(
@@ -1411,7 +1455,7 @@
         status: "error",
         targets,
         message: "Unable to start auto call.",
-        note: error.message || "Use the I'm Here button or timer instead."
+        note: error.message || "Use the Call Now button or timer instead."
       });
     }
   }
@@ -1529,13 +1573,13 @@
         result = await submitPresetCheckIn(presetId);
         if (result.is_empty_after_cleanup) {
           await loadFamily(state.number);
-          showError("students-error", "This quick pick needs to be updated in Settings before it can be used again.");
+          showError("students-error", "This carpool needs to be updated in Settings before it can be used again.");
           return;
         }
 
         const removed = (result.removed_students || []).map((student) => `${student.first_name} ${student.last_name}`);
         if (removed.length) {
-          note = `Your quick pick was updated after expired approvals were removed for: ${removed.join(", ")}.`;
+          note = `Your carpool was updated after expired approvals were removed for: ${removed.join(", ")}.`;
         }
       } else {
         try {
@@ -1751,7 +1795,7 @@
       if (!isAutoCallActive()) return;
       if (document.visibilityState === "visible") {
         if (!state.autoCall.wakeLock) await requestAutoCallWakeLock();
-        state.autoCall.note = "Please keep this screen open. We are watching for when you get close enough.";
+        state.autoCall.note = "Keep this screen open. We will call the students when you get close enough.";
       } else {
         state.autoCall.note = "Auto call may pause while this page is not visible.";
       }
