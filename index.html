@@ -340,42 +340,6 @@
         line-height: 1.55;
       }
 
-      .quick-steps {
-        display: grid;
-        gap: 8px;
-        margin: 0 0 22px;
-        padding: 0;
-        list-style: none;
-      }
-
-      .quick-step {
-        display: grid;
-        grid-template-columns: 1.7rem 1fr;
-        align-items: start;
-        gap: 10px;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        text-align: left;
-      }
-
-      .quick-step-number {
-        width: 1.7rem;
-        min-height: 1.35rem;
-        display: inline-flex;
-        justify-content: flex-end;
-        color: var(--brand-maroon);
-        font-size: 0.92rem;
-        font-weight: 800;
-        line-height: 1.45;
-      }
-
-      .quick-step-copy {
-        color: var(--text-muted);
-        font-size: 0.93rem;
-        line-height: 1.45;
-      }
-
       #carpool-number {
         width: 100%;
         border: 2px solid var(--border-light);
@@ -413,13 +377,6 @@
         font-weight: 400;
         letter-spacing: 0;
         color: #ccc7be;
-      }
-
-      .number-help {
-        margin: -4px 0 16px;
-        color: var(--text-muted);
-        font-size: 0.88rem;
-        text-align: center;
       }
 
       /* ─ Students ─ */
@@ -1949,25 +1906,10 @@
           <div class="number-intro">
             <span class="input-eyebrow">Parent Pickup</span>
             <h1>What is your Family Number?</h1>
-            <p>Enter your family number to get started. Then choose the child or children you are picking up.</p>
+            <p>Enter your family number and click continue to log in. Then choose the child or children you're picking up.</p>
           </div>
-          <ol class="quick-steps" aria-label="Pickup steps">
-            <li class="quick-step">
-              <span class="quick-step-number" aria-hidden="true">1.</span>
-              <span class="quick-step-copy">Enter your family number.</span>
-            </li>
-            <li class="quick-step">
-              <span class="quick-step-number" aria-hidden="true">2.</span>
-              <span class="quick-step-copy">Tap the child or children you are picking up.</span>
-            </li>
-            <li class="quick-step">
-              <span class="quick-step-number" aria-hidden="true">3.</span>
-              <span class="quick-step-copy">Press "Call Now" to alert the school.</span>
-            </li>
-          </ol>
           <label class="input-eyebrow" for="carpool-number">Family Number</label>
           <input id="carpool-number" type="number" inputmode="numeric" placeholder="e.g. 101" />
-          <p class="number-help">Numbers only, for example 101.</p>
           <button id="find-family" class="btn-w btn-maroon">Continue</button>
           <p id="number-error" class="field-error hidden"></p>
         </section>

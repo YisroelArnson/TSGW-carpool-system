@@ -62,6 +62,16 @@ all_demo_families as (
   from public.families
   where carpool_number in (901, 902)
 ),
+renamed_demo_students as (
+  update public.students student
+  set first_name = 'Devorah'
+  from all_demo_families family
+  where family.carpool_number = 901
+    and student.family_id = family.id
+    and lower(student.first_name) = lower('Chaya')
+    and lower(student.last_name) = lower('Goldberg')
+  returning student.id
+),
 demo_students as (
   select
     family.id as family_id,
@@ -70,7 +80,7 @@ demo_students as (
     student.last_name
   from (
     values
-      (901, 'Chaya', 'Goldberg', '2GA'),
+      (901, 'Devorah', 'Goldberg', '2GA'),
       (901, 'Eli', 'Goldberg', '4BA'),
       (902, 'Esti', 'Schoenfeld', '1GB'),
       (902, 'Moshe', 'Schoenfeld', '3BB')

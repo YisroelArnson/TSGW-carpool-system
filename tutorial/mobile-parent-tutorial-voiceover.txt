@@ -1,0 +1,29 @@
+Welcome to the TSGW carpool system. This system is designed to help carpool move more quickly by letting parents check in their students before they arrive in the parking lot. That gives students advanced notice, giving them time to go outside so they are ready when their parents arrive.
+
+The system also lets you choose who is allowed to pick up your children, create saved carpools, and helps the school keep clear pickup records for safety.
+
+Here is how to use the TSGW carpool pickup page from a phone.
+
+Open the parent pickup website. Enter your Family Number, then tap Continue.
+
+This is the main check-in screen. Your own children appear under Your Children. Children another family has approved you to pick up appear under Approved to Pick Up. Here, the Goldberg family can also pick up the Schoenfeld children.
+
+Tap each child you are picking up today. In this example, I will choose Devorah Goldberg and Esti Schoenfeld. Then tap Call Now.
+
+The phone shows that the pickup request was sent. If a child is still not outside after a few minutes, you can use Call Again to remind the classroom.
+
+This is what one classroom display looks like in the classroom. Since Devorah is in 2GA, this view shows the 2GA class with Devorah pinged and marked as called. The display can also show which family is picking the student up.
+
+To manage carpools and permissions, tap the settings button to open Parent Settings.
+
+Students You Can Pick Up shows children that other families have allowed your family to pick up. Scroll down to Who Can Pick Up Your Children, where you can give another family permission to pick up your children.
+
+Now let's create a saved carpool with students from both families. In Saved Carpools, tap Add New Carpool.
+
+Enter a carpool name, choose the day, and select the students who belong in that carpool. Here, I will choose Eli Goldberg and Moshe Schoenfeld. Then tap Save Carpool.
+
+Back on the pickup page, the saved carpool now appears in the Carpools section. Tap the carpool.
+
+Another useful feature is **Call Later** and **Auto Call**. If you are on your way to school but do not want your children called out yet, tap **Call Later** to set a timer. The system will automatically call your children after the selected amount of time. You can also use **Auto Call**, which uses your phone’s location to tell when you are close to school and automatically calls your children when you are near enough.
+
+That's the basic flow: enter your Family Number, choose your children or approved children, tap Call Now, and use Parent Settings to manage permissions and saved carpools.
