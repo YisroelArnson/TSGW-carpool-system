@@ -3850,7 +3850,7 @@ $$;
 create or replace function public.get_parent_checkin_context()
 returns jsonb
 language plpgsql
-stable
+volatile
 security definer
 set search_path = public
 as $$
@@ -3862,7 +3862,7 @@ $$;
 create or replace function public.staff_get_parent_checkin_context(p_carpool_number integer)
 returns jsonb
 language plpgsql
-stable
+volatile
 security definer
 set search_path = public
 as $$

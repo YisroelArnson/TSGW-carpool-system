@@ -1,15 +1,21 @@
--- Fix parent login: remove the get_parent_checkin_context() / (integer) overload.
+-- Fix parent login / check-in page (HTTP 405 on get_parent_checkin_context).
 --
--- The no-arg parent RPC and the internal integer implementation shared the same
--- name, so `public.get_parent_checkin_context` was an overloaded function with
--- two signatures of different volatility (no-arg STABLE, integer VOLATILE).
--- PostgREST could not route the authenticated no-arg POST and returned 405,
--- which threw in the parent app right after a successful sign-in (looked like
--- "can't log in"). Every other parent wrapper in this schema uses a distinct
--- name from its implementation; this renames the implementation to match that
--- pattern so `get_parent_checkin_context` has a single (no-arg) signature.
+-- Root cause: the parent and staff check-in-context wrappers were declared
+-- STABLE, but they transitively perform a write -- they call
+-- get_checkin_context_for_carpool(), which calls
+-- prune_invalid_carpool_preset_students(), which runs a DELETE. PostgREST runs
+-- STABLE/IMMUTABLE functions in a READ-ONLY transaction, so the DELETE failed
+-- with SQLSTATE 25006 ("cannot execute DELETE in a read-only transaction"),
+-- which PostgREST surfaces to the client as HTTP 405. The wrappers must be
+-- VOLATILE so PostgREST runs them in a read/write transaction.
+--
+-- Secondary cleanup: the no-arg parent wrapper and the internal integer
+-- implementation previously shared the name get_parent_checkin_context,
+-- creating an overloaded function. Every other parent wrapper in this schema
+-- uses a distinct name from its implementation; this renames the
+-- implementation to get_checkin_context_for_carpool to match that pattern.
 
--- Idempotent rename: only rename if the (integer) overload still exists.
+-- 1) De-overload: rename the internal implementation (idempotent).
 do $$
 begin
   if exists (
@@ -26,11 +32,11 @@ begin
 end
 $$;
 
--- Parent no-arg wrapper -> call the renamed implementation.
+-- 2) Recreate the wrappers as VOLATILE (they transitively DELETE via prune).
 create or replace function public.get_parent_checkin_context()
 returns jsonb
 language plpgsql
-stable
+volatile
 security definer
 set search_path = public
 as $$
@@ -39,11 +45,10 @@ begin
 end;
 $$;
 
--- Staff wrapper -> call the renamed implementation.
 create or replace function public.staff_get_parent_checkin_context(p_carpool_number integer)
 returns jsonb
 language plpgsql
-stable
+volatile
 security definer
 set search_path = public
 as $$
