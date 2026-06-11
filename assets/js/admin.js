@@ -317,7 +317,19 @@
         Authorization: `Bearer ${token}`
       }
     });
-    if (error) throw error;
+    if (error) {
+      // supabase-js wraps any non-2xx response in a FunctionsHttpError whose
+      // generic message ("Edge Function returned a non-2xx status code") hides
+      // the real reason. The actual `{ error: "..." }` body is on error.context.
+      let detail = "";
+      try {
+        const ctxBody = await error.context?.json?.();
+        detail = ctxBody?.error || "";
+      } catch (_ignored) {
+        /* response body was not JSON (e.g. an unhandled 500) */
+      }
+      throw new Error(detail || error.message || "Edge function request failed.");
+    }
     if (data?.error) throw new Error(data.error);
     return data;
   }
