@@ -22,6 +22,10 @@
   const STUDENT_AUDIO_BUCKET = "student-call-audio";
   const STUDENT_AUDIO_MAX_MS = 10000;
   const METERS_PER_MILE = 1609.344;
+  const DEFAULT_GEOFENCE_CENTER = { lat: 39.008347, lng: -77.045571 };
+  const GEOFENCE_DEFAULT_ZOOM = 15;
+  const GEOFENCE_RADIUS_MIN_MILES = 0.05;
+  const GEOFENCE_RADIUS_MAX_MILES = 3;
   const STUDENT_BASE_SELECT = "id,first_name,last_name,class_id,family_id,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)";
   const STUDENT_AUDIO_SELECT = "id,first_name,last_name,class_id,family_id,call_audio_path,call_audio_mime_type,call_audio_updated_at,classes(name),families(carpool_number,parent_names,parent_one_title,parent_one_first_name,parent_one_last_name,parent_two_title,parent_two_first_name,parent_two_last_name)";
   const STUDENT_AUDIO_MIME_CANDIDATES = [
@@ -112,13 +116,30 @@
     geofenceSettingsError: "",
     geofenceSaving: false,
     geofenceLocating: false,
+    geofenceMap: null,
+    geofenceMarker: null,
+    geofenceCircle: null,
     currentTab: "today",
     channel: null,
     refreshTimer: null,
     todayAttemptSearch: "",
+    todayGridStudentSearch: "",
+    todayGridSort: "class",
     todayGridWaitingOnly: false,
     todayGridFullscreen: false,
     todayGridFitTimer: null,
+    studentSearch: "",
+    familySearch: "",
+    classSearch: "",
+    studentHistory: {
+      studentId: null,
+      rangeStart: "",
+      rangeEnd: "",
+      events: [],
+      isLoading: false,
+      available: true,
+      errorMessage: ""
+    },
     importPreview: {
       fileName: "",
       rows: [],
@@ -127,6 +148,7 @@
       parseError: "",
       resultHtml: "No import run in this session."
     },
+    isResettingData: false,
     modal: {
       mode: null,
       entityId: null,
@@ -720,6 +742,41 @@
     }
   }
 
+  async function removeStudentAudioPaths(client, paths) {
+    const uniquePaths = Array.from(new Set((paths || []).filter(Boolean)));
+    let failed = 0;
+
+    for (let index = 0; index < uniquePaths.length; index += 100) {
+      const batch = uniquePaths.slice(index, index + 100);
+      try {
+        const { error } = await client.storage.from(STUDENT_AUDIO_BUCKET).remove(batch);
+        if (error) throw error;
+      } catch (error) {
+        failed += batch.length;
+        console.warn("Unable to remove student audio batch", error);
+      }
+    }
+
+    return {
+      attempted: uniquePaths.length,
+      failed
+    };
+  }
+
+  async function fetchStudentAudioPathsForReset(client) {
+    try {
+      const { data, error } = await client
+        .from("students")
+        .select("call_audio_path")
+        .not("call_audio_path", "is", null);
+      if (error) throw error;
+      return (data || []).map((row) => row.call_audio_path).filter(Boolean);
+    } catch (error) {
+      console.warn("Unable to fetch student audio paths before reset", error);
+      return state.students.map((student) => student.call_audio_path).filter(Boolean);
+    }
+  }
+
   function editIconSvg() {
     return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path d="M12 20h9"></path>
@@ -745,6 +802,13 @@
     </svg>`;
   }
 
+  function checkCircleIconSvg() {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="9"></circle>
+      <path d="M8 12.5l2.5 2.5L16 9"></path>
+    </svg>`;
+  }
+
   function editActionButton(datasetAttr, value, label) {
     return `<button class="icon-action-btn" type="button" ${datasetAttr}="${escapeHtml(value)}" aria-label="${escapeHtml(label)}">
       ${editIconSvg()}
@@ -758,7 +822,7 @@
   }
 
   function bellActionButton(datasetAttr, value, label) {
-    return `<button class="icon-action-btn" type="button" ${datasetAttr}="${escapeHtml(value)}" aria-label="${escapeHtml(label)}">
+    return `<button class="icon-action-btn recall" type="button" ${datasetAttr}="${escapeHtml(value)}" aria-label="${escapeHtml(label)}">
       ${bellIconSvg()}
     </button>`;
   }
@@ -792,6 +856,11 @@
   function ensureRecallDateRange() {
     if (!state.recallRangeEnd) state.recallRangeEnd = state.today;
     if (!state.recallRangeStart) state.recallRangeStart = defaultRecallWindowStartDate();
+  }
+
+  function ensureStudentHistoryDateRange() {
+    if (!state.studentHistory.rangeEnd) state.studentHistory.rangeEnd = state.today;
+    if (!state.studentHistory.rangeStart) state.studentHistory.rangeStart = defaultRecallWindowStartDate();
   }
 
   function minISODate(firstDate, secondDate) {
@@ -907,35 +976,103 @@
     return attendanceStatusLabel ? attendanceStatusLabel(status) : "";
   }
 
-  function attendanceActionButton(studentId, status, label, currentStatus) {
-    const isClear = !status;
-    const active = status && currentStatus === status;
-    const disabled = isClear && !currentStatus;
-    return `<button
-      class="attendance-action-btn${active ? " active" : ""}"
-      type="button"
-      data-attendance-student="${escapeHtml(studentId)}"
-      data-attendance-status="${escapeHtml(status)}"
-      aria-pressed="${active ? "true" : "false"}"
-      ${disabled ? "disabled" : ""}
-    >${escapeHtml(label)}</button>`;
-  }
-
   function attendanceControlsHtml(studentId) {
     const currentStatus = attendanceStatusForStudent(studentId);
-    return `<div class="attendance-actions">
-      ${attendanceActionButton(studentId, "ABSENT", "Absent", currentStatus)}
-      ${attendanceActionButton(studentId, "LEFT_EARLY", "Left early", currentStatus)}
-      ${attendanceActionButton(studentId, "", "Back", currentStatus)}
-    </div>`;
+    const statusClass = currentStatus ? ` ${currentStatus.toLowerCase().replace(/_/g, "-")}` : "";
+    const options = [
+      { value: "", label: "In school" },
+      { value: "ABSENT", label: "Absent" },
+      { value: "LEFT_EARLY", label: "Left early" }
+    ];
+
+    return `<select
+      class="attendance-status-select${statusClass}"
+      data-attendance-student="${escapeHtml(studentId)}"
+      aria-label="Attendance status"
+    >
+      ${options.map((option) => `<option value="${escapeHtml(option.value)}"${option.value === currentStatus ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+    </select>`;
   }
 
   function attendanceCellHtml(studentId) {
-    const currentStatus = attendanceStatusForStudent(studentId);
-    const badge = attendanceBadgeForStatus(currentStatus);
-    return `<div class="attendance-cell">
-      ${badge || '<span class="attendance-cell-empty">In school</span>'}
-      ${attendanceControlsHtml(studentId)}
+    return `<div class="attendance-cell">${attendanceControlsHtml(studentId)}</div>`;
+  }
+
+  function searchTerms(query) {
+    return normalizeText(query).split(" ").filter(Boolean);
+  }
+
+  function matchesSearch(values, query) {
+    const terms = searchTerms(query);
+    if (!terms.length) return true;
+    const haystack = normalizeText((values || []).filter((value) => value != null).join(" "));
+    return terms.every((term) => haystack.includes(term));
+  }
+
+  function updateVisibleCount(nodeId, visibleCount, totalCount, query) {
+    const node = el(nodeId);
+    if (!node) return;
+    node.textContent = normalizeText(query)
+      ? `${visibleCount} of ${totalCount} shown`
+      : `${totalCount} shown`;
+  }
+
+  function studentStatusRecord(studentId, statusByStudent) {
+    const map = statusByStudent || dailyStatusMap();
+    return map.get(studentId) || null;
+  }
+
+  function studentDismissalStatus(studentId, statusByStudent) {
+    return studentStatusRecord(studentId, statusByStudent)?.status === "CALLED" ? "CALLED" : "WAITING";
+  }
+
+  function studentSearchValues(student, statusRecord) {
+    const family = student.families || null;
+    const className = student.classes ? student.classes.name : "";
+    const dismissalStatus = statusRecord?.status === "CALLED"
+      ? "checked in called dismissed"
+      : "waiting unchecked not checked in";
+    return [
+      studentLabel(student),
+      `${student.first_name} ${student.last_name}`,
+      className,
+      family ? familyDisplayName(family) : "",
+      family ? family.carpool_number : "",
+      dismissalStatus,
+      attendanceStatusText(statusRecord?.attendance_status),
+      student.call_audio_path ? "recorded audio" : "fallback audio"
+    ];
+  }
+
+  function studentMatchesSearch(student, query, statusByStudent) {
+    return matchesSearch(studentSearchValues(student, studentStatusRecord(student.id, statusByStudent)), query);
+  }
+
+  function studentNameCompare(a, b) {
+    return a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name);
+  }
+
+  function studentDismissalToggleButton(studentId, currentStatus) {
+    const isCheckedIn = currentStatus === "CALLED";
+    const nextStatus = isCheckedIn ? "WAITING" : "CALLED";
+    const label = isCheckedIn ? "Checked in; click to uncheck" : "Check in";
+    return `<button
+      class="icon-action-btn checkin${isCheckedIn ? " active" : ""}"
+      type="button"
+      data-student-dismissal-student="${escapeHtml(studentId)}"
+      data-student-dismissal-status="${escapeHtml(nextStatus)}"
+      aria-pressed="${isCheckedIn ? "true" : "false"}"
+      aria-label="${escapeHtml(label)}"
+      title="${escapeHtml(label)}"
+    >${checkCircleIconSvg()}</button>`;
+  }
+
+  function studentActionButtonsHtml(studentId, options = {}) {
+    const currentStatus = studentDismissalStatus(studentId);
+    const callLabel = currentStatus === "CALLED" ? "Recall student" : "Call student";
+    return `<div class="student-inline-actions">
+      ${studentDismissalToggleButton(studentId, currentStatus)}
+      ${options.includeRecall ? bellActionButton("data-reping-student", studentId, callLabel) : ""}
     </div>`;
   }
 
@@ -1006,8 +1143,10 @@
     document.body.classList.toggle("grid-fullscreen-active", enabled);
 
     if (button) {
-      button.textContent = enabled ? "Exit Full Screen" : "Full Screen";
+      const label = enabled ? "Exit full screen" : "Enter full screen";
       button.setAttribute("aria-pressed", String(enabled));
+      button.setAttribute("aria-label", label);
+      button.title = label;
     }
 
     if (enabled) {
@@ -1058,6 +1197,7 @@
       pickup_family_label: null
     };
     const existingIndex = state.dailyStatus.findIndex((row) => row.student_id === studentId && row.date === state.today);
+    const previousRecord = existingIndex >= 0 ? state.dailyStatus[existingIndex] : null;
     if (existingIndex >= 0) {
       state.dailyStatus[existingIndex] = {
         ...state.dailyStatus[existingIndex],
@@ -1065,6 +1205,23 @@
       };
     } else {
       state.dailyStatus.unshift(nextRecord);
+    }
+
+    if (isCalled && state.callEventsAvailable) {
+      state.callEvents.unshift({
+        id: `local-${studentId}-${Date.now()}`,
+        daily_status_id: previousRecord?.id || null,
+        student_id: studentId,
+        date: state.today,
+        attempted_at: nextRecord.called_at,
+        attempt_type: previousRecord?.status === "CALLED" ? "recall" : "initial",
+        called_by: nextRecord.called_by,
+        checked_in_by: nextRecord.checked_in_by,
+        pickup_family_id: null,
+        pickup_family_label: null,
+        previous_called_at: previousRecord?.status === "CALLED" ? previousRecord.called_at : null,
+        previous_called_by: previousRecord?.status === "CALLED" ? previousRecord.called_by : null
+      });
     }
   }
 
@@ -1080,6 +1237,14 @@
     const checkedInBy = await setTodayStudentStatus(studentId, "CALLED");
     applyTodayStatusLocally(studentId, "CALLED", checkedInBy);
     renderToday();
+  }
+
+  async function setStudentDismissalStatus(studentId, status) {
+    const nextStatus = status === "CALLED" ? "CALLED" : "WAITING";
+    const checkedInBy = await setTodayStudentStatus(studentId, nextStatus);
+    applyTodayStatusLocally(studentId, nextStatus, checkedInBy);
+    renderToday();
+    renderStudents();
   }
 
   function applyDailyStatusRecordLocally(record) {
@@ -1106,6 +1271,24 @@
     if (error) throw error;
     applyDailyStatusRecordLocally(data);
     renderToday();
+    renderStudents();
+  }
+
+  async function handleAttendanceStatusChange(event) {
+    const select = event.target.closest("select[data-attendance-student]");
+    if (!select) return;
+
+    const studentId = select.dataset.attendanceStudent;
+    if (!studentId) return;
+
+    select.disabled = true;
+    try {
+      await setStudentAttendanceStatus(studentId, select.value || null);
+    } catch (error) {
+      alert(error.message || "Unable to update attendance status.");
+      renderToday();
+      renderStudents();
+    }
   }
 
   function formatAttemptTime(value) {
@@ -1129,21 +1312,213 @@
     return family ? familyLabel(family) : (record.pickup_family_label || "");
   }
 
-  function recentAttemptRows() {
-    const byId = new Map(state.students.map((s) => [s.id, s]));
-    if (state.callEventsAvailable) {
-      return todayCallEvents().map((rec) => ({
-        rec,
-        stu: byId.get(rec.student_id),
-        isEvent: true
-      }));
+  function studentHistoryStudent() {
+    return state.students.find((student) => student.id === state.studentHistory.studentId) || null;
+  }
+
+  function studentHistoryModalVisible() {
+    const modal = el("student-history-modal");
+    return Boolean(modal && !modal.classList.contains("hidden"));
+  }
+
+  function formatHistoryDate(value, dateValue) {
+    const baseDate = dateValue
+      ? new Date(`${dateValue}T00:00:00`)
+      : value ? new Date(value) : null;
+    if (!baseDate || Number.isNaN(baseDate.getTime())) return "-";
+    return baseDate.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  }
+
+  function renderStudentHistoryModal() {
+    const modal = el("student-history-modal");
+    if (!modal) return;
+
+    ensureStudentHistoryDateRange();
+    const student = studentHistoryStudent();
+    const history = state.studentHistory;
+    const events = history.events || [];
+    const warning = el("student-history-message");
+    const rangeStartInput = el("student-history-start-date");
+    const rangeEndInput = el("student-history-end-date");
+    const applyBtn = el("student-history-apply-btn");
+    const last30Btn = el("student-history-last-30-btn");
+
+    if (rangeStartInput) rangeStartInput.value = history.rangeStart;
+    if (rangeEndInput) rangeEndInput.value = history.rangeEnd;
+    if (applyBtn) applyBtn.disabled = history.isLoading;
+    if (last30Btn) last30Btn.disabled = history.isLoading;
+
+    el("student-history-title").textContent = student ? `${studentLabel(student)} Call History` : "Student Call History";
+
+    const family = student?.families || null;
+    const metaParts = [
+      student?.classes ? student.classes.name : "",
+      family ? familyDisplayName(family) : "",
+      family ? `Family #${family.carpool_number}` : ""
+    ].filter(Boolean);
+    const summary = el("student-history-summary");
+    if (summary) {
+      summary.innerHTML = student
+        ? `<span>${escapeHtml(metaParts.join(" | ") || "Student")}</span>`
+        : '<span class="muted">Choose a student to see call attempts.</span>';
     }
 
-    return state.dailyStatus.map((rec) => ({
-      rec,
-      stu: byId.get(rec.student_id),
-      isEvent: false
-    }));
+    const totalAttempts = events.length;
+    const recallAttempts = events.filter((event) => event.attempt_type === "recall").length;
+    const initialAttempts = events.filter((event) => event.attempt_type !== "recall").length;
+    const lastAttempt = events[0] ? formatEventDateTime(events[0].attempted_at, events[0].date) : "-";
+    el("student-history-total-count").textContent = history.isLoading ? "-" : String(totalAttempts);
+    el("student-history-initial-count").textContent = history.isLoading ? "-" : String(initialAttempts);
+    el("student-history-recall-count").textContent = history.isLoading ? "-" : String(recallAttempts);
+    el("student-history-last-at").textContent = history.isLoading ? "-" : lastAttempt;
+
+    const message = history.isLoading ? "Loading call history..." : history.errorMessage;
+    if (warning) {
+      warning.textContent = message || "";
+      warning.className = `student-history-message${history.errorMessage ? " error" : ""}${message ? "" : " hidden"}`;
+    }
+
+    const tbody = el("student-history-tbody");
+    if (!tbody) return;
+
+    if (history.isLoading) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading call history...</td></tr>';
+      return;
+    }
+
+    if (!history.available) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">Call history is unavailable.</td></tr>';
+      return;
+    }
+
+    const rows = events.map((event) => {
+      const statusClass = event.attempt_type === "recall" ? "status status-recall" : "status status-initial";
+      return `<tr>
+        <td>${escapeHtml(formatHistoryDate(event.attempted_at, event.date))}</td>
+        <td>${escapeHtml(formatAttemptTime(event.attempted_at))}</td>
+        <td><span class="${statusClass}">${escapeHtml(attemptTypeLabel(event))}</span></td>
+        <td>${escapeHtml(checkInSourceLabel(event))}</td>
+        <td>${escapeHtml(pickupFamilyLabel(event) || "-")}</td>
+        <td>${escapeHtml(event.previous_called_at ? formatEventDateTime(event.previous_called_at, event.date) : "-")}</td>
+      </tr>`;
+    }).join("");
+
+    tbody.innerHTML = rows || '<tr><td colspan="6" class="muted">No call attempts in this date range.</td></tr>';
+  }
+
+  async function fetchStudentHistoryEvents() {
+    ensureStudentHistoryDateRange();
+    const history = state.studentHistory;
+    if (!history.studentId) return;
+
+    if (!history.rangeStart || !history.rangeEnd) {
+      history.events = [];
+      history.available = true;
+      history.errorMessage = "Choose both a start date and an end date.";
+      renderStudentHistoryModal();
+      return;
+    }
+
+    if (history.rangeStart > history.rangeEnd) {
+      history.events = [];
+      history.available = true;
+      history.errorMessage = "Start date must be on or before end date.";
+      renderStudentHistoryModal();
+      return;
+    }
+
+    history.isLoading = true;
+    history.errorMessage = "";
+    renderStudentHistoryModal();
+
+    const client = mustClient();
+    const { data, error } = await client
+      .from("student_call_events")
+      .select("id,daily_status_id,student_id,date,attempted_at,attempt_type,called_by,checked_in_by,pickup_family_id,pickup_family_label,previous_called_at,previous_called_by")
+      .eq("student_id", history.studentId)
+      .gte("date", history.rangeStart)
+      .lte("date", history.rangeEnd)
+      .order("attempted_at", { ascending: false });
+
+    history.isLoading = false;
+    if (error) {
+      history.events = [];
+      history.available = false;
+      history.errorMessage = isCallEventsMissingError(error)
+        ? "Call history tracking migration has not been applied yet."
+        : (error.message || "Call history is unavailable.");
+      console.warn("Unable to load student call history", error);
+      renderStudentHistoryModal();
+      return;
+    }
+
+    history.events = data || [];
+    history.available = true;
+    history.errorMessage = "";
+    renderStudentHistoryModal();
+  }
+
+  function openStudentHistoryModal(studentId) {
+    const student = state.students.find((entry) => entry.id === studentId);
+    if (!student) return;
+
+    state.studentHistory.studentId = studentId;
+    state.studentHistory.events = [];
+    state.studentHistory.isLoading = false;
+    state.studentHistory.available = true;
+    state.studentHistory.errorMessage = "";
+    ensureStudentHistoryDateRange();
+    show("student-history-modal", true);
+    renderStudentHistoryModal();
+    fetchStudentHistoryEvents().catch((error) => {
+      state.studentHistory.isLoading = false;
+      state.studentHistory.available = false;
+      state.studentHistory.errorMessage = error.message || "Unable to load call history.";
+      renderStudentHistoryModal();
+    });
+  }
+
+  function closeStudentHistoryModal() {
+    state.studentHistory.studentId = null;
+    state.studentHistory.events = [];
+    state.studentHistory.isLoading = false;
+    state.studentHistory.errorMessage = "";
+    show("student-history-modal", false);
+  }
+
+  async function applyStudentHistoryDateRange(event) {
+    event?.preventDefault();
+    state.studentHistory.rangeStart = el("student-history-start-date")?.value || "";
+    state.studentHistory.rangeEnd = el("student-history-end-date")?.value || "";
+    await fetchStudentHistoryEvents();
+  }
+
+  async function resetStudentHistoryDateRange() {
+    state.studentHistory.rangeStart = defaultRecallWindowStartDate();
+    state.studentHistory.rangeEnd = state.today;
+    await fetchStudentHistoryEvents();
+  }
+
+  function recentAttemptRows() {
+    const byId = new Map(state.students.map((s) => [s.id, s]));
+    const statusByStudent = dailyStatusMap();
+    if (state.callEventsAvailable) {
+      return todayCallEvents()
+        .filter((rec) => statusByStudent.get(rec.student_id)?.status === "CALLED")
+        .map((rec) => ({
+          rec,
+          stu: byId.get(rec.student_id),
+          isEvent: true
+        }));
+    }
+
+    return state.dailyStatus
+      .filter((rec) => rec.status === "CALLED")
+      .map((rec) => ({
+        rec,
+        stu: byId.get(rec.student_id),
+        isEvent: false
+      }));
   }
 
   function attemptRowTime(row) {
@@ -1320,6 +1695,10 @@
     document.querySelectorAll("[data-tab-panel]").forEach((panel) => {
       panel.classList.toggle("hidden", panel.dataset.tabPanel !== nextTab);
     });
+
+    if (nextTab === "settings") {
+      scheduleGeofenceMapRefresh({ fitRadius: true });
+    }
   }
 
   function renderFamilies() {
@@ -1339,7 +1718,19 @@
       if (col === "students") return (byFamily.get(f.id) || []).length;
       return 0;
     };
-    const sorted = sortedBy(state.families, col, dir, valFn);
+    const visibleFamilies = state.families.filter((f) => {
+      const students = byFamily.get(f.id) || [];
+      return matchesSearch([
+        f.carpool_number,
+        familyDisplayName(f),
+        f.contact_info,
+        f.notification_email,
+        f.notification_enabled === false ? "alerts off notifications off" : "alerts on notifications on",
+        ...students
+      ], state.familySearch);
+    });
+    const sorted = sortedBy(visibleFamilies, col, dir, valFn);
+    updateVisibleCount("families-visible-count", visibleFamilies.length, state.families.length, state.familySearch);
 
     const html = sorted
       .map((f) => {
@@ -1360,7 +1751,10 @@
       })
       .join("");
 
-    el("families-tbody").innerHTML = html || '<tr><td colspan="6" class="muted">No families yet.</td></tr>';
+    const emptyMessage = state.families.length && normalizeText(state.familySearch)
+      ? "No families match your search."
+      : "No families yet.";
+    el("families-tbody").innerHTML = html || `<tr><td colspan="6" class="muted">${emptyMessage}</td></tr>`;
     applySortHeaders("families-table", col, dir);
   }
 
@@ -1381,13 +1775,28 @@
       if (col === "count") return counts.get(c.id) || 0;
       return 0;
     };
-    const sorted = sortedBy(state.classes, col, dir, valFn);
+    const visibleClasses = state.classes.filter((c) => {
+      const classStudents = studentsByClass.get(c.id) || [];
+      return matchesSearch([
+        c.name,
+        c.display_order,
+        counts.get(c.id) || 0,
+        ...classStudents.flatMap((student) => [
+          studentLabel(student),
+          `${student.first_name} ${student.last_name}`,
+          student.families ? familyDisplayName(student.families) : "",
+          student.families ? student.families.carpool_number : ""
+        ])
+      ], state.classSearch);
+    });
+    const sorted = sortedBy(visibleClasses, col, dir, valFn);
+    updateVisibleCount("classes-visible-count", visibleClasses.length, state.classes.length, state.classSearch);
 
     const html = sorted
       .map((c) => {
         const count = counts.get(c.id) || 0;
         const classStudents = (studentsByClass.get(c.id) || [])
-          .sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name));
+          .sort((a, b) => studentNameCompare(a, b));
         const studentRows = classStudents
           .map(s => `<tr class="student-subrow">
             <td>${escapeHtml(studentLabel(s))}</td>
@@ -1421,7 +1830,10 @@
       })
       .join("");
 
-    el("classes-tbody").innerHTML = html || '<tr><td colspan="5" class="muted">No classes yet.</td></tr>';
+    const emptyMessage = state.classes.length && normalizeText(state.classSearch)
+      ? "No classes match your search."
+      : "No classes yet.";
+    el("classes-tbody").innerHTML = html || `<tr><td colspan="5" class="muted">${emptyMessage}</td></tr>`;
     applySortHeaders("classes-table", col, dir);
 
     el("classes-tbody").querySelectorAll(".chevron-btn").forEach(btn => {
@@ -1439,27 +1851,42 @@
   }
 
   function renderStudents() {
+    const statusByStudent = dailyStatusMap();
     const { col, dir } = sortState.students;
     const valFn = (s) => {
       if (col === "name") return `${s.last_name} ${s.first_name}`;
       if (col === "class") return s.classes ? s.classes.name : "";
       if (col === "family") return s.families ? familyDisplayName(s.families) : "";
       if (col === "carpool") return s.families ? s.families.carpool_number : 0;
+      if (col === "status") return studentDismissalStatus(s.id, statusByStudent);
+      if (col === "attendance") return attendanceStatusText(statusByStudent.get(s.id)?.attendance_status) || "In school";
       if (col === "audio") return s.call_audio_path ? 1 : 0;
       return "";
     };
-    const sorted = sortedBy(state.students, col, dir, valFn);
+    const visibleStudents = state.students.filter((s) => studentMatchesSearch(s, state.studentSearch, statusByStudent));
+    const sorted = sortedBy(visibleStudents, col, dir, valFn);
+    updateVisibleCount("students-visible-count", visibleStudents.length, state.students.length, state.studentSearch);
 
-    const html = sorted
-      .map((s) => {
-        return `<tr>
-          <td>${escapeHtml(studentLabel(s))}</td>
-          <td>${escapeHtml(s.classes ? s.classes.name : "")}</td>
-          <td>${escapeHtml(s.families ? familyDisplayName(s.families) : "")}</td>
+	    const html = sorted
+	      .map((s) => {
+	        const label = studentLabel(s);
+	        return `<tr>
+	          <td>
+	            <button
+	              class="student-name-button"
+	              type="button"
+	              data-student-history="${escapeHtml(s.id)}"
+	              aria-label="Show call history for ${escapeHtml(label)}"
+	            >${escapeHtml(label)}</button>
+	          </td>
+	          <td>${escapeHtml(s.classes ? s.classes.name : "")}</td>
+	          <td>${escapeHtml(s.families ? familyDisplayName(s.families) : "")}</td>
           <td>${escapeHtml(s.families ? String(s.families.carpool_number) : "")}</td>
+          <td>${studentActionButtonsHtml(s.id, { includeRecall: true })}</td>
+          <td>${attendanceCellHtml(s.id)}</td>
           <td>${studentAudioPill(s)}</td>
           <td>
-            <div class="permissions-actions">
+            <div class="student-table-actions">
               ${editActionButton("data-edit-student", s.id, "Edit student")}
               ${deleteActionButton("data-delete-student", s.id, "Delete student")}
             </div>
@@ -1468,7 +1895,10 @@
       })
       .join("");
 
-    el("students-tbody").innerHTML = html || '<tr><td colspan="6" class="muted">No students yet.</td></tr>';
+    const emptyMessage = state.students.length && normalizeText(state.studentSearch)
+      ? "No students match your search."
+      : "No students yet.";
+    el("students-tbody").innerHTML = html || `<tr><td colspan="8" class="muted">${emptyMessage}</td></tr>`;
     applySortHeaders("students-table", col, dir);
   }
 
@@ -1488,7 +1918,6 @@
     el("today-parent-count").textContent = String(parentAttemptCount);
 
     const enriched = recentAttemptRows();
-    const statusByStudent = dailyStatusMap();
 
     const { col, dir } = sortState.today;
     const valFn = (row) => {
@@ -1518,27 +1947,24 @@
         const time = formatAttemptTime(attemptRowTime(row));
         const statusClass = attemptRowClass(row);
         const status = attemptRowType(row);
-        const currentStatus = stu ? statusByStudent.get(stu.id)?.status : "";
-        const actionLabel = currentStatus === "CALLED" ? "Reping student" : "Call student";
-        const toggleAttr = !row.isEvent && stu ? `data-today-student-id="${escapeHtml(stu.id)}"` : "";
-        const toggleClass = !row.isEvent && stu ? " is-toggle" : "";
         return `<tr>
           <td>${escapeHtml(time)}</td>
           <td>${escapeHtml(stu ? studentLabel(stu) : "Unknown student")}</td>
           <td>${escapeHtml(stu && stu.classes ? stu.classes.name : "")}</td>
           <td>${escapeHtml(stu && stu.families ? familyDisplayName(stu.families) : "")}</td>
           <td>${escapeHtml(stu && stu.families ? String(stu.families.carpool_number) : "")}</td>
-          <td><span class="${statusClass}${toggleClass}" ${toggleAttr}>${escapeHtml(status)}</span></td>
+          <td><span class="${statusClass}">${escapeHtml(status)}</span></td>
           <td>${stu ? attendanceCellHtml(stu.id) : "-"}</td>
           <td>${escapeHtml(checkInSourceLabel(rec))}</td>
-          <td>${stu ? bellActionButton("data-reping-student", stu.id, actionLabel) : "-"}</td>
+          <td>${stu ? studentActionButtonsHtml(stu.id, { includeRecall: true }) : "-"}</td>
         </tr>`;
       })
       .join("");
 
+    const hasAnyAttempt = state.callEventsAvailable ? todaysEvents.length : state.dailyStatus.length;
     const emptyMessage = enriched.length
       ? "No attempts match your search."
-      : (state.callEventsAvailable ? "No call attempts logged yet today." : "No dismissal attempts yet today.");
+      : (hasAnyAttempt ? "No students are currently checked in." : "No dismissal attempts yet today.");
     el("today-attempts-tbody").innerHTML = rows || `<tr><td colspan="9" class="muted">${emptyMessage}</td></tr>`;
     applySortHeaders("today-table", col, dir);
     renderTodayStudentGrid();
@@ -1718,30 +2144,56 @@
   function renderTodayStudentGrid() {
     const statusByStudent = dailyStatusMap();
     const classOrder = new Map(state.classes.map((cls, index) => [cls.id, cls.display_order ?? index]));
-    const students = [...state.students].sort((a, b) => {
+    const classStudentCompare = (a, b) => {
       const classCmp = (classOrder.get(a.class_id) || 0) - (classOrder.get(b.class_id) || 0);
       if (classCmp !== 0) return classCmp;
-      const lastCmp = a.last_name.localeCompare(b.last_name);
-      return lastCmp !== 0 ? lastCmp : a.first_name.localeCompare(b.first_name);
+      return studentNameCompare(a, b);
+    };
+    const familyCompare = (a, b) => {
+      const aFamily = a.families ? a.families.carpool_number : 0;
+      const bFamily = b.families ? b.families.carpool_number : 0;
+      const familyCmp = String(aFamily).localeCompare(String(bFamily), undefined, { numeric: true });
+      return familyCmp || studentNameCompare(a, b);
+    };
+    const statusCompare = (a, b) => {
+      const aRank = studentDismissalStatus(a.id, statusByStudent) === "CALLED" ? 1 : 0;
+      const bRank = studentDismissalStatus(b.id, statusByStudent) === "CALLED" ? 1 : 0;
+      return (aRank - bRank) || classStudentCompare(a, b);
+    };
+    const sortMode = state.todayGridSort || "class";
+    const students = [...state.students].sort((a, b) => {
+      if (sortMode === "name") return studentNameCompare(a, b);
+      if (sortMode === "family") return familyCompare(a, b);
+      if (sortMode === "status") return statusCompare(a, b);
+      return classStudentCompare(a, b);
     });
+    const searchedStudents = students.filter((student) => studentMatchesSearch(student, state.todayGridStudentSearch, statusByStudent));
     const visibleStudents = state.todayGridWaitingOnly
-      ? students.filter((student) => {
+      ? searchedStudents.filter((student) => {
         const rec = statusByStudent.get(student.id);
         return !rec || rec.status !== "CALLED";
       })
-      : students;
+      : searchedStudents;
     const count = el("today-student-grid-count");
     if (count) {
-      count.textContent = state.todayGridWaitingOnly
-        ? `${visibleStudents.length} waiting of ${students.length}`
-        : `${students.length} students`;
+      count.textContent = `${students.length} students`;
+    }
+    const visibleCount = el("today-student-grid-visible-count");
+    if (visibleCount) {
+      const hasGridSearch = Boolean(normalizeText(state.todayGridStudentSearch));
+      if (state.todayGridWaitingOnly && !hasGridSearch) {
+        visibleCount.textContent = `${visibleStudents.length} waiting shown`;
+      } else if (state.todayGridWaitingOnly || hasGridSearch) {
+        visibleCount.textContent = `${visibleStudents.length} of ${students.length} shown`;
+      } else {
+        visibleCount.textContent = "";
+      }
     }
 
     const html = visibleStudents
       .map((student) => {
         const rec = statusByStudent.get(student.id);
         const status = rec ? rec.status : "WAITING";
-        const attendanceStatus = rec?.attendance_status || "";
         const cardClass = status === "CALLED" ? "all-students-card called" : "all-students-card";
         const className = student.classes ? student.classes.name : "";
         return `<div class="${cardClass}" data-today-grid-student-id="${escapeHtml(student.id)}">
@@ -1749,13 +2201,17 @@
             <span class="all-students-name">${escapeHtml(student.first_name)} ${escapeHtml(student.last_name)}</span>
             <span class="all-students-meta">${escapeHtml(className)}</span>
           </div>
-          ${attendanceBadgeForStatus(attendanceStatus)}
+          ${studentActionButtonsHtml(student.id, { includeRecall: true })}
           ${attendanceControlsHtml(student.id)}
         </div>`;
       })
       .join("");
 
-    el("today-student-grid").innerHTML = html || `<p class="muted">${state.todayGridWaitingOnly ? "Everyone has been called." : "No students yet."}</p>`;
+    const hasSearch = Boolean(normalizeText(state.todayGridStudentSearch));
+    const emptyMessage = hasSearch
+      ? (state.todayGridWaitingOnly ? "No waiting students match your search." : "No students match your search.")
+      : (state.todayGridWaitingOnly ? "Everyone has been called." : "No students yet.");
+    el("today-student-grid").innerHTML = html || `<p class="muted">${emptyMessage}</p>`;
     scheduleTodayGridFit();
   }
 
@@ -1767,15 +2223,147 @@
     show("geofence-settings-message", Boolean(message));
   }
 
+  function setGeofenceMapFallback(message) {
+    const node = el("geofence-map-fallback");
+    if (!node) return;
+    node.textContent = message || "";
+    node.classList.toggle("hidden", !message);
+  }
+
+  function geofenceNumberValue(id) {
+    const value = el(id)?.value;
+    if (value == null || String(value).trim() === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : NaN;
+  }
+
+  function geofenceFiniteNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function isValidGeofenceLatitude(value) {
+    return Number.isFinite(value) && value >= -90 && value <= 90;
+  }
+
+  function isValidGeofenceLongitude(value) {
+    return Number.isFinite(value) && value >= -180 && value <= 180;
+  }
+
+  function geofencePointFromSettings(settings) {
+    const latitude = geofenceFiniteNumber(settings?.school_latitude);
+    const longitude = geofenceFiniteNumber(settings?.school_longitude);
+    if (!isValidGeofenceLatitude(latitude) || !isValidGeofenceLongitude(longitude)) return null;
+    return { lat: latitude, lng: longitude };
+  }
+
+  function geofencePointFromForm() {
+    const latitude = geofenceNumberValue("geofence-latitude");
+    const longitude = geofenceNumberValue("geofence-longitude");
+    if (!isValidGeofenceLatitude(latitude) || !isValidGeofenceLongitude(longitude)) return null;
+    return { lat: latitude, lng: longitude };
+  }
+
+  function geofenceRadiusMilesFromForm() {
+    const radiusMiles = geofenceNumberValue("geofence-radius-miles");
+    return Number.isFinite(radiusMiles) && radiusMiles > 0 ? radiusMiles : null;
+  }
+
+  function geofenceRadiusMatchesRenderedSettings(radiusMiles, settings) {
+    const renderedMiles = Number(formatMilesInput(settings?.radius_meters || 300));
+    return Number.isFinite(radiusMiles) && Math.abs(radiusMiles - renderedMiles) < 0.000001;
+  }
+
+  function geofenceRadiusMetersFromForm() {
+    const settings = state.geofenceSettings || defaultGeofenceSettings();
+    const radiusMiles = geofenceRadiusMilesFromForm();
+    if (radiusMiles != null && !geofenceRadiusMatchesRenderedSettings(radiusMiles, settings)) {
+      return milesToMeters(radiusMiles);
+    }
+    return Number(settings.radius_meters || 300);
+  }
+
+  function radiusSliderValue(radiusMiles) {
+    const fallbackMiles = metersToMiles(state.geofenceSettings?.radius_meters || 300);
+    const numericMiles = Number.isFinite(Number(radiusMiles)) ? Number(radiusMiles) : fallbackMiles;
+    const clampedMiles = Math.max(GEOFENCE_RADIUS_MIN_MILES, Math.min(GEOFENCE_RADIUS_MAX_MILES, numericMiles));
+    return trimNumberText((Math.round(clampedMiles / 0.05) * 0.05).toFixed(2));
+  }
+
+  function syncGeofenceRadiusSlider(radiusMiles) {
+    const slider = el("geofence-radius-slider");
+    if (slider && document.activeElement !== slider) {
+      slider.value = radiusSliderValue(radiusMiles);
+    }
+  }
+
+  function renderGeofenceActionState() {
+    const save = el("geofence-save-btn");
+    const current = el("geofence-use-current-btn");
+    if (save) {
+      save.disabled = state.geofenceSaving;
+      save.textContent = state.geofenceSaving ? "Saving..." : "Save Location";
+    }
+    if (current) {
+      current.disabled = state.geofenceLocating || state.geofenceSaving || !navigator.geolocation;
+      current.textContent = state.geofenceLocating ? "Locating..." : "Use Current Location";
+    }
+  }
+
+  function geofenceFormDiffersFromSettings() {
+    const settings = state.geofenceSettings || defaultGeofenceSettings();
+    if (Boolean(el("geofence-enabled")?.checked) !== Boolean(settings.is_enabled)) return true;
+
+    const latitude = geofenceNumberValue("geofence-latitude");
+    const longitude = geofenceNumberValue("geofence-longitude");
+    const savedPoint = geofencePointFromSettings(settings);
+    const hasFormPointValue = latitude != null || longitude != null;
+
+    if (!Number.isNaN(latitude) && !Number.isNaN(longitude) && (hasFormPointValue || savedPoint)) {
+      if (latitude == null || longitude == null) return Boolean(savedPoint);
+      if (!savedPoint) return true;
+      if (Math.abs(latitude - savedPoint.lat) > 0.000001) return true;
+      if (Math.abs(longitude - savedPoint.lng) > 0.000001) return true;
+    }
+
+    const radiusMiles = geofenceRadiusMilesFromForm();
+    if (
+      radiusMiles != null &&
+      !geofenceRadiusMatchesRenderedSettings(radiusMiles, settings) &&
+      Math.abs(milesToMeters(radiusMiles) - Number(settings.radius_meters || 300)) > 1
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  function updateGeofenceSummary() {
+    const summary = el("geofence-settings-summary");
+    if (!summary) return;
+
+    const settings = state.geofenceSettings || defaultGeofenceSettings();
+    const isEnabled = Boolean(el("geofence-enabled")?.checked);
+    const point = geofencePointFromForm();
+    const radiusMiles = geofenceRadiusMilesFromForm() || metersToMiles(settings.radius_meters || 300);
+    const status = isEnabled ? "Auto call is enabled." : "Auto call is disabled.";
+    const configured = point
+      ? `School point: ${Number(point.lat).toFixed(6)}, ${Number(point.lng).toFixed(6)}.`
+      : "School point is not configured.";
+    const radiusText = `Radius: ${formatMiles(radiusMiles)}.`;
+    const updated = geofenceFormDiffersFromSettings()
+      ? "Unsaved changes."
+      : (settings.updated_at ? `Updated ${new Date(settings.updated_at).toLocaleString()}.` : "");
+
+    summary.innerHTML = [status, configured, radiusText, updated].filter(Boolean).map(escapeHtml).join("<br>");
+  }
+
   function renderGeofenceSettings() {
     const settings = state.geofenceSettings || defaultGeofenceSettings();
     const latitude = el("geofence-latitude");
     const longitude = el("geofence-longitude");
     const radius = el("geofence-radius-miles");
     const enabled = el("geofence-enabled");
-    const save = el("geofence-save-btn");
-    const current = el("geofence-use-current-btn");
-    const summary = el("geofence-settings-summary");
 
     if (enabled) enabled.checked = Boolean(settings.is_enabled);
     if (latitude && document.activeElement !== latitude) {
@@ -1787,23 +2375,13 @@
     if (radius && document.activeElement !== radius) {
       radius.value = formatMilesInput(settings.radius_meters || 300);
     }
-    if (save) {
-      save.disabled = state.geofenceSaving;
-      save.textContent = state.geofenceSaving ? "Saving..." : "Save Location";
-    }
-    if (current) {
-      current.disabled = state.geofenceLocating || state.geofenceSaving || !navigator.geolocation;
-      current.textContent = state.geofenceLocating ? "Locating..." : "Use Current Location";
-    }
 
-    if (summary) {
-      const status = settings.is_enabled ? "Auto call is enabled." : "Auto call is disabled.";
-      const configured = settings.is_configured
-        ? `School point: ${Number(settings.school_latitude).toFixed(6)}, ${Number(settings.school_longitude).toFixed(6)}.`
-        : "School point is not configured.";
-      const radiusText = `Radius: ${formatMiles(metersToMiles(settings.radius_meters || 300))}.`;
-      const updated = settings.updated_at ? `Updated ${new Date(settings.updated_at).toLocaleString()}.` : "";
-      summary.innerHTML = [status, configured, radiusText, updated].filter(Boolean).map(escapeHtml).join("<br>");
+    syncGeofenceRadiusSlider(metersToMiles(settings.radius_meters || 300));
+    renderGeofenceActionState();
+    updateGeofenceSummary();
+
+    if (state.currentTab === "settings") {
+      scheduleGeofenceMapRefresh({ fitRadius: true });
     }
 
     if (state.geofenceSettingsError) {
@@ -1811,11 +2389,166 @@
     }
   }
 
-  function geofenceNumberValue(id) {
-    const value = el(id)?.value;
-    if (value == null || String(value).trim() === "") return null;
-    const number = Number(value);
-    return Number.isFinite(number) ? number : NaN;
+  function scheduleGeofenceMapRefresh(options = {}) {
+    window.setTimeout(() => {
+      if (state.currentTab !== "settings") return;
+      if (!initGeofenceMap()) return;
+      state.geofenceMap.invalidateSize();
+      updateGeofenceMapFromForm({ fitRadius: Boolean(options.fitRadius) });
+    }, 0);
+  }
+
+  function initGeofenceMap() {
+    const mapNode = el("geofence-map");
+    if (!mapNode) return false;
+    if (state.geofenceMap) return true;
+    if (!window.L) {
+      setGeofenceMapFallback("Map is unavailable. Latitude, longitude, and radius can still be edited.");
+      return false;
+    }
+
+    setGeofenceMapFallback("");
+    const initialPoint = geofencePointFromForm() || geofencePointFromSettings(state.geofenceSettings);
+    const initialCenter = initialPoint || DEFAULT_GEOFENCE_CENTER;
+    state.geofenceMap = window.L.map(mapNode, {
+      scrollWheelZoom: false
+    }).setView(initialCenter, GEOFENCE_DEFAULT_ZOOM);
+
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(state.geofenceMap);
+
+    state.geofenceMap.on("click", (event) => {
+      setGeofenceFormPoint(event.latlng, { pan: false });
+      setGeofenceMessage("Location moved. Save when ready.", "success");
+    });
+
+    updateGeofenceMapFromForm({ fitRadius: Boolean(initialPoint) });
+    return true;
+  }
+
+  function ensureGeofenceMapOverlays(point) {
+    if (!state.geofenceMap || !window.L) return;
+
+    if (!state.geofenceMarker) {
+      state.geofenceMarker = window.L.marker(point, {
+        draggable: true,
+        autoPan: true,
+        title: "School pickup location"
+      }).addTo(state.geofenceMap);
+
+      state.geofenceMarker.on("drag", (event) => {
+        const latlng = event.target.getLatLng();
+        setGeofenceFormPoint(latlng, { updateMap: false });
+        if (state.geofenceCircle) state.geofenceCircle.setLatLng(latlng);
+      });
+
+      state.geofenceMarker.on("dragend", (event) => {
+        setGeofenceFormPoint(event.target.getLatLng(), { pan: false });
+        setGeofenceMessage("Location moved. Save when ready.", "success");
+      });
+    }
+
+    if (!state.geofenceCircle) {
+      state.geofenceCircle = window.L.circle(point, {
+        color: "#6b2d5b",
+        weight: 2,
+        opacity: 0.9,
+        fillColor: "#6b2d5b",
+        fillOpacity: 0.12,
+        interactive: false
+      }).addTo(state.geofenceMap);
+    }
+  }
+
+  function removeGeofenceMapOverlays() {
+    if (state.geofenceMarker) {
+      state.geofenceMarker.remove();
+      state.geofenceMarker = null;
+    }
+    if (state.geofenceCircle) {
+      state.geofenceCircle.remove();
+      state.geofenceCircle = null;
+    }
+  }
+
+  function fitGeofenceMapToRadius(animate = false) {
+    if (!state.geofenceMap) return;
+    if (state.geofenceCircle) {
+      state.geofenceMap.fitBounds(state.geofenceCircle.getBounds(), {
+        padding: [30, 30],
+        maxZoom: 16,
+        animate
+      });
+      return;
+    }
+
+    const point = geofencePointFromForm();
+    if (point) {
+      state.geofenceMap.setView(point, GEOFENCE_DEFAULT_ZOOM, { animate });
+    }
+  }
+
+  function updateGeofenceMapFromForm(options = {}) {
+    if (!state.geofenceMap && !initGeofenceMap()) return;
+
+    const point = geofencePointFromForm();
+    if (!point) {
+      removeGeofenceMapOverlays();
+      return;
+    }
+
+    ensureGeofenceMapOverlays(point);
+    state.geofenceMarker.setLatLng(point);
+    state.geofenceCircle.setLatLng(point);
+    state.geofenceCircle.setRadius(geofenceRadiusMetersFromForm());
+
+    if (options.fitRadius) {
+      fitGeofenceMapToRadius(Boolean(options.animate));
+    } else if (options.pan) {
+      state.geofenceMap.panTo(point, { animate: Boolean(options.animate) });
+    }
+  }
+
+  function setGeofenceFormPoint(latlng, options = {}) {
+    if (!latlng) return;
+    const latitude = el("geofence-latitude");
+    const longitude = el("geofence-longitude");
+    if (latitude) latitude.value = Number(latlng.lat).toFixed(6);
+    if (longitude) longitude.value = Number(latlng.lng).toFixed(6);
+    updateGeofenceSummary();
+    if (options.updateMap !== false) {
+      updateGeofenceMapFromForm({
+        pan: Boolean(options.pan),
+        fitRadius: Boolean(options.fitRadius),
+        animate: Boolean(options.animate)
+      });
+    }
+  }
+
+  function handleGeofenceControlChange(event) {
+    const target = event.target;
+    if (!target) return;
+
+    if (target.id === "geofence-radius-slider") {
+      const radius = geofenceFiniteNumber(target.value);
+      const radiusInput = el("geofence-radius-miles");
+      if (radiusInput && radius != null) radiusInput.value = trimNumberText(radius.toFixed(2));
+    } else if (target.id === "geofence-radius-miles") {
+      const radiusMiles = geofenceRadiusMilesFromForm();
+      if (radiusMiles != null) syncGeofenceRadiusSlider(radiusMiles);
+    }
+
+    updateGeofenceSummary();
+    if (target.id !== "geofence-enabled") {
+      const isCoordinateChange = target.id === "geofence-latitude" || target.id === "geofence-longitude";
+      updateGeofenceMapFromForm({
+        pan: event.type === "change" && isCoordinateChange,
+        fitRadius: event.type === "change" && target.id.includes("radius"),
+        animate: event.type === "change"
+      });
+    }
   }
 
   async function saveGeofenceSettings(event) {
@@ -1844,7 +2577,9 @@
       return;
     }
 
-    const radiusMeters = milesToMeters(radiusMiles || metersToMiles(state.geofenceSettings?.radius_meters || 300));
+    const radiusMeters = radiusMiles == null || geofenceRadiusMatchesRenderedSettings(radiusMiles, state.geofenceSettings)
+      ? Number(state.geofenceSettings?.radius_meters || 300)
+      : milesToMeters(radiusMiles);
     if (radiusMeters < 15 || radiusMeters > 5000) {
       setGeofenceMessage("Radius must be between 0.05 and 3 miles.", "error");
       return;
@@ -1853,8 +2588,9 @@
     state.geofenceSaving = true;
     state.geofenceSettingsError = "";
     setGeofenceMessage("Saving pickup location...", "pending");
-    renderGeofenceSettings();
+    renderGeofenceActionState();
 
+    let saved = false;
     try {
       state.geofenceSettings = await updateGeofenceSettings({
         is_enabled: isEnabled,
@@ -1862,12 +2598,18 @@
         school_longitude: longitude,
         radius_meters: radiusMeters
       });
+      saved = true;
       setGeofenceMessage("Pickup location saved.", "success");
     } catch (error) {
       setGeofenceMessage(error.message || "Unable to save pickup location.", "error");
     } finally {
       state.geofenceSaving = false;
-      renderGeofenceSettings();
+      if (saved) {
+        renderGeofenceSettings();
+      } else {
+        renderGeofenceActionState();
+        updateGeofenceSummary();
+      }
     }
   }
 
@@ -1879,29 +2621,21 @@
 
     state.geofenceLocating = true;
     setGeofenceMessage("Getting current location...", "pending");
-    renderGeofenceSettings();
+    renderGeofenceActionState();
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
         state.geofenceLocating = false;
-        const latitude = el("geofence-latitude");
-        const longitude = el("geofence-longitude");
-        const current = el("geofence-use-current-btn");
-        if (latitude) latitude.value = Number(position.coords.latitude).toFixed(6);
-        if (longitude) longitude.value = Number(position.coords.longitude).toFixed(6);
-        if (current) {
-          current.disabled = false;
-          current.textContent = "Use Current Location";
-        }
+        renderGeofenceActionState();
+        setGeofenceFormPoint(
+          { lat: position.coords.latitude, lng: position.coords.longitude },
+          { fitRadius: true, animate: true }
+        );
         setGeofenceMessage("Location filled. Save when ready.", "success");
       },
       (error) => {
         state.geofenceLocating = false;
-        const current = el("geofence-use-current-btn");
-        if (current) {
-          current.disabled = false;
-          current.textContent = "Use Current Location";
-        }
+        renderGeofenceActionState();
         setGeofenceMessage(error.message || "Unable to get this device location.", "error");
       },
       {
@@ -1921,6 +2655,7 @@
     renderPermissions();
     renderImportPreview();
     renderGeofenceSettings();
+    if (studentHistoryModalVisible()) renderStudentHistoryModal();
   }
 
   function renderPermissions() {
@@ -3026,6 +3761,92 @@
     renderImportPreview();
   }
 
+  function setImportResetBusy(isBusy) {
+    const button = el("imports-reset-data-btn");
+    if (!button) return;
+    button.disabled = Boolean(isBusy);
+    button.textContent = isBusy ? "Resetting..." : "Reset Data";
+  }
+
+  function setImportResetStatus(message, klass) {
+    const status = el("imports-reset-status");
+    if (!status) return;
+    status.className = ["imports-reset-status", klass || "muted"].filter(Boolean).join(" ");
+    status.textContent = message || "";
+  }
+
+  function deletedCount(result, key) {
+    return Number(result?.[key] || 0);
+  }
+
+  function countLabel(count, singular, plural) {
+    return `${count} ${count === 1 ? singular : (plural || `${singular}s`)}`;
+  }
+
+  function resetRosterSummary(result, audioCleanup) {
+    const core = [
+      countLabel(deletedCount(result, "classes_deleted"), "class", "classes"),
+      countLabel(deletedCount(result, "families_deleted"), "family", "families"),
+      countLabel(deletedCount(result, "students_deleted"), "student"),
+      countLabel(deletedCount(result, "check_ins_deleted"), "check-in")
+    ].join(", ");
+
+    const related = [
+      countLabel(deletedCount(result, "call_events_deleted"), "call log"),
+      countLabel(deletedCount(result, "pickup_permissions_deleted"), "pickup permission"),
+      countLabel(deletedCount(result, "saved_carpools_deleted"), "saved carpool"),
+      countLabel(deletedCount(result, "scheduled_pickups_deleted"), "scheduled pickup")
+    ].join(", ");
+
+    const audioText = audioCleanup?.attempted
+      ? ` Removed ${countLabel(audioCleanup.attempted - audioCleanup.failed, "audio file")}${audioCleanup.failed ? `; ${audioCleanup.failed} audio file${audioCleanup.failed === 1 ? "" : "s"} could not be removed` : ""}.`
+      : "";
+
+    return `Reset complete: deleted ${core}. Cleared ${related}.${audioText}`;
+  }
+
+  async function resetRosterData() {
+    if (state.isResettingData) return;
+
+    const confirmation = prompt(
+      "This permanently deletes all classes, families, students, and check-ins. It also clears related pickup permissions, saved carpools, scheduled pickups, and call logs.\n\nType RESET to continue."
+    );
+    if (confirmation !== "RESET") {
+      setImportResetStatus("Reset cancelled. No data was deleted.", "muted");
+      return;
+    }
+
+    state.isResettingData = true;
+    setImportResetBusy(true);
+    setImportResetStatus("Preparing roster reset...", "muted");
+
+    try {
+      const client = mustClient();
+      const audioPaths = await fetchStudentAudioPathsForReset(client);
+      setImportResetStatus("Resetting roster data...", "muted");
+
+      const { data, error } = await client.rpc("admin_reset_roster_data");
+      if (error) throw error;
+
+      const audioCleanup = await removeStudentAudioPaths(client, audioPaths);
+      state.importPreview.rows = [];
+      state.importPreview.headerIssues = [];
+      state.importPreview.classOrderHints = [];
+      state.importPreview.parseError = "";
+      state.importPreview.fileName = "";
+      state.importPreview.resultHtml = "No import run in this session.";
+
+      await refreshAndRender();
+      setTab("imports");
+      setImportResetStatus(resetRosterSummary(data, audioCleanup), audioCleanup.failed ? "error" : "success");
+    } catch (error) {
+      setImportResetStatus(error.message || "Unable to reset roster data.", "error");
+    } finally {
+      state.isResettingData = false;
+      setImportResetBusy(false);
+    }
+  }
+
   async function stageImportFile(file) {
     try {
       const rawRows = await rawRowsFromFile(file);
@@ -3380,8 +4201,15 @@
     });
     el("imports-cancel-btn").addEventListener("click", clearImportPreviewRows);
     el("imports-confirm-btn").addEventListener("click", confirmImportPreview);
+    el("imports-reset-data-btn")?.addEventListener("click", resetRosterData);
     el("geofence-settings-form").addEventListener("submit", saveGeofenceSettings);
     el("geofence-use-current-btn").addEventListener("click", useCurrentLocationForGeofence);
+    ["geofence-enabled", "geofence-latitude", "geofence-longitude", "geofence-radius-miles", "geofence-radius-slider"].forEach((id) => {
+      const node = el(id);
+      if (!node) return;
+      node.addEventListener("input", handleGeofenceControlChange);
+      node.addEventListener("change", handleGeofenceControlChange);
+    });
     el("imports-preview-tbody").addEventListener("change", (event) => {
       const input = event.target.closest("[data-import-field]");
       if (input) {
@@ -3408,6 +4236,12 @@
       if (event.target === el("admin-modal")) closeModal();
     });
     el("admin-modal-form").addEventListener("submit", handleModalSubmit);
+    el("student-history-modal-close")?.addEventListener("click", closeStudentHistoryModal);
+    el("student-history-modal")?.addEventListener("click", (event) => {
+      if (event.target === el("student-history-modal")) closeStudentHistoryModal();
+    });
+    el("student-history-range-form")?.addEventListener("submit", applyStudentHistoryDateRange);
+    el("student-history-last-30-btn")?.addEventListener("click", resetStudentHistoryDateRange);
 
     el("admin-tabs").addEventListener("click", (event) => {
       const btn = event.target.closest(".tab-btn");
@@ -3416,7 +4250,20 @@
     });
 
     el("today-attempts-tbody").addEventListener("click", async (event) => {
-      const attendanceBtn = event.target.closest("[data-attendance-student]");
+      const dismissalBtn = event.target.closest("[data-student-dismissal-student]");
+      if (dismissalBtn) {
+        const studentId = dismissalBtn.dataset.studentDismissalStudent;
+        const status = dismissalBtn.dataset.studentDismissalStatus;
+        if (!studentId) return;
+        try {
+          await setStudentDismissalStatus(studentId, status);
+        } catch (error) {
+          alert(error.message || "Unable to update student status.");
+        }
+        return;
+      }
+
+      const attendanceBtn = event.target.closest("button[data-attendance-student]");
       if (attendanceBtn) {
         const studentId = attendanceBtn.dataset.attendanceStudent;
         if (!studentId) return;
@@ -3450,14 +4297,53 @@
         alert(error.message || "Unable to update student status.");
       }
     });
+    el("today-attempts-tbody").addEventListener("change", handleAttendanceStatusChange);
 
     el("today-attempts-search")?.addEventListener("input", (event) => {
       state.todayAttemptSearch = event.target.value;
       renderToday();
     });
 
+    el("today-student-grid-search")?.addEventListener("input", (event) => {
+      state.todayGridStudentSearch = event.target.value;
+      renderTodayStudentGrid();
+    });
+
+    el("today-student-grid-sort")?.addEventListener("change", (event) => {
+      state.todayGridSort = event.target.value || "class";
+      renderTodayStudentGrid();
+    });
+
     el("today-student-grid").addEventListener("click", async (event) => {
-      const attendanceBtn = event.target.closest("[data-attendance-student]");
+      const attendanceSelect = event.target.closest("select[data-attendance-student]");
+      if (attendanceSelect) return;
+
+      const dismissalBtn = event.target.closest("[data-student-dismissal-student]");
+      if (dismissalBtn) {
+        const studentId = dismissalBtn.dataset.studentDismissalStudent;
+        const status = dismissalBtn.dataset.studentDismissalStatus;
+        if (!studentId) return;
+        try {
+          await setStudentDismissalStatus(studentId, status);
+        } catch (error) {
+          alert(error.message || "Unable to update student status.");
+        }
+        return;
+      }
+
+      const repingBtn = event.target.closest("[data-reping-student]");
+      if (repingBtn) {
+        const studentId = repingBtn.dataset.repingStudent;
+        if (!studentId) return;
+        try {
+          await repingTodayStudent(studentId);
+        } catch (error) {
+          alert(error.message || "Unable to recall student.");
+        }
+        return;
+      }
+
+      const attendanceBtn = event.target.closest("button[data-attendance-student]");
       if (attendanceBtn) {
         const studentId = attendanceBtn.dataset.attendanceStudent;
         if (!studentId) return;
@@ -3479,6 +4365,7 @@
         alert(error.message || "Unable to update student status.");
       }
     });
+    el("today-student-grid").addEventListener("change", handleAttendanceStatusChange);
 
     el("today-waiting-only-toggle")?.addEventListener("change", (event) => {
       state.todayGridWaitingOnly = event.target.checked;
@@ -3487,6 +4374,21 @@
 
     el("today-grid-fullscreen-btn")?.addEventListener("click", () => {
       setTodayGridFullscreen(!state.todayGridFullscreen);
+    });
+
+    el("students-search")?.addEventListener("input", (event) => {
+      state.studentSearch = event.target.value;
+      renderStudents();
+    });
+
+    el("families-search")?.addEventListener("input", (event) => {
+      state.familySearch = event.target.value;
+      renderFamilies();
+    });
+
+    el("classes-search")?.addEventListener("input", (event) => {
+      state.classSearch = event.target.value;
+      renderClasses();
     });
 
     document.addEventListener("fullscreenchange", () => {
@@ -3499,6 +4401,10 @@
     });
 
     document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && studentHistoryModalVisible()) {
+        closeStudentHistoryModal();
+        return;
+      }
       if (event.key === "Escape" && state.todayGridFullscreen) {
         setTodayGridFullscreen(false);
       }
@@ -3533,6 +4439,43 @@
     });
 
     el("students-tbody").addEventListener("click", (event) => {
+      const dismissalBtn = event.target.closest("[data-student-dismissal-student]");
+      if (dismissalBtn) {
+        const studentId = dismissalBtn.dataset.studentDismissalStudent;
+        const status = dismissalBtn.dataset.studentDismissalStatus;
+        if (!studentId) return;
+        setStudentDismissalStatus(studentId, status).catch((error) => {
+          alert(error.message || "Unable to update student status.");
+        });
+        return;
+      }
+
+      const repingBtn = event.target.closest("[data-reping-student]");
+      if (repingBtn) {
+        const studentId = repingBtn.dataset.repingStudent;
+        if (!studentId) return;
+        repingTodayStudent(studentId).catch((error) => {
+          alert(error.message || "Unable to recall student.");
+        });
+        return;
+      }
+
+      const attendanceBtn = event.target.closest("button[data-attendance-student]");
+      if (attendanceBtn) {
+        const studentId = attendanceBtn.dataset.attendanceStudent;
+        if (!studentId) return;
+        setStudentAttendanceStatus(studentId, attendanceBtn.dataset.attendanceStatus || null).catch((error) => {
+          alert(error.message || "Unable to update attendance status.");
+        });
+        return;
+      }
+
+      const historyBtn = event.target.closest("[data-student-history]");
+      if (historyBtn) {
+        openStudentHistoryModal(historyBtn.dataset.studentHistory);
+        return;
+      }
+
       const editBtn = event.target.closest("[data-edit-student]");
       if (editBtn) {
         openModal("edit-student", editBtn.dataset.editStudent);
@@ -3544,6 +4487,7 @@
         deleteStudent(deleteBtn.dataset.deleteStudent);
       }
     });
+    el("students-tbody").addEventListener("change", handleAttendanceStatusChange);
 
     el("permissions-tbody").addEventListener("click", (event) => {
       const editBtn = event.target.closest("[data-edit-auth]");

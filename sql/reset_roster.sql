@@ -3,11 +3,14 @@
 
 truncate table
   public.daily_status,
+  public.student_call_events,
+  public.pickup_notification_queue,
   public.pickup_authorization_students,
   public.pickup_authorizations,
   public.pickup_authorization_audit,
   public.carpool_preset_students,
   public.carpool_presets,
+  public.scheduled_pickup_requests,
   public.students,
   public.classes,
   public.families

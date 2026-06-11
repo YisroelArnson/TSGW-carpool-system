@@ -10,6 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700;800&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="../assets/css/styles.css" />
     <style>
       /* ─── Admin page enhancements ──────────────────────────── */
@@ -121,6 +122,18 @@
         border: 1px solid var(--border-light);
       }
       .btn-action.ghost:hover { background: var(--surface-sand); color: var(--text-dark); }
+      .btn-action.danger {
+        background: var(--status-danger);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(176, 42, 55, 0.2);
+      }
+      .btn-action.danger:hover { background: #971f2e; }
+      .btn-action:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
 
       /* ─ Tab bar ─ */
       .tab-bar {
@@ -205,6 +218,26 @@
         font-size: 1.05rem;
         color: var(--text-dark);
       }
+      .table-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      .table-card-tools {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .table-search-count {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        font-weight: 600;
+        font-family: "Open Sans", sans-serif;
+        white-space: nowrap;
+      }
       .recent-attempts-header {
         display: flex;
         align-items: center;
@@ -225,7 +258,9 @@
         font-family: "Open Sans", sans-serif;
         white-space: nowrap;
       }
-      .recent-attempts-search {
+      .recent-attempts-search,
+      .table-search,
+      .grid-sort-select {
         width: min(280px, 100%);
         border: 1.5px solid var(--border-light);
         border-radius: 10px;
@@ -236,7 +271,17 @@
         color: var(--text-dark);
         transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
       }
-      .recent-attempts-search:focus {
+      .grid-sort-select {
+        width: auto;
+        min-width: 150px;
+        cursor: pointer;
+      }
+      .student-grid-search {
+        width: min(230px, 100%);
+      }
+      .recent-attempts-search:focus,
+      .table-search:focus,
+      .grid-sort-select:focus {
         outline: none;
         border-color: var(--brand-maroon);
         box-shadow: 0 0 0 3px rgba(107, 45, 91, 0.1);
@@ -366,6 +411,8 @@
         justify-content: space-between;
         gap: 14px;
         flex-wrap: wrap;
+        position: relative;
+        padding-right: 78px;
       }
 
       .grid-card-title {
@@ -407,19 +454,53 @@
       }
 
       .student-grid-fullscreen-btn {
+        position: absolute;
+        top: 14px;
+        right: 22px;
+        width: 38px;
+        height: 38px;
+        padding: 0;
         border: 1px solid var(--border-light);
-        border-radius: 999px;
+        border-radius: 10px;
         background: var(--surface-white);
-        color: var(--text-dark);
-        font-size: 0.78rem;
-        font-weight: 800;
-        padding: 8px 12px;
+        color: var(--text-muted);
         cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+        z-index: 2;
       }
 
-      .student-grid-fullscreen-btn:hover {
+      .student-grid-fullscreen-btn:hover,
+      .student-grid-fullscreen-btn:focus-visible {
+        outline: none;
+        background: var(--surface-sand);
+        color: var(--text-dark);
         border-color: rgba(107, 45, 91, 0.32);
         box-shadow: 0 6px 14px rgba(107, 45, 91, 0.08);
+      }
+
+      .student-grid-fullscreen-btn svg {
+        width: 19px;
+        height: 19px;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .student-grid-fullscreen-btn .fullscreen-icon-exit {
+        display: none;
+      }
+
+      .student-grid-fullscreen-btn[aria-pressed="true"] .fullscreen-icon-enter {
+        display: none;
+      }
+
+      .student-grid-fullscreen-btn[aria-pressed="true"] .fullscreen-icon-exit {
+        display: block;
       }
 
       body.grid-fullscreen-active {
@@ -457,7 +538,7 @@
 
       .all-students-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
         gap: 12px;
       }
 
@@ -475,7 +556,7 @@
         border-radius: 14px;
         padding: 12px 10px;
         background: var(--surface-white);
-        min-height: 82px;
+        min-height: 118px;
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -616,6 +697,39 @@
         padding-left: 18px;
       }
 
+      .imports-danger-zone {
+        margin-top: 24px;
+        padding-top: 18px;
+        border-top: 1px solid rgba(176, 42, 55, 0.22);
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 14px 18px;
+        align-items: start;
+      }
+
+      .imports-danger-zone h3 {
+        margin: 0 0 6px;
+        font-family: "Open Sans", sans-serif;
+        font-size: 0.92rem;
+        color: var(--status-danger);
+      }
+
+      .imports-danger-zone p {
+        margin: 0;
+      }
+
+      .imports-reset-status {
+        grid-column: 1 / -1;
+        font-size: 0.86rem;
+        font-weight: 600;
+      }
+
+      @media (max-width: 680px) {
+        .imports-danger-zone {
+          grid-template-columns: 1fr;
+        }
+      }
+
       .status.is-toggle {
         cursor: pointer;
         transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
@@ -637,63 +751,106 @@
       }
 
       .attendance-cell {
-        display: grid;
-        gap: 7px;
-        align-items: start;
+        min-width: max-content;
       }
 
-      .attendance-cell-empty {
-        color: var(--text-muted);
-        font-size: 0.78rem;
-        font-weight: 700;
-      }
-
-      .attendance-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-      }
-
-      .attendance-action-btn {
+      .attendance-status-select {
         border: 1px solid var(--border-light);
         border-radius: 999px;
         background: #fff;
         color: var(--text-muted);
-        padding: 5px 9px;
-        font-size: 0.7rem;
+        min-width: 112px;
+        padding: 6px 26px 6px 10px;
+        font-size: 0.68rem;
         font-weight: 800;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.02em;
+        line-height: 1;
         text-transform: uppercase;
         cursor: pointer;
+        white-space: nowrap;
+        font-family: "Open Sans", sans-serif;
       }
 
-      .attendance-action-btn:hover {
+      .attendance-status-select:hover,
+      .attendance-status-select:focus {
+        outline: none;
         border-color: rgba(107, 45, 91, 0.3);
         color: var(--text-dark);
       }
 
-      .attendance-action-btn.active {
-        background: var(--surface-sand);
-        border-color: rgba(107, 45, 91, 0.28);
-        color: var(--brand-maroon);
+      .attendance-status-select.absent {
+        background: #f1e4e7;
+        border-color: rgba(138, 46, 60, 0.28);
+        color: #8a2e3c;
       }
 
-      .attendance-action-btn:disabled {
-        opacity: 0.42;
-        cursor: not-allowed;
+      .attendance-status-select.left-early {
+        background: #efe8d6;
+        border-color: rgba(121, 95, 33, 0.28);
+        color: #795f21;
+      }
+
+      .student-inline-actions {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 6px;
+        flex-wrap: nowrap;
+      }
+
+      .icon-action-btn.checkin {
+        width: 36px;
+        height: 36px;
+        border-radius: 999px;
+      }
+
+      .icon-action-btn.checkin.active {
+        background: #e8f7ea;
+        border-color: rgba(42, 125, 49, 0.32);
+        color: #246628;
+      }
+
+      .icon-action-btn.checkin.active:hover {
+        background: #d9f0dc;
+        border-color: rgba(42, 125, 49, 0.42);
+        color: #1f5b24;
       }
 
       .all-students-card .attendance-badge {
         font-size: 0.62rem;
       }
 
-      .all-students-card .attendance-actions {
+      .all-students-card .attendance-status-select {
+        width: 100%;
+        min-width: 0;
+        padding-top: 5px;
+        padding-bottom: 5px;
+        font-size: 0.62rem;
+      }
+
+      .all-students-card .student-inline-actions {
         justify-content: center;
       }
 
-      .all-students-card .attendance-action-btn {
-        padding: 4px 7px;
-        font-size: 0.62rem;
+      .all-students-card .icon-action-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        flex: 0 0 auto;
+      }
+
+      .all-students-card .icon-action-btn svg {
+        width: 15px;
+        height: 15px;
+      }
+
+      .all-students-grid.is-fitting .student-inline-actions {
+        gap: 4px;
+      }
+
+      .all-students-grid.is-fitting .all-students-card .icon-action-btn {
+        width: min(32px, max(24px, 2.2em));
+        height: min(32px, max(24px, 2.2em));
       }
 
       /* ─ Table overrides ─ */
@@ -1045,6 +1202,36 @@
         flex-wrap: nowrap;
       }
 
+      .student-table-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .student-name-button {
+        appearance: none;
+        border: none;
+        background: transparent;
+        color: var(--text-dark);
+        font: inherit;
+        font-weight: 700;
+        padding: 4px 0;
+        cursor: pointer;
+        text-align: left;
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 4px;
+        text-decoration-color: rgba(107, 45, 91, 0.28);
+      }
+
+      .student-name-button:hover,
+      .student-name-button:focus-visible {
+        color: var(--brand-maroon);
+        text-decoration-color: currentColor;
+        outline: none;
+      }
+
       .icon-action-btn {
         width: 42px;
         height: 42px;
@@ -1104,10 +1291,138 @@
         color: var(--text-muted);
       }
 
+      .student-history-card {
+        width: min(920px, 100%);
+      }
+
+      .student-history-summary {
+        margin: -8px 0 18px;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        font-weight: 600;
+        line-height: 1.4;
+      }
+
+      .student-history-range-controls {
+        display: flex;
+        align-items: end;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+
+      .student-history-range-controls .recall-range-field input {
+        width: 150px;
+      }
+
+      .student-history-stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 16px;
+      }
+
+      .student-history-stat {
+        padding: 12px 14px;
+        border-right: 1px solid var(--border-light);
+        background: var(--surface-ivory);
+        min-width: 0;
+      }
+
+      .student-history-stat:last-child {
+        border-right: none;
+      }
+
+      .student-history-stat-label {
+        display: block;
+        color: var(--text-muted);
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+      }
+
+      .student-history-stat-value {
+        display: block;
+        color: var(--brand-maroon);
+        font-size: 1.25rem;
+        font-weight: 800;
+        line-height: 1.1;
+        overflow-wrap: anywhere;
+      }
+
+      .student-history-message {
+        margin: 0 0 12px;
+        color: var(--brand-maroon);
+        font-size: 0.86rem;
+        font-weight: 700;
+      }
+
+      .student-history-message.error {
+        color: var(--status-danger);
+      }
+
+      .student-history-table-wrap {
+        max-height: min(52vh, 480px);
+      }
+
+      .student-history-table {
+        min-width: 760px;
+      }
+
       .settings-form {
         display: grid;
         gap: 16px;
-        max-width: 780px;
+        max-width: 1120px;
+      }
+
+      .geofence-editor {
+        display: grid;
+        grid-template-columns: minmax(320px, 2fr) minmax(270px, 0.85fr);
+        gap: 18px;
+        align-items: start;
+      }
+
+      .geofence-map-shell {
+        position: relative;
+        min-width: 0;
+        overflow: hidden;
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        background: var(--surface-ivory);
+      }
+
+      .geofence-map {
+        width: 100%;
+        min-height: 340px;
+        height: min(48vh, 460px);
+        background: var(--surface-sand);
+      }
+
+      .geofence-map .leaflet-control-attribution {
+        font-size: 0.66rem;
+      }
+
+      .geofence-map-fallback {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+        text-align: center;
+        color: var(--text-muted);
+        font: 700 0.9rem "Open Sans", sans-serif;
+        background: rgba(248, 246, 243, 0.94);
+      }
+
+      .geofence-control-panel {
+        display: grid;
+        gap: 16px;
+        min-width: 0;
       }
 
       .settings-toggle {
@@ -1130,6 +1445,10 @@
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 14px;
+      }
+
+      .geofence-control-panel .settings-field-grid {
+        grid-template-columns: 1fr;
       }
 
       .settings-form-row {
@@ -1162,6 +1481,26 @@
         border-color: var(--brand-maroon);
         box-shadow: 0 0 0 3px rgba(107, 45, 91, 0.1);
         background: #fff;
+      }
+
+      .settings-radius-control {
+        display: grid;
+        gap: 8px;
+      }
+
+      .settings-form-row input[type="range"].settings-radius-slider {
+        height: 28px;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        accent-color: var(--brand-maroon);
+        cursor: pointer;
+      }
+
+      .settings-form-row input[type="range"].settings-radius-slider:focus {
+        box-shadow: none;
+        background: transparent;
       }
 
       .settings-actions {
@@ -1254,7 +1593,12 @@
         .admin-topbar { flex-direction: column; align-items: flex-start; }
         .kpi-grid { grid-template-columns: repeat(2, 1fr); }
         .recall-table-grid { grid-template-columns: 1fr; }
+        .geofence-editor { grid-template-columns: 1fr; }
+        .geofence-map { min-height: 300px; height: 360px; }
         .settings-field-grid { grid-template-columns: 1fr; }
+        .student-history-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .student-history-stat:nth-child(2n) { border-right: none; }
+        .student-history-stat { border-bottom: 1px solid var(--border-light); }
         .admin-layout { padding: 20px 16px 40px; }
       }
     </style>
@@ -1365,7 +1709,7 @@
                     <th data-sort="status">Type</th>
                     <th>Attendance</th>
                     <th data-sort="source">Checked In By</th>
-                    <th>Action</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="today-attempts-tbody"></tbody>
@@ -1379,11 +1723,45 @@
                 <span id="today-student-grid-count" class="grid-card-count"></span>
               </div>
               <div class="student-grid-actions">
+                <span id="today-student-grid-visible-count" class="table-search-count"></span>
+                <input
+                  id="today-student-grid-search"
+                  class="table-search student-grid-search"
+                  type="search"
+                  placeholder="Search students"
+                  aria-label="Search all students grid"
+                />
+                <select id="today-student-grid-sort" class="grid-sort-select" aria-label="Sort all students grid">
+                  <option value="class">Class order</option>
+                  <option value="name">Name</option>
+                  <option value="family">Family #</option>
+                  <option value="status">Status</option>
+                </select>
                 <label class="student-grid-toggle" for="today-waiting-only-toggle">
                   <input id="today-waiting-only-toggle" type="checkbox" />
                   Waiting only
                 </label>
-                <button id="today-grid-fullscreen-btn" class="student-grid-fullscreen-btn" type="button" aria-pressed="false">Full Screen</button>
+                <button
+                  id="today-grid-fullscreen-btn"
+                  class="student-grid-fullscreen-btn"
+                  type="button"
+                  aria-pressed="false"
+                  aria-label="Enter full screen"
+                  title="Enter full screen"
+                >
+                  <svg class="fullscreen-icon-enter" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M15 3h6v6"></path>
+                    <path d="M21 3l-7 7"></path>
+                    <path d="M9 21H3v-6"></path>
+                    <path d="M3 21l7-7"></path>
+                  </svg>
+                  <svg class="fullscreen-icon-exit" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M10 3v6H4"></path>
+                    <path d="M10 9L3 2"></path>
+                    <path d="M14 21v-6h6"></path>
+                    <path d="M14 15l7 7"></path>
+                  </svg>
+                </button>
               </div>
             </div>
             <div class="content-card-body">
@@ -1537,8 +1915,18 @@
 
         <!-- ── Students tab ───────────────────────────────────── -->
         <section id="tab-students" class="content-card hidden" data-tab-panel="students">
-          <div class="content-card-header">
+          <div class="content-card-header table-card-header">
             <h2>Students</h2>
+            <div class="table-card-tools">
+              <span id="students-visible-count" class="table-search-count"></span>
+              <input
+                id="students-search"
+                class="table-search"
+                type="search"
+                placeholder="Search students"
+                aria-label="Search students table"
+              />
+            </div>
           </div>
           <div class="table-wrap">
             <table id="students-table">
@@ -1548,6 +1936,8 @@
                   <th data-sort="class">Class</th>
                   <th data-sort="family">Family</th>
                   <th data-sort="carpool">Family #</th>
+                  <th data-sort="status">Dismissal</th>
+                  <th data-sort="attendance">Attendance</th>
                   <th data-sort="audio">Audio</th>
                   <th>Actions</th>
                 </tr>
@@ -1559,8 +1949,18 @@
 
         <!-- ── Families tab ───────────────────────────────────── -->
         <section id="tab-families" class="content-card hidden" data-tab-panel="families">
-          <div class="content-card-header">
+          <div class="content-card-header table-card-header">
             <h2>Families</h2>
+            <div class="table-card-tools">
+              <span id="families-visible-count" class="table-search-count"></span>
+              <input
+                id="families-search"
+                class="table-search"
+                type="search"
+                placeholder="Search families"
+                aria-label="Search families table"
+              />
+            </div>
           </div>
           <div class="table-wrap">
             <table id="families-table">
@@ -1581,8 +1981,18 @@
 
         <!-- ── Classes tab ────────────────────────────────────── -->
         <section id="tab-classes" class="content-card hidden" data-tab-panel="classes">
-          <div class="content-card-header">
+          <div class="content-card-header table-card-header">
             <h2>Classes</h2>
+            <div class="table-card-tools">
+              <span id="classes-visible-count" class="table-search-count"></span>
+              <input
+                id="classes-search"
+                class="table-search"
+                type="search"
+                placeholder="Search classes"
+                aria-label="Search classes table"
+              />
+            </div>
           </div>
           <div class="table-wrap">
             <table id="classes-table">
@@ -1603,7 +2013,7 @@
         <!-- ── Imports tab ────────────────────────────────────── -->
         <section id="tab-imports" class="content-card hidden" data-tab-panel="imports">
           <div class="content-card-header">
-            <h2>Imports &amp; Review</h2>
+            <h2>Imports &amp; Logs</h2>
           </div>
           <div class="content-card-body">
             <div id="imports-status" class="muted">No import run in this session.</div>
@@ -1648,6 +2058,14 @@
                 </table>
               </div>
             </div>
+            <div class="imports-danger-zone" aria-labelledby="imports-reset-heading">
+              <div>
+                <h3 id="imports-reset-heading">Reset Roster Data</h3>
+                <p class="muted">Deletes all classes, families, students, and check-ins. Related pickup permissions, saved carpools, scheduled pickups, and call logs are cleared too.</p>
+              </div>
+              <button id="imports-reset-data-btn" class="btn-action danger" type="button">Reset Data</button>
+              <p id="imports-reset-status" class="imports-reset-status muted" role="status"></p>
+            </div>
           </div>
         </section>
 
@@ -1658,30 +2076,41 @@
           </div>
           <div class="content-card-body">
             <form id="geofence-settings-form" class="settings-form">
-              <label class="settings-toggle" for="geofence-enabled">
-                <input id="geofence-enabled" type="checkbox" />
-                <span>Enable auto call near school</span>
-              </label>
-              <div class="settings-field-grid">
-                <div class="settings-form-row">
-                  <label for="geofence-latitude">School Latitude</label>
-                  <input id="geofence-latitude" type="number" inputmode="decimal" min="-90" max="90" step="0.000001" placeholder="39.000000" />
+              <div class="geofence-editor">
+                <div class="geofence-map-shell">
+                  <div id="geofence-map" class="geofence-map" aria-label="Pickup location map"></div>
+                  <div id="geofence-map-fallback" class="geofence-map-fallback hidden"></div>
                 </div>
-                <div class="settings-form-row">
-                  <label for="geofence-longitude">School Longitude</label>
-                  <input id="geofence-longitude" type="number" inputmode="decimal" min="-180" max="180" step="0.000001" placeholder="-77.000000" />
-                </div>
-                <div class="settings-form-row">
-                  <label for="geofence-radius-miles">Call Radius (Miles)</label>
-                  <input id="geofence-radius-miles" type="number" inputmode="decimal" min="0.05" max="3" step="0.05" placeholder="0.25" />
+                <div class="geofence-control-panel">
+                  <label class="settings-toggle" for="geofence-enabled">
+                    <input id="geofence-enabled" type="checkbox" />
+                    <span>Enable auto call near school</span>
+                  </label>
+                  <div class="settings-field-grid">
+                    <div class="settings-form-row">
+                      <label for="geofence-latitude">School Latitude</label>
+                      <input id="geofence-latitude" type="number" inputmode="decimal" min="-90" max="90" step="0.000001" placeholder="39.000000" />
+                    </div>
+                    <div class="settings-form-row">
+                      <label for="geofence-longitude">School Longitude</label>
+                      <input id="geofence-longitude" type="number" inputmode="decimal" min="-180" max="180" step="0.000001" placeholder="-77.000000" />
+                    </div>
+                    <div class="settings-form-row">
+                      <label for="geofence-radius-miles">Call Radius (Miles)</label>
+                      <div class="settings-radius-control">
+                        <input id="geofence-radius-miles" type="number" inputmode="decimal" min="0.05" max="3" step="0.05" placeholder="0.25" />
+                        <input id="geofence-radius-slider" class="settings-radius-slider" type="range" min="0.05" max="3" step="0.05" aria-label="Call radius in miles" />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="settings-actions">
+                    <button id="geofence-save-btn" class="btn-action maroon" type="submit">Save Location</button>
+                    <button id="geofence-use-current-btn" class="btn-action ghost" type="button">Use Current Location</button>
+                  </div>
+                  <p id="geofence-settings-message" class="settings-message hidden"></p>
+                  <p id="geofence-settings-summary" class="settings-summary"></p>
                 </div>
               </div>
-              <div class="settings-actions">
-                <button id="geofence-save-btn" class="btn-action maroon" type="submit">Save Location</button>
-                <button id="geofence-use-current-btn" class="btn-action ghost" type="button">Use Current Location</button>
-              </div>
-              <p id="geofence-settings-message" class="settings-message hidden"></p>
-              <p id="geofence-settings-summary" class="settings-summary"></p>
             </form>
           </div>
         </section>
@@ -1707,11 +2136,68 @@
       </div>
     </div>
 
+    <div id="student-history-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="student-history-title">
+      <div class="modal-card student-history-card">
+        <div class="modal-title-row">
+          <h2 id="student-history-title">Student Call History</h2>
+          <button id="student-history-modal-close" class="btn-action ghost" type="button">✕</button>
+        </div>
+        <div id="student-history-summary" class="student-history-summary"></div>
+        <form id="student-history-range-form" class="student-history-range-controls">
+          <span class="recall-range-field">
+            <label for="student-history-start-date">Start</label>
+            <input id="student-history-start-date" type="date" />
+          </span>
+          <span class="recall-range-field">
+            <label for="student-history-end-date">End</label>
+            <input id="student-history-end-date" type="date" />
+          </span>
+          <button id="student-history-apply-btn" class="btn-action maroon" type="submit">Apply</button>
+          <button id="student-history-last-30-btn" class="btn-action ghost" type="button">Last 30 Days</button>
+        </form>
+        <p id="student-history-message" class="student-history-message hidden"></p>
+        <div class="student-history-stats">
+          <div class="student-history-stat">
+            <span class="student-history-stat-label">Attempts</span>
+            <span id="student-history-total-count" class="student-history-stat-value">0</span>
+          </div>
+          <div class="student-history-stat">
+            <span class="student-history-stat-label">Initial</span>
+            <span id="student-history-initial-count" class="student-history-stat-value">0</span>
+          </div>
+          <div class="student-history-stat">
+            <span class="student-history-stat-label">Recalls</span>
+            <span id="student-history-recall-count" class="student-history-stat-value">0</span>
+          </div>
+          <div class="student-history-stat">
+            <span class="student-history-stat-label">Last Attempt</span>
+            <span id="student-history-last-at" class="student-history-stat-value">-</span>
+          </div>
+        </div>
+        <div class="table-wrap student-history-table-wrap">
+          <table class="student-history-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Type</th>
+                <th>Checked In By</th>
+                <th>Pickup Family</th>
+                <th>Previous Attempt</th>
+              </tr>
+            </thead>
+            <tbody id="student-history-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="../assets/js/config.js"></script>
     <script src="../assets/js/supabase-client.js"></script>
     <script src="../assets/js/utils.js?v=attendance-markers-20260529"></script>
-    <script src="../assets/js/admin.js?v=attendance-markers-20260529"></script>
+    <script src="../assets/js/admin.js?v=student-call-history-20260611"></script>
   </body>
 </html>
