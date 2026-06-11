@@ -1149,7 +1149,7 @@ begin
 end;
 $$;
 
-create or replace function public.get_parent_checkin_context(p_carpool_number integer)
+create or replace function public.get_checkin_context_for_carpool(p_carpool_number integer)
 returns jsonb
 language plpgsql
 security definer
@@ -3532,7 +3532,7 @@ grant execute on function public.normalize_carpool_preset_weekdays(text[]) to an
 grant execute on function public.allowed_students_for_family(uuid, date) to authenticated;
 grant execute on function public.active_authorized_students_for_receiver(uuid, date) to authenticated;
 grant execute on function public.prune_invalid_carpool_preset_students(uuid, date) to authenticated;
-grant execute on function public.get_parent_checkin_context(integer) to anon, authenticated;
+grant execute on function public.get_checkin_context_for_carpool(integer) to anon, authenticated;
 grant execute on function public.submit_check_in_request(integer, jsonb, text, text) to anon, authenticated;
 grant execute on function public.cancel_parent_check_in_request(integer, uuid[]) to anon, authenticated;
 grant execute on function public.get_pending_scheduled_pickup_request(integer) to anon, authenticated;
@@ -3855,7 +3855,7 @@ security definer
 set search_path = public
 as $$
 begin
-  return public.get_parent_checkin_context(public.require_current_parent_carpool_number());
+  return public.get_checkin_context_for_carpool(public.require_current_parent_carpool_number());
 end;
 $$;
 
@@ -3871,7 +3871,7 @@ begin
     raise exception 'Staff authentication required';
   end if;
 
-  return public.get_parent_checkin_context(p_carpool_number);
+  return public.get_checkin_context_for_carpool(p_carpool_number);
 end;
 $$;
 
@@ -4143,7 +4143,7 @@ revoke execute on function public.allowed_students_for_family(uuid, date) from p
 revoke execute on function public.active_authorized_students_for_receiver(uuid, date) from public, anon, authenticated;
 revoke execute on function public.prune_invalid_carpool_preset_students(uuid, date) from public, anon, authenticated;
 
-revoke execute on function public.get_parent_checkin_context(integer) from public, anon, authenticated;
+revoke execute on function public.get_checkin_context_for_carpool(integer) from public, anon, authenticated;
 revoke execute on function public.submit_check_in_request(integer, jsonb, text, text) from public, anon, authenticated;
 revoke execute on function public.cancel_parent_check_in_request(integer, uuid[]) from public, anon, authenticated;
 revoke execute on function public.get_pending_scheduled_pickup_request(integer) from public, anon, authenticated;
