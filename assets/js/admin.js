@@ -13,7 +13,8 @@
     attendanceStatusLabel,
     CARPOOL_WEEKDAYS,
     normalizeWeekdays,
-    formatWeekdays
+    formatWeekdays,
+    normalizeClassroomUsername
   } = window.carpoolUtils || {};
   if (!mustClient) return;
 
@@ -174,6 +175,8 @@
       blob: null,
       mimeType: "",
       objectUrl: "",
+      signedUrl: "",
+      signedPath: "",
       existingPath: "",
       existingMimeType: "",
       deleteRequested: false,
@@ -291,6 +294,109 @@
     });
     if (error) throw error;
     return normalizeGeofenceSettings(data);
+  }
+
+  function setLoginAccessMessage(message, klass) {
+    const node = el("login-access-message");
+    if (!node) return;
+    node.className = `settings-message${klass ? ` ${klass}` : ""}`;
+    node.textContent = message || "";
+    show("login-access-message", Boolean(message));
+  }
+
+  async function invokeLoginAccess(body) {
+    const client = mustClient();
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    if (sessionError) throw sessionError;
+    const token = sessionData?.session?.access_token;
+    if (!token) throw new Error("Admin session required.");
+
+    const { data, error } = await client.functions.invoke("manage-login-access", {
+      body,
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }
+
+  async function syncParentLogins(event) {
+    event.preventDefault();
+    const password = el("parent-shared-password").value;
+    const confirm = el("parent-shared-password-confirm").value;
+    const button = el("parent-login-sync-btn");
+
+    if (!password || password.length < 6) {
+      setLoginAccessMessage("Parent password must be at least 6 characters.", "error");
+      return;
+    }
+    if (password !== confirm) {
+      setLoginAccessMessage("Parent password confirmation does not match.", "error");
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = "Applying...";
+    setLoginAccessMessage("Creating and updating parent logins...", "pending");
+    try {
+      const result = await invokeLoginAccess({
+        action: "sync-parent-logins",
+        parentPassword: password
+      });
+      const failed = Number(result.failed || 0);
+      const message = failed
+        ? `Updated parent logins with ${failed} failure${failed === 1 ? "" : "s"}.`
+        : `Parent logins ready: ${Number(result.created || 0)} created, ${Number(result.updated || 0)} updated.`;
+      setLoginAccessMessage(message, failed ? "error" : "success");
+      if (!failed) {
+        el("parent-shared-password").value = "";
+        el("parent-shared-password-confirm").value = "";
+      }
+    } catch (error) {
+      setLoginAccessMessage(error.message || "Unable to update parent logins.", "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Apply Parent Password";
+    }
+  }
+
+  async function saveClassroomLogin(event) {
+    event.preventDefault();
+    const username = normalizeClassroomUsername
+      ? normalizeClassroomUsername(el("classroom-login-username").value)
+      : String(el("classroom-login-username").value || "").trim().toLowerCase();
+    const password = el("classroom-login-password").value;
+    const button = el("classroom-login-save-btn");
+
+    if (!username) {
+      setLoginAccessMessage("Classroom username is required.", "error");
+      return;
+    }
+    if (!password || password.length < 6) {
+      setLoginAccessMessage("Classroom password must be at least 6 characters.", "error");
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = "Saving...";
+    setLoginAccessMessage("Saving classroom login...", "pending");
+    try {
+      const result = await invokeLoginAccess({
+        action: "set-classroom-login",
+        classroomUsername: username,
+        classroomPassword: password
+      });
+      el("classroom-login-username").value = result.username || username;
+      el("classroom-login-password").value = "";
+      setLoginAccessMessage("Classroom login saved.", "success");
+    } catch (error) {
+      setLoginAccessMessage(error.message || "Unable to save classroom login.", "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Save Classroom Login";
+    }
   }
 
   function checkInSourceLabel(record) {
@@ -503,10 +609,11 @@
     return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
   }
 
-  function studentAudioPublicUrl(path) {
+  async function studentAudioSignedUrl(path) {
     if (!path) return "";
-    const { data } = mustClient().storage.from(STUDENT_AUDIO_BUCKET).getPublicUrl(path);
-    return data?.publicUrl || "";
+    const { data, error } = await mustClient().storage.from(STUDENT_AUDIO_BUCKET).createSignedUrl(path, 3600);
+    if (error) throw error;
+    return data?.signedUrl || "";
   }
 
   function revokeStudentAudioObjectUrl() {
@@ -571,7 +678,11 @@
     const supportsRecording = Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
     const hasPendingRecording = Boolean(audio?.blob);
     const hasSavedRecording = Boolean(audio?.existingPath && !audio.deleteRequested);
-    const previewUrl = hasPendingRecording ? audio.objectUrl : hasSavedRecording ? studentAudioPublicUrl(audio.existingPath) : "";
+    const previewUrl = hasPendingRecording
+      ? audio.objectUrl
+      : hasSavedRecording && audio.signedPath === audio.existingPath
+        ? audio.signedUrl
+        : "";
 
     if (recordBtn) {
       recordBtn.disabled = Boolean(audio?.isRecording) || !supportsRecording;
@@ -604,7 +715,7 @@
     } else if (audio?.deleteRequested) {
       setStudentAudioStatus("Recording will be removed when you save.", "warning");
     } else if (hasSavedRecording) {
-      setStudentAudioStatus("Recording saved for classroom calls.", "success");
+      setStudentAudioStatus(previewUrl ? "Recording saved for classroom calls." : "Recording saved. Loading preview...", "success");
     } else {
       setStudentAudioStatus("No recording saved. Classroom will use the spoken-name fallback.", "");
     }
@@ -713,6 +824,21 @@
     el("modal-student-audio-stop")?.addEventListener("click", stopStudentAudioRecording);
     el("modal-student-audio-delete")?.addEventListener("click", requestStudentAudioDelete);
     refreshStudentAudioUi();
+    refreshSavedStudentAudioPreview();
+  }
+
+  async function refreshSavedStudentAudioPreview() {
+    const audio = state.modal.audio;
+    const path = audio?.existingPath || "";
+    if (!path || audio.deleteRequested) return;
+
+    try {
+      audio.signedUrl = await studentAudioSignedUrl(path);
+      audio.signedPath = path;
+      refreshStudentAudioUi();
+    } catch (error) {
+      console.warn("Unable to sign student audio preview", error);
+    }
   }
 
   async function uploadStudentAudio(client, studentId, blob, mimeType) {
@@ -4202,6 +4328,8 @@
     el("imports-cancel-btn").addEventListener("click", clearImportPreviewRows);
     el("imports-confirm-btn").addEventListener("click", confirmImportPreview);
     el("imports-reset-data-btn")?.addEventListener("click", resetRosterData);
+    el("parent-login-access-form")?.addEventListener("submit", syncParentLogins);
+    el("classroom-login-access-form")?.addEventListener("submit", saveClassroomLogin);
     el("geofence-settings-form").addEventListener("submit", saveGeofenceSettings);
     el("geofence-use-current-btn").addEventListener("click", useCurrentLocationForGeofence);
     ["geofence-enabled", "geofence-latitude", "geofence-longitude", "geofence-radius-miles", "geofence-radius-slider"].forEach((id) => {

@@ -6,7 +6,8 @@
     familyDisplayName,
     CARPOOL_WEEKDAYS,
     normalizeWeekdays,
-    formatWeekdays
+    formatWeekdays,
+    requireAuth
   } = window.carpoolUtils || {};
   if (!mustClient) return;
 
@@ -67,20 +68,16 @@
     return (authorizations || []).filter((auth) => !auth.is_revoked);
   }
 
-  async function getCheckinContext(number) {
+  async function getCheckinContext() {
     const client = mustClient();
-    const { data, error } = await client.rpc("get_parent_checkin_context", {
-      p_carpool_number: Number(number)
-    });
+    const { data, error } = await client.rpc("get_parent_checkin_context");
     if (error) throw error;
     return data;
   }
 
-  async function getFamilyAuthorizations(number) {
+  async function getFamilyAuthorizations() {
     const client = mustClient();
-    const { data, error } = await client.rpc("get_family_authorizations", {
-      p_carpool_number: Number(number)
-    });
+    const { data, error } = await client.rpc("get_family_authorizations");
     if (error) throw error;
     return data || [];
   }
@@ -88,7 +85,6 @@
   async function searchReceivingFamilies(query) {
     const client = mustClient();
     const { data, error } = await client.rpc("search_receiving_families", {
-      p_granting_carpool_number: Number(state.number),
       p_query: query
     });
     if (error) throw error;
@@ -97,23 +93,22 @@
 
   async function createAuthorization(payload) {
     const client = mustClient();
-    const { data, error } = await client.rpc("create_pickup_authorization_for_family", payload);
+    const { data, error } = await client.rpc("create_parent_pickup_authorization", payload);
     if (error) throw error;
     return data;
   }
 
   async function updateAuthorization(payload) {
     const client = mustClient();
-    const { data, error } = await client.rpc("update_pickup_authorization", payload);
+    const { data, error } = await client.rpc("update_parent_pickup_authorization", payload);
     if (error) throw error;
     return data;
   }
 
   async function revokeAuthorization(authId) {
     const client = mustClient();
-    const { data, error } = await client.rpc("revoke_pickup_authorization", {
-      p_authorization_id: authId,
-      p_granting_carpool_number: Number(state.number)
+    const { data, error } = await client.rpc("revoke_parent_pickup_authorization", {
+      p_authorization_id: authId
     });
     if (error) throw error;
     return data;
@@ -121,23 +116,22 @@
 
   async function createPreset(payload) {
     const client = mustClient();
-    const { data, error } = await client.rpc("create_carpool_preset", payload);
+    const { data, error } = await client.rpc("create_parent_carpool_preset", payload);
     if (error) throw error;
     return data;
   }
 
   async function updatePreset(payload) {
     const client = mustClient();
-    const { data, error } = await client.rpc("update_carpool_preset", payload);
+    const { data, error } = await client.rpc("update_parent_carpool_preset", payload);
     if (error) throw error;
     return data;
   }
 
   async function deletePreset(presetId) {
     const client = mustClient();
-    const { data, error } = await client.rpc("delete_carpool_preset", {
-      p_preset_id: presetId,
-      p_owner_carpool_number: Number(state.number)
+    const { data, error } = await client.rpc("delete_parent_carpool_preset", {
+      p_preset_id: presetId
     });
     if (error) throw error;
     return data;
@@ -491,7 +485,6 @@
     }
 
     const payload = {
-      p_granting_carpool_number: Number(state.number),
       p_student_ids: Array.from(state.manageSelection),
       p_starts_on: startDate,
       p_ends_on: endDate
@@ -662,7 +655,6 @@
     }
 
     const payload = {
-      p_owner_carpool_number: Number(state.number),
       p_name: name,
       p_student_ids: Array.from(state.presetSelection),
       p_weekdays: normalizeWeekdays(Array.from(state.presetWeekdays))
@@ -687,8 +679,9 @@
   }
 
   async function refreshState() {
-    state.context = await getCheckinContext(state.number);
-    state.authorizations = visibleAuthorizations(await getFamilyAuthorizations(state.number));
+    state.context = await getCheckinContext();
+    state.number = Number(state.context?.requesting_family?.carpool_number || 0) || null;
+    state.authorizations = visibleAuthorizations(await getFamilyAuthorizations());
     syncHeader();
     renderAuthorizedPickups();
     renderAuthorizationList();
@@ -698,7 +691,8 @@
     renderPresetPicker();
   }
 
-  function clearSession() {
+  async function clearSession() {
+    await mustClient().auth.signOut().catch(() => {});
     localStorage.removeItem(STORAGE_KEY);
     window.location.href = "../";
   }
@@ -709,13 +703,12 @@
       return;
     }
 
-    const cached = localStorage.getItem(STORAGE_KEY);
-    if (!cached) {
+    localStorage.removeItem(STORAGE_KEY);
+    const auth = requireAuth ? await requireAuth("parent").catch(() => ({ ok: false })) : { ok: false };
+    if (!auth.ok) {
       window.location.href = "../";
       return;
     }
-
-    state.number = Number(cached);
 
     try {
       await refreshState();

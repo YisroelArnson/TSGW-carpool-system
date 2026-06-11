@@ -6,6 +6,30 @@
     return window.carpoolClient;
   }
 
+  function authEmailDomain() {
+    return (window.CARPOOL_CONFIG && window.CARPOOL_CONFIG.authEmailDomain) || "auth.tsgw-carpool.local";
+  }
+
+  function authEmailForParentNumber(number) {
+    const normalized = String(number || "").trim();
+    if (!/^\d+$/.test(normalized)) return "";
+    return `parent-${normalized}@${authEmailDomain()}`.toLowerCase();
+  }
+
+  function normalizeClassroomUsername(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9._-]/g, "")
+      .replace(/^[._-]+|[._-]+$/g, "");
+  }
+
+  function authEmailForClassroomUsername(username) {
+    const normalized = normalizeClassroomUsername(username);
+    return normalized ? `classroom-${normalized}@${authEmailDomain()}`.toLowerCase() : "";
+  }
+
   function schoolTodayISO() {
     const tz = (window.CARPOOL_CONFIG && window.CARPOOL_CONFIG.schoolTimezone) || "America/New_York";
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -209,12 +233,13 @@
 
     const { data: profile, error: profileError } = await client
       .from("app_users")
-      .select("role")
+      .select("role,family_id")
       .eq("id", session.user.id)
       .maybeSingle();
 
     if (profileError) throw profileError;
-    if (!profile || (profile.role !== role && profile.role !== "admin")) {
+    const adminCanBypass = role !== "parent" && profile.role === "admin";
+    if (!profile || (profile.role !== role && !adminCanBypass)) {
       return { ok: false, reason: "insufficient_role", session };
     }
 
@@ -223,6 +248,9 @@
 
   window.carpoolUtils = {
     mustClient,
+    authEmailForParentNumber,
+    normalizeClassroomUsername,
+    authEmailForClassroomUsername,
     schoolTodayISO,
     fetchSchoolToday,
     setText,

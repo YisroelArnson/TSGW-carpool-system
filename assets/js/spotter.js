@@ -460,7 +460,7 @@
 
   async function getCheckinContext(number) {
     const client = mustClient();
-    const { data, error } = await client.rpc("get_parent_checkin_context", {
+    const { data, error } = await client.rpc("staff_get_parent_checkin_context", {
       p_carpool_number: Number(number)
     });
     if (error) throw error;
@@ -470,10 +470,9 @@
   async function submitCheckInRequest(number, targets) {
     const client = mustClient();
     const checkedInBy = await currentActorLabel(client, "Spotter");
-    const { data, error } = await client.rpc("submit_check_in_request", {
+    const { data, error } = await client.rpc("staff_submit_check_in_request", {
       p_requesting_carpool_number: Number(number),
       p_targets: targets,
-      p_called_by: "spotter",
       p_checked_in_by: checkedInBy
     });
     if (error) throw error;

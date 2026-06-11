@@ -1,5 +1,14 @@
 (function classroomPage() {
-  const { mustClient, schoolTodayISO, fetchSchoolToday, show, escapeHtml, attendanceBadgeHtml } = window.carpoolUtils || {};
+  const {
+    mustClient,
+    schoolTodayISO,
+    fetchSchoolToday,
+    show,
+    escapeHtml,
+    attendanceBadgeHtml,
+    authEmailForClassroomUsername,
+    requireAuth
+  } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const ALERT_VISIBLE_MS = 3000;
@@ -48,6 +57,16 @@
   function showError(message) {
     el("classroom-error-text").textContent = message;
     show("classroom-error", true);
+  }
+
+  function showLogin(message) {
+    show("classroom-login-section", true);
+    show("hub-view", false);
+    show("display-view", false);
+    if (message) {
+      el("classroom-login-error").textContent = message;
+      show("classroom-login-error", true);
+    }
   }
 
   function updateAudioUi(messageOverride) {
@@ -602,10 +621,11 @@
     window.speechSynthesis.speak(utterance);
   }
 
-  function studentAudioPublicUrl(path) {
+  async function studentAudioSignedUrl(path) {
     if (!path) return "";
-    const { data } = mustClient().storage.from(STUDENT_AUDIO_BUCKET).getPublicUrl(path);
-    return data?.publicUrl || "";
+    const { data, error } = await mustClient().storage.from(STUDENT_AUDIO_BUCKET).createSignedUrl(path, 3600);
+    if (error) throw error;
+    return data?.signedUrl || "";
   }
 
   function stopActiveStudentAudio() {
@@ -666,11 +686,10 @@
   }
 
   async function playStudentRecording(student) {
-    await refreshStudentAudioMetadata(student);
-    const url = studentAudioPublicUrl(student?.call_audio_path);
-    if (!url) return false;
-
     try {
+      await refreshStudentAudioMetadata(student);
+      const url = await studentAudioSignedUrl(student?.call_audio_path);
+      if (!url) return false;
       await playAudioUrl(url);
       return true;
     } catch (error) {
@@ -982,6 +1001,33 @@
   }
 
   function bindUi() {
+    el("classroom-login-btn")?.addEventListener("click", async () => {
+      show("classroom-login-error", false);
+      const username = el("classroom-username")?.value || "";
+      const password = el("classroom-password")?.value || "";
+      const email = authEmailForClassroomUsername ? authEmailForClassroomUsername(username) : "";
+      if (!email || !password) {
+        showLogin("Enter the classroom username and password.");
+        return;
+      }
+
+      const { error } = await mustClient().auth.signInWithPassword({ email, password });
+      if (error) {
+        showLogin("Invalid classroom username or password.");
+        return;
+      }
+
+      window.location.reload();
+    });
+
+    ["classroom-username", "classroom-password"].forEach((id) => {
+      el(id)?.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        el("classroom-login-btn")?.click();
+      });
+    });
+
     el("hub-grid")?.addEventListener("click", (event) => {
       const openBtn = event.target.closest("[data-open-class]");
       if (openBtn) {
@@ -1062,6 +1108,13 @@
     bindAudioUnlock();
 
     try {
+      const auth = requireAuth ? await requireAuth("classroom") : { ok: false };
+      if (!auth.ok) {
+        showLogin();
+        return;
+      }
+
+      show("classroom-login-section", false);
       state.today = await fetchSchoolToday();
       await fetchBase();
 

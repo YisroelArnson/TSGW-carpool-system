@@ -837,10 +837,64 @@
           align-items: flex-start;
         }
 
-        .display-alert-modal {
-          width: 100%;
-          padding: 28px 22px;
-        }
+      .display-alert-modal {
+        width: 100%;
+        padding: 28px 22px;
+      }
+      }
+
+      #classroom-login-section {
+        min-height: calc(100vh - 160px);
+        display: grid;
+        place-items: center;
+      }
+
+      .classroom-login-card {
+        width: min(420px, calc(100vw - 32px));
+        background: var(--surface-white);
+        border: 1px solid var(--border-light);
+        border-radius: 18px;
+        box-shadow:
+          0 1px 2px rgba(107, 45, 91, 0.06),
+          0 12px 34px rgba(0, 0, 0, 0.08);
+        padding: 28px 24px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .classroom-login-card h1 {
+        margin: 0;
+        font-family: "Playfair Display", Georgia, serif;
+        color: var(--text-dark);
+      }
+
+      .classroom-login-field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .classroom-login-field label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        font-family: "Open Sans", sans-serif;
+      }
+
+      .classroom-login-field input {
+        border: 1.5px solid var(--border-light);
+        border-radius: 10px;
+        padding: 12px 14px;
+        font: 700 1rem "Open Sans", sans-serif;
+        background: var(--surface-ivory);
+      }
+
+      .classroom-login-field input:focus {
+        outline: none;
+        border-color: var(--brand-maroon);
+        box-shadow: 0 0 0 3px rgba(107, 45, 91, 0.1);
+        background: #fff;
       }
     </style>
   </head>
@@ -858,6 +912,22 @@
     <main class="page stack">
       <section id="config-warning" class="card hidden">
         <p class="error">Supabase is not configured. Update <code>/assets/js/config.js</code>.</p>
+      </section>
+
+      <section id="classroom-login-section" class="hidden">
+        <div class="classroom-login-card">
+          <h1>Classroom Sign In</h1>
+          <div class="classroom-login-field">
+            <label for="classroom-username">Username</label>
+            <input id="classroom-username" type="text" autocomplete="username" value="classroom" />
+          </div>
+          <div class="classroom-login-field">
+            <label for="classroom-password">Password</label>
+            <input id="classroom-password" type="password" autocomplete="current-password" />
+          </div>
+          <button id="classroom-login-btn" class="btn btn-primary" type="button">Sign In</button>
+          <p id="classroom-login-error" class="error hidden"></p>
+        </div>
       </section>
 
       <!-- ── Hub view ──────────────────────────────────────── -->
@@ -947,7 +1017,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../assets/js/config.js"></script>
     <script src="../assets/js/supabase-client.js"></script>
-    <script src="../assets/js/utils.js?v=attendance-markers-20260529"></script>
-    <script src="../assets/js/classroom.js?v=attendance-markers-20260529"></script>
+    <script src="../assets/js/utils.js?v=password-gated-auth-20260611"></script>
+    <script src="../assets/js/classroom.js?v=password-gated-auth-20260611"></script>
   </body>
 </html>

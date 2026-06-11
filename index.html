@@ -340,7 +340,8 @@
         line-height: 1.55;
       }
 
-      #carpool-number {
+      #carpool-number,
+      #carpool-password {
         width: 100%;
         border: 2px solid var(--border-light);
         border-radius: 14px;
@@ -358,20 +359,29 @@
         display: block;
       }
 
+      #carpool-password {
+        font-family: "Open Sans", sans-serif;
+        font-size: 1.2rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
       #carpool-number::-webkit-outer-spin-button,
       #carpool-number::-webkit-inner-spin-button {
         -webkit-appearance: none;
         margin: 0;
       }
 
-      #carpool-number:focus {
+      #carpool-number:focus,
+      #carpool-password:focus {
         outline: none;
         border-color: var(--brand-maroon);
         box-shadow: 0 0 0 4px rgba(107, 45, 91, 0.1);
         background: #fff;
       }
 
-      #carpool-number::placeholder {
+      #carpool-number::placeholder,
+      #carpool-password::placeholder {
         font-family: "Open Sans", sans-serif;
         font-size: 1rem;
         font-weight: 400;
@@ -1905,12 +1915,14 @@
         <section id="number-section" class="c-body">
           <div class="number-intro">
             <span class="input-eyebrow">Parent Pickup</span>
-            <h1>What is your Family Number?</h1>
-            <p>Enter your family number and click continue to log in. Then choose the child or children you're picking up.</p>
+            <h1>Parent Sign In</h1>
+            <p>Enter your family number and password. Then choose the child or children you're picking up.</p>
           </div>
           <label class="input-eyebrow" for="carpool-number">Family Number</label>
           <input id="carpool-number" type="number" inputmode="numeric" placeholder="e.g. 101" />
-          <button id="find-family" class="btn-w btn-maroon">Continue</button>
+          <label class="input-eyebrow" for="carpool-password">Password</label>
+          <input id="carpool-password" type="password" autocomplete="current-password" placeholder="Password" />
+          <button id="find-family" class="btn-w btn-maroon">Sign In</button>
           <p id="number-error" class="field-error hidden"></p>
         </section>
 
@@ -2066,8 +2078,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="assets/js/config.js"></script>
     <script src="assets/js/supabase-client.js"></script>
-    <script src="assets/js/utils.js?v=attendance-markers-20260529"></script>
-    <script src="assets/js/parent.js?v=auto-call-distance-20260603"></script>
+    <script src="assets/js/utils.js?v=password-gated-auth-20260611"></script>
+    <script src="assets/js/parent.js?v=password-gated-auth-20260611"></script>
     <script>
       // Fallback: if no parent state is visible after load, restore the number entry card.
       (function () {

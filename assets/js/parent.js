@@ -1,5 +1,15 @@
 (function parentPage() {
-  const { mustClient, show, escapeHtml, familyDisplayName, formatWeekdays, fetchSchoolToday, attendanceBadgeHtml } = window.carpoolUtils || {};
+  const {
+    mustClient,
+    show,
+    escapeHtml,
+    familyDisplayName,
+    formatWeekdays,
+    fetchSchoolToday,
+    attendanceBadgeHtml,
+    authEmailForParentNumber,
+    requireAuth
+  } = window.carpoolUtils || {};
   if (!mustClient) return;
 
   const STORAGE_KEY = "tsgw_carpool_number";
@@ -103,21 +113,17 @@
     return family ? familyDisplayName(family) : "";
   }
 
-  async function getCheckinContext(number) {
+  async function getCheckinContext() {
     const client = mustClient();
-    const { data, error } = await client.rpc("get_parent_checkin_context", {
-      p_carpool_number: Number(number)
-    });
+    const { data, error } = await client.rpc("get_parent_checkin_context");
     if (error) throw error;
     return data;
   }
 
   async function submitCheckInRequest(targets) {
     const client = mustClient();
-    const { data, error } = await client.rpc("submit_check_in_request", {
-      p_requesting_carpool_number: Number(state.number),
+    const { data, error } = await client.rpc("submit_parent_check_in_request", {
       p_targets: targets,
-      p_called_by: "parent",
       p_checked_in_by: selectedCheckInActor()
     });
     if (error) throw error;
@@ -126,10 +132,8 @@
 
   async function submitPresetCheckIn(presetId) {
     const client = mustClient();
-    const { data, error } = await client.rpc("submit_carpool_preset_check_in", {
+    const { data, error } = await client.rpc("submit_parent_carpool_preset_check_in", {
       p_preset_id: presetId,
-      p_owner_carpool_number: Number(state.number),
-      p_called_by: "parent",
       p_checked_in_by: selectedCheckInActor()
     });
     if (error) throw error;
@@ -138,8 +142,7 @@
 
   async function createScheduledPickup(targets, sendAt) {
     const client = mustClient();
-    const { data, error } = await client.rpc("create_scheduled_pickup_request", {
-      p_requesting_carpool_number: Number(state.number),
+    const { data, error } = await client.rpc("create_parent_scheduled_pickup_request", {
       p_targets: targets,
       p_send_at: sendAt,
       p_checked_in_by: selectedCheckInActor()
@@ -150,9 +153,7 @@
 
   async function getPendingScheduledPickup() {
     const client = mustClient();
-    const { data, error } = await client.rpc("get_pending_scheduled_pickup_request", {
-      p_requesting_carpool_number: Number(state.number)
-    });
+    const { data, error } = await client.rpc("get_pending_parent_scheduled_pickup_request");
     if (error) throw error;
     return data;
   }
@@ -166,9 +167,8 @@
 
   async function cancelScheduledPickupRequest(requestId) {
     const client = mustClient();
-    const { data, error } = await client.rpc("cancel_scheduled_pickup_request", {
-      p_request_id: requestId,
-      p_requesting_carpool_number: Number(state.number)
+    const { data, error } = await client.rpc("cancel_parent_scheduled_pickup_request", {
+      p_request_id: requestId
     });
     if (error) throw error;
     return data;
@@ -177,7 +177,6 @@
   async function cancelParentCheckInRequest(studentIds) {
     const client = mustClient();
     const { data, error } = await client.rpc("cancel_parent_check_in_request", {
-      p_requesting_carpool_number: Number(state.number),
       p_student_ids: studentIds
     });
     if (error) throw error;
@@ -1005,12 +1004,13 @@
     renderStickyBar();
   }
 
-  async function loadFamily(number) {
+  async function loadFamily() {
     const [context, geofenceSettings] = await Promise.all([
-      getCheckinContext(number),
+      getCheckinContext(),
       getPickupGeofenceSettings().catch(() => defaultGeofenceSettings())
     ]);
     state.context = context;
+    state.number = Number(context?.requesting_family?.carpool_number || 0) || null;
     state.geofenceSettings = geofenceSettings;
     await applyStudentCallLabels(state.context);
     state.scheduledPickup = state.context?.scheduled_pickup || await getPendingScheduledPickup();
@@ -1018,11 +1018,10 @@
     renderCheckinPage();
   }
 
-  async function finishLogin(nextNumber) {
-    state.number = nextNumber;
-    await loadFamily(nextNumber);
+  async function finishLogin() {
+    localStorage.removeItem(STORAGE_KEY);
+    await loadFamily();
     syncNumberUi();
-    localStorage.setItem(STORAGE_KEY, String(state.number));
     hideAllSections();
     show("entry-card", false);
     show("students-section", true);
@@ -1030,7 +1029,7 @@
     renderStickyBar();
   }
 
-  async function continueWithNumber(number) {
+  async function continueWithNumber(number, password) {
     clearError("number-error");
     clearError("students-error");
     state.checkinNotice = null;
@@ -1039,27 +1038,44 @@
       showError("number-error", "Please enter your family number.");
       return;
     }
+    if (!password) {
+      showError("number-error", "Please enter the password.");
+      return;
+    }
+    if (!authEmailForParentNumber) {
+      showError("number-error", "Parent sign in is not configured.");
+      return;
+    }
 
     try {
-      await finishLogin(Number(number));
+      const client = mustClient();
+      const { error } = await client.auth.signInWithPassword({
+        email: authEmailForParentNumber(number),
+        password
+      });
+      if (error) throw error;
+      await finishLogin();
     } catch (error) {
-      showError("number-error", error.message || "Unable to connect. Please try again.");
+      showError("number-error", "Invalid family number or password.");
     }
   }
 
-  async function restoreSavedSession(number) {
+  async function restoreSavedSession() {
     hideAllSections();
     show("entry-card", false);
 
     try {
-      await finishLogin(Number(number));
+      const auth = requireAuth ? await requireAuth("parent") : { ok: false };
+      if (!auth.ok) throw new Error("Parent session required");
+      await finishLogin();
     } catch (error) {
       localStorage.removeItem(STORAGE_KEY);
+      await mustClient().auth.signOut().catch(() => {});
       state.number = null;
       state.context = null;
       syncNumberUi();
       showNumberStep(true);
-      showError("number-error", "Please enter your family number to continue.");
+      showError("number-error", "Please sign in to continue.");
     }
   }
 
@@ -1327,7 +1343,7 @@
       state.autoCall.status = "done";
       state.autoCall.message = doneCopy.message;
       state.autoCall.note = "Triggered automatically when you got near school.";
-      await loadFamily(state.number).catch(() => {});
+      await loadFamily().catch(() => {});
     } catch (error) {
       await releaseAutoCallWakeLock();
       state.autoCall.submitting = false;
@@ -1496,7 +1512,7 @@
         };
         setDoneRepingStatus(`${skippedNames.join(", ")} is already active for the classroom.`, "success");
       }
-      await loadFamily(state.number);
+      await loadFamily();
     } catch (error) {
       showError("students-error", error.message || "Unable to call again right now. Please try again.");
       setDoneRepingStatus(error.message || "Unable to reping right now. Please try again.", "error");
@@ -1542,7 +1558,7 @@
         setDoneRepingStatus(`Cancelled ${fullName}.`, "success");
       }
 
-      await loadFamily(state.number);
+      await loadFamily();
     } catch (error) {
       showError("students-error", error.message || "Unable to cancel this pickup request. Please try again.");
       setDoneRepingStatus(error.message || "Unable to cancel this pickup request. Please try again.", "error");
@@ -1572,7 +1588,7 @@
         const [presetId] = Array.from(state.activePresetIds);
         result = await submitPresetCheckIn(presetId);
         if (result.is_empty_after_cleanup) {
-          await loadFamily(state.number);
+          await loadFamily();
           showError("students-error", "This carpool needs to be updated in Settings before it can be used again.");
           return;
         }
@@ -1593,7 +1609,7 @@
       rememberLastSubmittedStudents(result);
       const doneCopy = buildDoneCopy(result, note);
       state.checkinNotice = doneCopy;
-      await loadFamily(state.number);
+      await loadFamily();
     } catch (error) {
       showError("students-error", error.message || "Unable to check in right now. Please try again.");
     } finally {
@@ -1624,7 +1640,7 @@
         note: `The request will send at ${formatScheduleTime(state.scheduledPickup.send_at)}.`
       };
       closeScheduleModal();
-      await loadFamily(state.number);
+      await loadFamily();
     } catch (error) {
       setScheduleError(error.message || "Unable to set the timer. Please try again.");
     } finally {
@@ -1653,7 +1669,7 @@
         };
       }
       closeScheduleModal();
-      await loadFamily(state.number);
+      await loadFamily();
     } catch (error) {
       if (!options.silent) {
         setScheduleError(error.message || "Unable to cancel the timer. Please try again.");
@@ -1666,9 +1682,10 @@
     }
   }
 
-  function clearParentSession() {
+  async function clearParentSession() {
     stopAutoCall();
     localStorage.removeItem(STORAGE_KEY);
+    await mustClient().auth.signOut().catch(() => {});
     state.number = null;
     state.context = null;
     state.checkinNotice = null;
@@ -1691,7 +1708,7 @@
       return;
     }
 
-    await loadFamily(state.number);
+    await loadFamily();
     hideAllSections();
     show("entry-card", false);
     show("students-section", true);
@@ -1700,15 +1717,19 @@
   }
 
   function bindEvents() {
-    el("find-family").addEventListener("click", () => continueWithNumber(el("carpool-number").value.trim()));
-    el("carpool-number").addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        continueWithNumber(el("carpool-number").value.trim());
-      }
+    const submitLogin = () => continueWithNumber(el("carpool-number").value.trim(), el("carpool-password").value);
+    el("find-family").addEventListener("click", submitLogin);
+    ["carpool-number", "carpool-password"].forEach((id) => {
+      el(id)?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          submitLogin();
+        }
+      });
     });
-
-    el("parent-logout-btn").addEventListener("click", clearParentSession);
+    el("parent-logout-btn").addEventListener("click", () => {
+      clearParentSession();
+    });
     el("done-back-btn").addEventListener("click", returnToStudentCheckin);
 
     el("done-reping-list").addEventListener("click", (event) => {
@@ -1803,7 +1824,7 @@
     });
   }
 
-  function init() {
+  async function init() {
     if (!window.carpoolClient) {
       setBootPending(false);
       show("config-warning", true);
@@ -1812,16 +1833,21 @@
 
     bindEvents();
 
-    const cached = localStorage.getItem(STORAGE_KEY);
-    if (cached) {
-      setBootPending(true);
-      restoreSavedSession(cached).finally(() => {
-        setBootPending(false);
-      });
-    } else {
-      setBootPending(false);
+    setBootPending(true);
+    localStorage.removeItem(STORAGE_KEY);
+    try {
+      const auth = requireAuth ? await requireAuth("parent") : { ok: false };
+      if (auth.ok) {
+        await restoreSavedSession();
+      } else {
+        syncNumberUi();
+        showNumberStep(true);
+      }
+    } catch (error) {
       syncNumberUi();
       showNumberStep(true);
+    } finally {
+      setBootPending(false);
     }
 
     state.repingTimer = window.setInterval(() => {
@@ -1842,7 +1868,7 @@
         const sendAt = new Date(state.scheduledPickup.send_at).getTime();
         if (sendAt <= Date.now() && state.number && Date.now() > state.scheduleRefreshAt) {
           state.scheduleRefreshAt = Date.now() + 10000;
-          loadFamily(state.number).catch(() => {});
+          loadFamily().catch(() => {});
         }
       }
     }, 1000);

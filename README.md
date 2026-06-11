@@ -91,10 +91,12 @@ Vercel routing is configured in `/Users/yisroel/Developer/TSGW-carpool-system/ve
 ## Behavior Notes
 
 - Parent flow uses RPC (`get_parent_checkin_context`, `submit_check_in_request`) with no custom backend.
+- Parent and classroom pages require Supabase Auth sessions. Parent users are provisioned per family by the admin login access Edge Function, while parents still type only their Family Number plus the shared parent password.
 - Parent delayed pickup uses `scheduled_pickup_requests`; the browser creates/cancels rows through RPCs, and a backend job processes due rows.
 - Parent location auto call uses `pickup_geofence_settings`; parents must allow browser location access and keep the parent page visible. Screen wake lock is requested when the browser supports it.
 - Spotter/admin require Supabase Auth.
 - Spotter session is persisted by Supabase in browser storage (`persistSession: true`).
+- Classroom displays require the shared classroom username/password configured from Admin > Settings.
 - Classroom hub count updates use status transition deltas to prevent overcount drift.
 - School day logic uses America/New_York (`school_today()`).
 
@@ -153,6 +155,18 @@ supabase secrets set RESEND_API_KEY="<RESEND_API_KEY>"
 supabase secrets set NOTIFICATION_FROM_EMAIL="TSGW Carpool <carpool@example.org>"
 supabase secrets set OFFICE_HELP_EMAIL="info@tsgw.org"
 ```
+
+## Parent and Classroom Login Access
+
+The Admin Settings tab calls the `manage-login-access` Supabase Edge Function to create/update parent and classroom Auth users. Deploy it before using those controls:
+
+```bash
+supabase functions deploy manage-login-access
+```
+
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase in deployed Edge Functions. Optionally set `AUTH_EMAIL_DOMAIN` if you also set `authEmailDomain` in `assets/js/config.js`; otherwise both sides default to `auth.tsgw-carpool.local`.
+
+After deployment, sign in as an admin, open `/admin/`, go to Settings, apply the shared parent password, and save the classroom login. Re-run the parent password action after importing new families so missing parent Auth users are created.
 
 ## Scheduled Parent Pickup Requests
 

@@ -1379,6 +1379,24 @@
         max-width: 1120px;
       }
 
+      .settings-subsection {
+        display: grid;
+        gap: 16px;
+        padding-bottom: 22px;
+        border-bottom: 1px solid var(--border-light);
+      }
+
+      .settings-subsection:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+
+      .settings-subsection h3 {
+        margin: 0;
+        font-size: 1rem;
+        color: var(--text-dark);
+      }
+
       .geofence-editor {
         display: grid;
         grid-template-columns: minmax(320px, 2fr) minmax(270px, 0.85fr);
@@ -2072,10 +2090,53 @@
         <!-- ── Settings tab ───────────────────────────────────── -->
         <section id="tab-settings" class="content-card hidden" data-tab-panel="settings">
           <div class="content-card-header">
-            <h2>Pickup Location</h2>
+            <h2>Settings</h2>
           </div>
           <div class="content-card-body">
+            <section class="settings-subsection">
+              <div>
+                <h3>Login Access</h3>
+                <p class="settings-summary">Use these controls to create parent and classroom Supabase Auth logins. Passwords are applied to Auth users and are not stored in the roster.</p>
+              </div>
+              <form id="parent-login-access-form" class="settings-form">
+                <div class="settings-field-grid">
+                  <div class="settings-form-row">
+                    <label for="parent-shared-password">Parent Password</label>
+                    <input id="parent-shared-password" type="password" autocomplete="new-password" />
+                  </div>
+                  <div class="settings-form-row">
+                    <label for="parent-shared-password-confirm">Confirm Parent Password</label>
+                    <input id="parent-shared-password-confirm" type="password" autocomplete="new-password" />
+                  </div>
+                </div>
+                <div class="settings-actions">
+                  <button id="parent-login-sync-btn" class="btn-action maroon" type="submit">Apply Parent Password</button>
+                </div>
+              </form>
+              <form id="classroom-login-access-form" class="settings-form">
+                <div class="settings-field-grid">
+                  <div class="settings-form-row">
+                    <label for="classroom-login-username">Classroom Username</label>
+                    <input id="classroom-login-username" type="text" autocomplete="username" value="classroom" />
+                  </div>
+                  <div class="settings-form-row">
+                    <label for="classroom-login-password">Classroom Password</label>
+                    <input id="classroom-login-password" type="password" autocomplete="new-password" />
+                  </div>
+                </div>
+                <div class="settings-actions">
+                  <button id="classroom-login-save-btn" class="btn-action maroon" type="submit">Save Classroom Login</button>
+                </div>
+              </form>
+              <p id="login-access-message" class="settings-message hidden"></p>
+            </section>
+
+            <section class="settings-subsection">
             <form id="geofence-settings-form" class="settings-form">
+              <div>
+                <h3>Pickup Location</h3>
+                <p class="settings-summary">Control the auto call radius used by parent devices near school.</p>
+              </div>
               <div class="geofence-editor">
                 <div class="geofence-map-shell">
                   <div id="geofence-map" class="geofence-map" aria-label="Pickup location map"></div>
@@ -2112,6 +2173,7 @@
                 </div>
               </div>
             </form>
+            </section>
           </div>
         </section>
 
@@ -2197,7 +2259,7 @@
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="../assets/js/config.js"></script>
     <script src="../assets/js/supabase-client.js"></script>
-    <script src="../assets/js/utils.js?v=attendance-markers-20260529"></script>
-    <script src="../assets/js/admin.js?v=student-call-history-20260611"></script>
+    <script src="../assets/js/utils.js?v=password-gated-auth-20260611"></script>
+    <script src="../assets/js/admin.js?v=password-gated-auth-20260611"></script>
   </body>
 </html>
