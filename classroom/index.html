@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <link rel="stylesheet" href="../assets/css/styles.css?v=brand-reskin-nav-20260612" />
     <style>
       /* ─── Classroom page enhancements ─────────────────────── */
 
@@ -18,8 +18,8 @@
       .brand-bar {
         display: flex;
         align-items: center;
-        padding: 0 20px;
-        height: 50px;
+        padding: 0 var(--space-6);
+        min-height: var(--brand-bar-height);
         background: var(--brand-maroon);
       }
 
@@ -30,7 +30,7 @@
       }
 
       .brand-name {
-        font-family: "Playfair Display", Georgia, serif;
+        font-family: var(--font-display);
         font-size: 0.95rem;
         font-weight: 700;
         letter-spacing: 0.09em;
@@ -43,8 +43,8 @@
         font-size: 0.58rem;
         letter-spacing: 0.16em;
         text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.5);
-        font-family: "Open Sans", sans-serif;
+        color: rgba(255, 255, 255, 0.62);
+        font-family: var(--font-sans);
         line-height: 1;
       }
 
@@ -61,13 +61,13 @@
 
       /* ─ Hub header ─ */
       .hub-header {
-        margin-bottom: 28px;
+        margin-bottom: var(--space-7);
       }
 
       .hub-actions {
-        margin-top: 16px;
+        margin-top: var(--space-5);
         display: flex;
-        gap: 10px;
+        gap: var(--space-3);
         flex-wrap: wrap;
         align-items: center;
       }
@@ -78,21 +78,23 @@
       }
 
       #hub-view > .hub-header > h1 {
-        font-size: 2.2rem;
-        margin: 0 0 6px;
+        font-size: clamp(1.5rem, 3vw, 2rem);
+        font-family: var(--font-sans);
+        font-weight: 800;
+        margin: 0 0 var(--space-2);
         color: var(--text-dark);
       }
 
       .hub-live-badge {
         display: inline-flex;
         align-items: center;
-        gap: 7px;
+        gap: var(--space-2);
         font-size: 0.7rem;
-        font-weight: 700;
-        letter-spacing: 0.14em;
+        font-weight: 800;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
         color: var(--text-muted);
-        font-family: "Open Sans", sans-serif;
+        font-family: var(--font-sans);
       }
 
       .hub-live-dot {
@@ -112,41 +114,41 @@
       /* ─ Hub grid & cards ─ */
       #hub-grid {
         grid-template-columns: repeat(auto-fill, minmax(clamp(140px, 20vw, 200px), 1fr)) !important;
-        gap: 14px !important;
+        gap: var(--space-4) !important;
       }
 
       .class-card {
-        padding: 20px 20px 16px;
-        border-radius: 14px;
+        padding: var(--space-5);
+        border-radius: var(--radius-md);
         background: var(--surface-white);
         border: 1px solid var(--border-light);
-        border-left: 4px solid var(--brand-gold);
+        border-left: 4px solid var(--state-amber-border);
         text-align: left;
         cursor: pointer;
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+        box-shadow: var(--shadow-card);
       }
 
       .class-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(107, 45, 91, 0.12);
+        box-shadow: var(--shadow-raised);
       }
 
       .class-card > div:first-child strong {
-        font-family: "Playfair Display", Georgia, serif;
+        font-family: var(--font-sans);
         font-size: clamp(1rem, 1.5vw, 1.2rem);
-        font-weight: 700;
+        font-weight: 800;
         color: var(--text-dark);
         display: block;
-        margin-bottom: 10px;
+        margin-bottom: var(--space-3);
       }
 
       .class-card > div:nth-child(2) {
-        font-family: "Playfair Display", Georgia, serif;
+        font-family: var(--font-sans);
         font-size: clamp(1.4rem, 2.5vw, 1.9rem);
         font-weight: 800;
-        color: var(--brand-maroon);
-        letter-spacing: -0.02em;
+        color: var(--product-primary);
+        letter-spacing: 0;
         line-height: 1;
       }
 
@@ -156,118 +158,121 @@
       }
 
       .class-card.complete > div:nth-child(2) {
-        color: #2a7d31;
+        color: var(--state-green-text);
       }
 
       .class-card.complete::after {
         content: "All out \2713";
         display: block;
         font-size: 0.65rem;
-        font-weight: 700;
-        letter-spacing: 0.12em;
+        font-weight: 800;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #2a7d31;
-        font-family: "Open Sans", sans-serif;
-        margin-top: 7px;
+        color: var(--state-green-text);
+        font-family: var(--font-sans);
+        margin-top: var(--space-2);
       }
 
       .class-card.selected-for-combo {
-        border-left-color: var(--brand-maroon);
-        box-shadow: 0 0 0 2px rgba(107, 45, 91, 0.18), 0 6px 20px rgba(107, 45, 91, 0.12);
+        border-left-color: var(--state-aqua-text);
+        box-shadow: 0 0 0 2px var(--state-aqua-border), var(--shadow-raised);
       }
 
       .class-card-actions {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 10px;
-        margin-top: 12px;
+        gap: var(--space-3);
+        margin-top: var(--space-4);
       }
 
       .class-card-open {
-        background: var(--brand-maroon);
+        background: var(--product-primary);
         color: #fff;
         border: none;
-        border-radius: 999px;
-        padding: 8px 12px;
-        font-size: 0.78rem;
-        font-weight: 700;
+        border-radius: var(--radius-md);
+        padding: 0 var(--space-4);
+        font-size: var(--text-xs);
+        font-weight: 800;
       }
 
       .class-card-toggle {
-        background: var(--surface-ivory);
+        background: var(--surface-white);
         color: var(--text-dark);
         border: 1px solid var(--border-light);
-        border-radius: 999px;
-        padding: 8px 12px;
-        font-size: 0.78rem;
-        font-weight: 700;
+        border-radius: var(--radius-md);
+        padding: 0 var(--space-4);
+        font-size: var(--text-xs);
+        font-weight: 800;
       }
 
       .class-card-toggle.active {
-        background: var(--brand-gold);
-        border-color: var(--brand-gold);
+        background: var(--state-aqua-bg);
+        border-color: var(--state-aqua-border);
+        color: var(--state-aqua-text);
       }
 
       .hub-students-card {
         --fit-grid-gap: 10px;
         --fit-card-height: auto;
         --fit-card-padding: 12px 10px;
-        --fit-card-radius: 14px;
+        --fit-card-radius: var(--radius-md);
         --fit-card-font-size: 1rem;
-        margin-top: 8px;
-        padding: 20px;
-        border-radius: 16px;
-        background: rgba(255, 255, 255, 0.82);
-        border: 1px solid rgba(226, 222, 216, 0.9);
+        margin-top: var(--space-3);
+        padding: var(--space-5);
+        border-radius: var(--radius-md);
+        background: var(--surface-white);
+        border: 1px solid var(--border-light);
       }
 
       .hub-students-head {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 12px;
-        margin-bottom: 14px;
+        gap: var(--space-4);
+        margin-bottom: var(--space-4);
         flex-wrap: wrap;
       }
 
       .hub-students-title {
         display: flex;
         align-items: baseline;
-        gap: 10px;
+        gap: var(--space-3);
         flex-wrap: wrap;
       }
 
       .hub-students-head h2 {
         margin: 0;
-        font-size: 1.2rem;
+        font-size: var(--text-lg);
+        font-family: var(--font-sans);
+        font-weight: 800;
       }
 
       .hub-students-head p {
         margin: 0;
         color: var(--text-muted);
-        font-size: 0.84rem;
+        font-size: var(--text-sm);
       }
 
       .hub-students-count {
-        font-size: 0.78rem;
+        font-size: var(--text-xs);
         color: var(--text-muted);
-        font-weight: 600;
+        font-weight: 700;
       }
 
       .hub-students-controls {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-3);
         flex-wrap: wrap;
       }
 
       .hub-students-toggle {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        font-size: 0.82rem;
-        font-weight: 700;
+        gap: var(--space-3);
+        font-size: var(--text-sm);
+        font-weight: 800;
         color: var(--text-dark);
         cursor: pointer;
         user-select: none;
@@ -277,23 +282,23 @@
         width: 18px;
         height: 18px;
         margin: 0;
-        accent-color: var(--brand-maroon);
+        accent-color: var(--product-primary);
       }
 
       .hub-students-fullscreen-btn {
         border: 1px solid var(--border-light);
-        border-radius: 999px;
+        border-radius: var(--radius-md);
         background: var(--surface-white);
         color: var(--text-dark);
-        font-size: 0.78rem;
+        font-size: var(--text-xs);
         font-weight: 800;
-        padding: 8px 12px;
+        padding: 0 var(--space-4);
         cursor: pointer;
       }
 
       .hub-students-fullscreen-btn:hover {
-        border-color: rgba(107, 45, 91, 0.32);
-        box-shadow: 0 6px 14px rgba(107, 45, 91, 0.08);
+        border-color: var(--focus-border);
+        box-shadow: var(--focus-ring);
       }
 
       body.grid-fullscreen-active {
@@ -308,7 +313,7 @@
         border-radius: 0;
         display: flex;
         flex-direction: column;
-        padding: 18px;
+        padding: var(--space-5);
         background: var(--surface-ivory);
       }
 
@@ -323,7 +328,7 @@
 
       #hub-student-grid {
         grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important;
-        gap: 10px !important;
+        gap: var(--space-3) !important;
       }
 
       #hub-student-grid.is-fitting {
@@ -337,14 +342,14 @@
 
       .hub-student-card {
         min-height: 82px;
-        border-radius: 14px;
-        padding: 12px 10px;
+        border-radius: var(--radius-md);
+        padding: var(--space-4);
         background: var(--surface-white);
         border: 1px solid var(--border-light);
         display: flex;
         flex-direction: column;
         justify-content: center;
-        gap: 6px;
+        gap: var(--space-2);
         text-align: center;
       }
 
@@ -380,7 +385,7 @@
         display: flex;
         justify-content: center;
         align-items: baseline;
-        gap: 6px;
+        gap: var(--space-2);
         flex-wrap: wrap;
       }
 
@@ -391,14 +396,15 @@
 
       .hub-student-card .student-class {
         font-size: 0.74rem;
+        font-weight: 400;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--text-muted);
       }
 
       .hub-student-card.called {
-        background: #e8f7ea;
-        border-color: rgba(42, 125, 49, 0.3);
+        background: var(--state-green-bg);
+        border-color: var(--state-green-border);
       }
 
       .hub-student-card .attendance-badge {
@@ -453,7 +459,7 @@
       }
 
       .projector #display-class-name {
-        font-family: "Playfair Display", Georgia, serif;
+        font-family: var(--font-display);
         color: #fff !important;
         font-size: clamp(2rem, 5vw, 3.2rem);
         font-weight: 800;
@@ -516,7 +522,7 @@
         letter-spacing: 0.22em;
         text-transform: uppercase;
         color: var(--brand-gold);
-        font-family: "Open Sans", sans-serif;
+        font-family: var(--font-sans);
         margin-top: 5px;
       }
 
@@ -692,7 +698,7 @@
 
       .display-alert-title {
         margin: 12px 0 8px;
-        font-family: "Playfair Display", Georgia, serif;
+        font-family: var(--font-display);
         font-size: clamp(2.8rem, 6vw, 5rem);
         font-weight: 800;
         line-height: 0.95;
@@ -729,7 +735,7 @@
         min-height: clamp(76px, 11vh, 112px);
         font-size: clamp(1rem, 1.8vw, 1.45rem);
         font-weight: 700;
-        font-family: "Open Sans", sans-serif;
+        font-family: var(--font-sans);
         border: none;
         display: flex;
         align-items: center;
@@ -864,7 +870,7 @@
 
       .classroom-login-card h1 {
         margin: 0;
-        font-family: "Playfair Display", Georgia, serif;
+        font-family: var(--font-display);
         color: var(--text-dark);
       }
 
@@ -879,14 +885,14 @@
         letter-spacing: 0.14em;
         text-transform: uppercase;
         color: var(--text-muted);
-        font-family: "Open Sans", sans-serif;
+        font-family: var(--font-sans);
       }
 
       .classroom-login-field input {
         border: 1.5px solid var(--border-light);
         border-radius: 10px;
         padding: 12px 14px;
-        font: 700 1rem "Open Sans", sans-serif;
+        font: 700 1rem / 1 var(--font-sans);
         background: var(--surface-ivory);
       }
 

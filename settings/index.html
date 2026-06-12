@@ -10,12 +10,12 @@
       href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <link rel="stylesheet" href="../assets/css/styles.css?v=brand-reskin-nav-20260612" />
     <style>
       body {
         background-color: var(--surface-ivory);
-        background-image: radial-gradient(circle, #ddd9d2 1px, transparent 1px);
-        background-size: 22px 22px;
+        background-image: var(--app-background-pattern);
+        background-size: var(--app-background-size);
         min-height: 100vh;
         overflow-x: hidden;
       }
@@ -24,9 +24,9 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 14px;
-        padding: 0 20px;
-        height: 54px;
+        gap: var(--space-4);
+        padding: 0 var(--space-6);
+        min-height: var(--brand-bar-height);
         background: var(--brand-maroon);
       }
 
@@ -37,7 +37,7 @@
       }
 
       .brand-name {
-        font-family: "Playfair Display", Georgia, serif;
+        font-family: var(--font-display);
         font-size: 1rem;
         font-weight: 700;
         letter-spacing: 0.09em;
@@ -50,26 +50,27 @@
         font-size: 0.6rem;
         letter-spacing: 0.16em;
         text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.5);
-        font-family: "Open Sans", sans-serif;
+        color: rgba(255, 255, 255, 0.62);
+        font-family: var(--font-sans);
         line-height: 1;
       }
 
       .brand-bar-actions {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-3);
       }
 
       .brand-bar-action {
         border: 1px solid rgba(255, 255, 255, 0.35);
         background: transparent;
         color: #fff;
-        border-radius: 999px;
-        padding: 8px 14px;
-        font-family: "Open Sans", sans-serif;
-        font-size: 0.82rem;
-        font-weight: 700;
+        border-radius: var(--radius-pill);
+        min-height: 34px;
+        padding: 0 var(--space-4);
+        font-family: var(--font-sans);
+        font-size: var(--text-xs);
+        font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         text-decoration: none;
@@ -93,9 +94,9 @@
       .settings-layout {
         max-width: 960px;
         margin: 0 auto;
-        padding: 40px 16px 64px;
+        padding: var(--space-9) var(--page-gutter) 64px;
         display: grid;
-        gap: 22px;
+        gap: var(--panel-gap);
       }
 
       .settings-card,
@@ -103,27 +104,24 @@
       .settings-section {
         background: var(--surface-white);
         border: 1px solid var(--border-light);
-        border-radius: 22px;
-        box-shadow:
-          0 1px 2px rgba(107, 45, 91, 0.06),
-          0 4px 18px rgba(107, 45, 91, 0.08),
-          0 16px 48px rgba(0, 0, 0, 0.05);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-card);
       }
 
       .settings-shell {
         display: grid;
-        gap: 22px;
+        gap: var(--panel-gap);
       }
 
       .settings-card,
       .settings-page-head,
       .settings-section {
-        padding: 24px 22px;
+        padding: var(--space-6);
       }
 
       .settings-page-head {
         display: grid;
-        gap: 10px;
+        gap: var(--space-3);
       }
 
       .settings-page-kicker,
@@ -131,8 +129,8 @@
       .entity-kicker {
         margin: 0;
         font-size: 0.68rem;
-        font-weight: 700;
-        letter-spacing: 0.18em;
+        font-weight: 800;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--text-muted);
       }
@@ -142,13 +140,14 @@
       .item-title,
       .lookup-family-box h3 {
         margin: 0;
-        font-family: "Playfair Display", Georgia, serif;
+        font-family: var(--font-sans);
+        font-weight: 800;
         color: var(--text-dark);
         line-height: 1.15;
       }
 
       .settings-page-head h1 {
-        font-size: 2rem;
+        font-size: clamp(1.45rem, 4vw, 1.85rem);
       }
 
       .settings-page-head p,
@@ -163,14 +162,14 @@
 
       .settings-section {
         display: grid;
-        gap: 20px;
+        gap: var(--space-5);
       }
 
       .section-head {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 16px;
+        gap: var(--space-5);
       }
 
       .section-head-copy {
@@ -181,12 +180,12 @@
       .section-title-row {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-3);
         flex-wrap: wrap;
       }
 
       .section-head h2 {
-        font-size: 1.35rem;
+        font-size: var(--text-xl);
       }
 
       .help-inline {
@@ -198,11 +197,11 @@
       .help-badge {
         width: 28px;
         height: 28px;
-        border: 1px solid rgba(107, 45, 91, 0.16);
-        border-radius: 999px;
-        background: var(--surface-ivory);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-md);
+        background: var(--surface-white);
         color: var(--text-muted);
-        font-family: "Open Sans", sans-serif;
+        font-family: var(--font-sans);
         font-size: 0.84rem;
         font-weight: 700;
         cursor: help;
@@ -214,8 +213,8 @@
 
       .help-badge:hover,
       .help-badge:focus-visible {
-        border-color: rgba(107, 45, 91, 0.3);
-        color: var(--brand-maroon);
+        border-color: var(--focus-border);
+        color: var(--product-primary);
         outline: none;
       }
 
@@ -226,7 +225,7 @@
         left: 50%;
         width: min(280px, calc(100vw - 56px));
         padding: 12px 14px;
-        border-radius: 14px;
+        border-radius: var(--radius-md);
         background: #3d2a35;
         color: #fff;
         font-size: 0.84rem;
@@ -254,15 +253,16 @@
       }
 
       .section-action {
-        border: none;
-        background: var(--brand-maroon);
+        border: 1px solid var(--product-primary);
+        background: var(--product-primary);
         color: #fff;
-        border-radius: 999px;
-        padding: 11px 16px;
-        font-size: 0.82rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        border-radius: var(--radius-md);
+        min-height: var(--control-height);
+        padding: 0 var(--space-4);
+        font-size: var(--text-sm);
+        font-weight: 800;
+        letter-spacing: 0;
+        text-transform: none;
         cursor: pointer;
         white-space: nowrap;
       }
@@ -271,29 +271,29 @@
       .picker-groups,
       .family-students {
         display: grid;
-        gap: 16px;
+        gap: var(--space-4);
       }
 
       .item-card,
       .lookup-family-box,
       .editor-panel {
         border: 1px solid var(--border-light);
-        border-radius: 18px;
-        background: var(--surface-ivory);
+        border-radius: var(--radius-md);
+        background: var(--surface-sand);
       }
 
       .item-card {
-        padding: 20px 18px;
+        padding: var(--space-5);
         display: grid;
-        gap: 10px;
-        background: #fff;
+        gap: var(--space-3);
+        background: var(--surface-white);
       }
 
       .item-row {
         display: flex;
         align-items: baseline;
         justify-content: space-between;
-        gap: 12px;
+        gap: var(--space-4);
         flex-wrap: wrap;
       }
 
@@ -311,17 +311,18 @@
 
       .item-meta {
         font-size: 0.92rem;
+        font-weight: 400;
       }
 
       .helper-list {
         display: grid;
-        gap: 14px;
+        gap: var(--space-4);
       }
 
       .item-actions,
       .btn-row {
         display: flex;
-        gap: 10px;
+        gap: var(--space-3);
         flex-wrap: wrap;
       }
 
@@ -338,13 +339,13 @@
       }
 
       .action-link.primary {
-        color: var(--brand-maroon);
+        color: var(--product-primary);
       }
 
       .editor-panel {
-        padding: 18px;
+        padding: var(--space-5);
         display: grid;
-        gap: 14px;
+        gap: var(--space-4);
       }
 
       .editor-panel.hidden {
@@ -364,7 +365,7 @@
 
       .form-row {
         display: grid;
-        gap: 8px;
+        gap: var(--space-3);
       }
 
       .form-row.is-disabled label {
@@ -374,8 +375,8 @@
       .form-row label,
       .authorization-toggle {
         font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 0.14em;
+        font-weight: 800;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--text-muted);
       }
@@ -383,28 +384,29 @@
       .editor-panel input {
         width: 100%;
         border: 1px solid var(--border-light);
-        border-radius: 12px;
-        padding: 12px 14px;
+        border-radius: var(--radius-md);
+        min-height: var(--control-height);
+        padding: 0 var(--space-4);
         font-size: 0.96rem;
-        background: #fff;
+        background: var(--surface-white);
       }
 
       .authorization-inline {
         display: grid;
         grid-template-columns: 1fr auto;
-        gap: 8px;
+        gap: var(--space-3);
       }
 
       .authorization-dates-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 10px;
+        gap: var(--space-3);
       }
 
       .authorization-toggle {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-3);
         font-size: 0.92rem;
         color: var(--text-dark);
       }
@@ -415,10 +417,10 @@
       }
 
       .lookup-family-box {
-        padding: 16px;
+        padding: var(--space-5);
         display: grid;
-        gap: 8px;
-        background: #fff;
+        gap: var(--space-3);
+        background: var(--surface-white);
       }
 
       .lookup-family-box h3 {
@@ -427,11 +429,11 @@
 
       .picker-group {
         display: grid;
-        gap: 10px;
-        padding: 16px;
+        gap: var(--space-3);
+        padding: var(--space-5);
         border: 1px solid var(--border-light);
-        border-radius: 18px;
-        background: #fff;
+        border-radius: var(--radius-md);
+        background: var(--surface-white);
       }
 
       .picker-group-head {
@@ -447,89 +449,89 @@
 
       .student-list {
         display: grid;
-        gap: 8px;
+        gap: var(--space-3);
       }
 
       .student-row {
         width: 100%;
         border: 1px solid var(--border-light);
-        border-radius: 14px;
-        background: #fff;
-        padding: 12px 14px;
+        border-radius: var(--radius-md);
+        background: var(--surface-white);
+        padding: var(--space-4);
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: var(--space-4);
         cursor: pointer;
-        font-family: "Open Sans", sans-serif;
-        transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+        font-family: var(--font-sans);
+        transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
       }
 
       .student-row:hover {
-        border-color: rgba(107, 45, 91, 0.28);
+        border-color: var(--focus-border);
       }
 
       .student-row.selected {
-        background: #eef8f0;
-        border-color: rgba(71, 132, 83, 0.48);
-        box-shadow: 0 8px 22px rgba(71, 132, 83, 0.09);
+        background: var(--state-aqua-bg);
+        border-color: var(--state-aqua-border);
+        box-shadow: none;
       }
 
       .student-row-main {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-4);
         min-width: 0;
       }
 
       .student-row-toggle {
         width: 28px;
         height: 28px;
-        border-radius: 999px;
-        border: 1px solid rgba(107, 45, 91, 0.24);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--state-aqua-border);
         display: inline-flex;
         align-items: center;
         justify-content: center;
         font-size: 1rem;
         font-weight: 700;
-        color: var(--brand-maroon);
+        color: var(--state-aqua-text);
         flex: 0 0 auto;
       }
 
       .student-row.selected .student-row-toggle {
-        background: #478453;
+        background: var(--state-aqua-text);
         color: #fff;
-        border-color: #478453;
+        border-color: var(--state-aqua-text);
       }
 
       .weekday-picker {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 8px;
+        gap: var(--space-3);
       }
 
       .weekday-option {
         border: 1px solid var(--border-light);
-        border-radius: 14px;
-        background: #fff;
-        padding: 11px 12px;
+        border-radius: var(--radius-md);
+        background: var(--surface-white);
+        padding: var(--space-4);
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: var(--space-3);
         cursor: pointer;
-        font-family: "Open Sans", sans-serif;
-        transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+        font-family: var(--font-sans);
+        transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
       }
 
       .weekday-option:hover {
-        border-color: rgba(107, 45, 91, 0.28);
+        border-color: var(--focus-border);
       }
 
       .weekday-option.selected {
-        background: #eef8f0;
-        border-color: rgba(71, 132, 83, 0.48);
-        box-shadow: 0 8px 22px rgba(71, 132, 83, 0.09);
+        background: var(--state-aqua-bg);
+        border-color: var(--state-aqua-border);
+        box-shadow: none;
       }
 
       .weekday-option-main {
@@ -549,7 +551,7 @@
       }
 
       .weekday-option.selected .weekday-option-short {
-        color: #478453;
+        color: var(--state-aqua-text);
       }
 
       .student-row-copy {
@@ -567,23 +569,34 @@
       .student-row-meta {
         color: var(--text-muted);
         font-size: 0.82rem;
+        font-weight: 400;
         line-height: 1.35;
       }
 
       .btn-w {
         width: 100%;
-        padding: 14px 18px;
-        border-radius: 12px;
+        min-height: 44px;
+        padding: 0 var(--space-5);
+        border-radius: var(--radius-md);
         border: none;
         font-size: 0.96rem;
-        font-weight: 700;
+        font-weight: 800;
         cursor: pointer;
-        font-family: "Open Sans", sans-serif;
+        font-family: var(--font-sans);
+        box-shadow: var(--shadow-primary);
+        transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+      }
+
+      .section-action:hover {
+        background: var(--product-primary-hover);
+        border-color: var(--product-primary-hover);
+        box-shadow: var(--shadow-primary-hover);
       }
 
       .btn-w.btn-maroon {
-        background: var(--brand-maroon);
+        background: var(--product-primary);
         color: #fff;
+        box-shadow: var(--shadow-primary);
       }
 
       .btn-w.is-disabled {
@@ -611,10 +624,10 @@
         position: fixed;
         inset: 0;
         z-index: 120;
-        background: rgba(40, 25, 37, 0.42);
+        background: rgba(23, 36, 58, 0.42);
         display: grid;
         place-items: center;
-        padding: 20px;
+        padding: var(--space-6);
         overflow-y: auto;
         backdrop-filter: blur(2px);
       }
@@ -630,13 +643,11 @@
         margin: auto;
         background: var(--surface-white);
         border: 1px solid var(--border-light);
-        border-radius: 24px;
-        box-shadow:
-          0 1px 2px rgba(0, 0, 0, 0.08),
-          0 24px 60px rgba(0, 0, 0, 0.18);
-        padding: 24px;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-overlay);
+        padding: var(--space-6);
         display: grid;
-        gap: 20px;
+        gap: var(--space-5);
       }
 
       #preset-modal .modal-card {
@@ -660,25 +671,25 @@
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 12px;
+        gap: var(--space-4);
       }
 
       .modal-head-copy {
         display: grid;
-        gap: 6px;
+        gap: var(--space-2);
       }
 
       .modal-head h3 {
         margin: 0;
-        font-size: 1.2rem;
+        font-size: var(--text-lg);
         color: var(--text-dark);
       }
 
       .modal-close {
         border: 1px solid var(--border-light);
-        background: #fff;
+        background: var(--surface-white);
         color: var(--text-muted);
-        border-radius: 999px;
+        border-radius: var(--radius-md);
         width: 38px;
         height: 38px;
         padding: 0;
@@ -757,9 +768,9 @@
         #preset-modal .modal-card {
           width: 100%;
           max-width: none;
-          padding: 18px;
-          gap: 16px;
-          border-radius: 22px;
+          padding: var(--space-5);
+          gap: var(--space-5);
+          border-radius: var(--radius-lg);
         }
 
         #preset-modal .picker-groups {
@@ -806,7 +817,6 @@
           <p class="settings-page-kicker">Parent Settings</p>
           <h1 id="settings-family-name">Parent Settings</h1>
           <p id="settings-family-number">Family #</p>
-          <p>Choose what you want to manage below.</p>
         </div>
 
         <section class="settings-section">
