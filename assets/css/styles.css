@@ -91,6 +91,12 @@
     0 24px 60px rgba(0, 0, 0, 0.18);
   --shadow-primary: 0 2px 10px rgba(107, 45, 91, 0.28);
   --shadow-primary-hover: 0 4px 16px rgba(107, 45, 91, 0.36);
+  --shadow-admin-card:
+    0 1px 2px rgba(107, 45, 91, 0.035),
+    0 4px 12px rgba(0, 0, 0, 0.035);
+  --shadow-admin-raised:
+    0 2px 6px rgba(107, 45, 91, 0.055),
+    0 8px 18px rgba(0, 0, 0, 0.045);
 
   /* Interaction */
   --focus-ring: 0 0 0 3px rgba(107, 45, 91, 0.12);
