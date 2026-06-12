@@ -13,7 +13,8 @@
   function authEmailForParentNumber(number) {
     const normalized = String(number || "").trim();
     if (!/^\d+$/.test(normalized)) return "";
-    return `parent-${normalized}@${authEmailDomain()}`.toLowerCase();
+    const carpoolNumber = String(Number.parseInt(normalized, 10));
+    return `parent-${carpoolNumber}@${authEmailDomain()}`.toLowerCase();
   }
 
   function normalizeClassroomUsername(value) {
@@ -238,8 +239,11 @@
       .maybeSingle();
 
     if (profileError) throw profileError;
-    const adminCanBypass = role !== "parent" && profile.role === "admin";
-    if (!profile || (profile.role !== role && !adminCanBypass)) {
+    if (!profile) {
+      return { ok: false, reason: "insufficient_role", session };
+    }
+
+    if (profile.role !== role) {
       return { ok: false, reason: "insufficient_role", session };
     }
 

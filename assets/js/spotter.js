@@ -866,7 +866,7 @@
       window.location.reload();
     });
 
-    el("spotter-login-btn").addEventListener("click", async () => {
+    const submitSpotterLogin = async () => {
       const client = mustClient();
       show("spotter-login-error", false);
 
@@ -881,6 +881,15 @@
       }
 
       window.location.reload();
+    };
+
+    el("spotter-login-btn").addEventListener("click", submitSpotterLogin);
+    ["spotter-email", "spotter-password"].forEach((id) => {
+      el(id)?.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        submitSpotterLogin();
+      });
     });
   }
 

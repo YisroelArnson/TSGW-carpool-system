@@ -21,12 +21,14 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
 
   const scheduledSecret = Deno.env.get("SCHEDULED_PICKUP_SECRET");
-  if (scheduledSecret) {
-    const providedSecret = req.headers.get("x-scheduled-pickup-secret");
-    const bearer = req.headers.get("authorization");
-    if (providedSecret !== scheduledSecret && bearer !== `Bearer ${scheduledSecret}`) {
-      return jsonResponse({ error: "Unauthorized" }, 401);
-    }
+  if (!scheduledSecret) {
+    return jsonResponse({ error: "Missing scheduled pickup secret configuration" }, 500);
+  }
+
+  const providedSecret = req.headers.get("x-scheduled-pickup-secret");
+  const bearer = req.headers.get("authorization");
+  if (providedSecret !== scheduledSecret && bearer !== `Bearer ${scheduledSecret}`) {
+    return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");

@@ -189,6 +189,7 @@ async function syncParentLogins(
 
   let created = 0;
   let updated = 0;
+  let reconciled = 0;
   const failures: Array<{ carpool_number: number; error: string }> = [];
 
   for (const family of families) {
@@ -197,7 +198,12 @@ async function syncParentLogins(
     const existingByEmail = authByEmail.get(email);
 
     try {
-      let userId = existingProfile?.id || existingByEmail?.id || "";
+      const hasSplitProfile = Boolean(
+        existingProfile?.id
+        && existingByEmail?.id
+        && existingProfile.id !== existingByEmail.id
+      );
+      let userId = existingByEmail?.id || existingProfile?.id || "";
       const attributes = {
         email,
         password: parentPassword,
@@ -218,6 +224,7 @@ async function syncParentLogins(
         if (error) throw error;
         userId = data.user?.id || userId;
         updated += 1;
+        if (hasSplitProfile) reconciled += 1;
       } else {
         const { data, error } = await supabase.auth.admin.createUser(attributes);
         if (error) throw error;
@@ -241,6 +248,7 @@ async function syncParentLogins(
     total_families: families.length,
     created,
     updated,
+    reconciled,
     failed: failures.length,
     failures
   };
@@ -264,7 +272,12 @@ async function setClassroomLogin(
 
   const existingProfile = ((classroomProfiles || []) as AppUserRow[])[0] || null;
   const existingByEmail = usersByEmail(authUsers).get(email);
-  let userId = existingProfile?.id || existingByEmail?.id || "";
+  const reconciled = Boolean(
+    existingProfile?.id
+    && existingByEmail?.id
+    && existingProfile.id !== existingByEmail.id
+  );
+  let userId = existingByEmail?.id || existingProfile?.id || "";
 
   const attributes = {
     email,
@@ -298,7 +311,8 @@ async function setClassroomLogin(
     ok: true,
     action: "set-classroom-login",
     username,
-    created
+    created,
+    reconciled
   };
 }
 

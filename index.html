@@ -2084,6 +2084,11 @@
       // Fallback: if no parent state is visible after load, restore the number entry card.
       (function () {
         function ensureParentView() {
+          if (document.documentElement.classList.contains("parent-boot-pending")) {
+            window.setTimeout(ensureParentView, 250);
+            return;
+          }
+
           var entryCard = document.getElementById("entry-card");
           var numberSection = document.getElementById("number-section");
           var studentsSection = document.getElementById("students-section");

@@ -100,6 +100,21 @@
     return Array.from(new Set([pathClassId, ...queryIds].filter(Boolean)));
   }
 
+  function classroomHubHref() {
+    const parts = window.location.pathname.split("/");
+    const classroomIdx = parts.indexOf("classroom");
+    if (classroomIdx === -1) return "/classroom/";
+
+    const hubPath = parts.slice(0, classroomIdx + 1).join("/") || "/classroom";
+    return `${hubPath.replace(/\/$/, "")}/`;
+  }
+
+  function configureClassroomHubLinks() {
+    document.querySelectorAll("[data-classroom-hub-link]").forEach((link) => {
+      link.setAttribute("href", classroomHubHref());
+    });
+  }
+
   function deriveRoute() {
     const classIds = parseClassIds();
     if (!classIds.length) return;
@@ -1103,6 +1118,7 @@
       return;
     }
 
+    configureClassroomHubLinks();
     deriveRoute();
     bindUi();
     bindAudioUnlock();

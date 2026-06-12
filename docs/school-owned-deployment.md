@@ -51,6 +51,7 @@ Log in with the school-owned Supabase account:
 ```bash
 supabase login
 supabase link --project-ref <PROJECT_REF>
+supabase functions deploy manage-login-access
 supabase functions deploy send-pickup-permission-alert
 supabase functions deploy process-scheduled-pickups
 ```

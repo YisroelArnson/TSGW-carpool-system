@@ -116,12 +116,14 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
 
   const webhookSecret = Deno.env.get("PICKUP_ALERT_WEBHOOK_SECRET");
-  if (webhookSecret) {
-    const providedSecret = req.headers.get("x-pickup-alert-secret");
-    const bearer = req.headers.get("authorization");
-    if (providedSecret !== webhookSecret && bearer !== `Bearer ${webhookSecret}`) {
-      return jsonResponse({ error: "Unauthorized" }, 401);
-    }
+  if (!webhookSecret) {
+    return jsonResponse({ error: "Missing pickup alert webhook secret configuration" }, 500);
+  }
+
+  const providedSecret = req.headers.get("x-pickup-alert-secret");
+  const bearer = req.headers.get("authorization");
+  if (providedSecret !== webhookSecret && bearer !== `Bearer ${webhookSecret}`) {
+    return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -190,10 +192,11 @@ Deno.serve(async (req) => {
       status,
       ...details
     };
-    await supabase
+    const { error } = await supabase
       .from("pickup_notification_queue")
       .update(payload)
       .eq("id", queue.id);
+    if (error) throw error;
   }
 
   try {
@@ -305,7 +308,14 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, status: "sent" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to send notification";
-    await markQueue("failed", { last_error: message });
+    try {
+      await markQueue("failed", { last_error: message });
+    } catch (markError) {
+      return jsonResponse({
+        error: message,
+        queue_update_error: markError instanceof Error ? markError.message : String(markError)
+      }, 500);
+    }
     return jsonResponse({ error: message }, 500);
   }
 });

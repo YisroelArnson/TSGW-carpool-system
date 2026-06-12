@@ -1433,6 +1433,22 @@ begin
 end;
 $$;
 
+do $$
+begin
+  if exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'get_parent_checkin_context'
+      and pg_get_function_identity_arguments(p.oid) = 'p_carpool_number integer'
+  ) then
+    revoke execute on function public.get_parent_checkin_context(integer) from public, anon, authenticated;
+    drop function public.get_parent_checkin_context(integer);
+  end if;
+end
+$$;
+
 create or replace function public.submit_check_in_request(
   p_requesting_carpool_number integer,
   p_targets jsonb,
@@ -1764,6 +1780,7 @@ begin
       and ds.date = v_today
       and ds.status = 'CALLED'
       and ds.called_by = 'parent'
+      and ds.pickup_family_id = v_requesting_family_id
     returning ds.student_id
   )
   select coalesce(
@@ -4142,6 +4159,8 @@ revoke execute on function public.family_id_for_carpool(integer) from public, an
 revoke execute on function public.allowed_students_for_family(uuid, date) from public, anon, authenticated;
 revoke execute on function public.active_authorized_students_for_receiver(uuid, date) from public, anon, authenticated;
 revoke execute on function public.prune_invalid_carpool_preset_students(uuid, date) from public, anon, authenticated;
+revoke execute on function public.parent_reping_cooldown_students(text, uuid[], date) from public, anon, authenticated;
+revoke execute on function public.write_pickup_authorization_audit(uuid, text, text, uuid, uuid, date, date, uuid[], jsonb) from public, anon, authenticated;
 
 revoke execute on function public.get_checkin_context_for_carpool(integer) from public, anon, authenticated;
 revoke execute on function public.submit_check_in_request(integer, jsonb, text, text) from public, anon, authenticated;
@@ -4200,6 +4219,7 @@ grant execute on function public.delete_parent_carpool_preset(uuid) to authentic
 grant execute on function public.get_pickup_geofence_settings() to authenticated;
 grant execute on function public.is_parent_allowed_student(uuid, date) to authenticated;
 
+grant execute on function public.get_checkin_context_for_carpool(integer) to service_role;
 grant execute on function public.submit_check_in_request(integer, jsonb, text, text) to service_role;
 grant execute on function public.get_pending_scheduled_pickup_request(integer) to service_role;
 grant execute on function public.create_scheduled_pickup_request(integer, jsonb, timestamptz, text) to service_role;

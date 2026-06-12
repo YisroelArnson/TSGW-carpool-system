@@ -1047,16 +1047,24 @@
       return;
     }
 
+    const client = mustClient();
+    let signedIn = false;
+
     try {
-      const client = mustClient();
       const { error } = await client.auth.signInWithPassword({
         email: authEmailForParentNumber(number),
         password
       });
       if (error) throw error;
+      signedIn = true;
       await finishLogin();
     } catch (error) {
-      showError("number-error", "Invalid family number or password.");
+      if (signedIn) {
+        await client.auth.signOut().catch(() => {});
+        showError("number-error", "Signed in, but this family could not be loaded. Please try again.");
+      } else {
+        showError("number-error", "Invalid family number or password.");
+      }
     }
   }
 

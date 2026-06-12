@@ -358,9 +358,10 @@
         parentPassword: password
       });
       const failed = Number(result.failed || 0);
+      const reconciled = Number(result.reconciled || 0);
       const message = failed
         ? `Updated parent logins with ${failed} failure${failed === 1 ? "" : "s"}.`
-        : `Parent logins ready: ${Number(result.created || 0)} created, ${Number(result.updated || 0)} updated.`;
+        : `Parent logins ready: ${Number(result.created || 0)} created, ${Number(result.updated || 0)} updated${reconciled ? `, ${reconciled} repaired` : ""}.`;
       setLoginAccessMessage(message, failed ? "error" : "success");
       if (!failed) {
         el("parent-shared-password").value = "";
@@ -402,7 +403,7 @@
       });
       el("classroom-login-username").value = result.username || username;
       el("classroom-login-password").value = "";
-      setLoginAccessMessage("Classroom login saved.", "success");
+      setLoginAccessMessage(result.reconciled ? "Classroom login saved and stale profile link repaired." : "Classroom login saved.", "success");
     } catch (error) {
       setLoginAccessMessage(error.message || "Unable to save classroom login.", "error");
     } finally {
@@ -4296,7 +4297,7 @@
   }
 
   function bindUi() {
-    el("admin-login-btn").addEventListener("click", async () => {
+    const submitAdminLogin = async () => {
       show("admin-login-error", false);
 
       const email = el("admin-email").value.trim();
@@ -4311,6 +4312,15 @@
       }
 
       window.location.reload();
+    };
+
+    el("admin-login-btn").addEventListener("click", submitAdminLogin);
+    ["admin-email", "admin-password"].forEach((id) => {
+      el(id)?.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        submitAdminLogin();
+      });
     });
 
     el("admin-logout-btn").addEventListener("click", async () => {
