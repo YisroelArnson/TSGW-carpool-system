@@ -131,7 +131,7 @@ Use the school-owned Vercel login or team scope when prompted.
 
 ## GitHub Keepalive
 
-The existing GitHub Actions keepalive workflow can keep Supabase active. In the school-owned GitHub repository, add repository secrets:
+The existing GitHub Actions keepalive workflow can keep Supabase active. It calls the public no-data `school_today` RPC instead of reading application tables, so row-level security can stay locked down. In the school-owned GitHub repository, add repository secrets:
 
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`

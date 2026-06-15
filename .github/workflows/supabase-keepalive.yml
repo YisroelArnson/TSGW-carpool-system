@@ -59,4 +59,4 @@ jobs:
             --header "apikey: ${{ steps.config.outputs.supabase_anon_key }}" \
             --header "Authorization: Bearer ${{ steps.config.outputs.supabase_anon_key }}" \
             --header "Accept: application/json" \
-            "${{ steps.config.outputs.supabase_url }}/rest/v1/daily_status?select=id&limit=1"
+            "${{ steps.config.outputs.supabase_url }}/rest/v1/rpc/school_today"

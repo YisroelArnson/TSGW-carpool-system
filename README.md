@@ -45,7 +45,7 @@ For a full school-owned Supabase and Vercel redeployment, use
 
 ## Supabase Keepalive
 
-The GitHub Actions workflow in `.github/workflows/supabase-keepalive.yml` pings the Supabase REST API twice a week and can also be run manually.
+The GitHub Actions workflow in `.github/workflows/supabase-keepalive.yml` pings the Supabase REST API twice a week and can also be run manually. It calls the public no-data `school_today` RPC, not application tables, so production row-level security can stay locked down.
 
 For GitHub, add these repository secrets:
 
